@@ -1,0 +1,15 @@
+diff --git a/compiler/rustc_metadata/src/rmeta/encoder.rs b/compiler/rustc_metadata/src/rmeta/encoder.rs
+index 03493d0e1..082bff9db 100644
+--- a/compiler/rustc_metadata/src/rmeta/encoder.rs
++++ b/compiler/rustc_metadata/src/rmeta/encoder.rs
+@@ -831,7 +831,9 @@ macro_rules! stat {
+             }
+ 
+             self.lazy(CrateRootUnhashed {
+-                extra_filename: self.tcx.sess.opts.cg.extra_filename.clone(),
++                // Let build tools override the suffix without a flag.
++                extra_filename: std::env::var("RUSTC_EXTRA_FILENAME")
++                    .unwrap_or_else(|_| self.tcx.sess.opts.cg.extra_filename.clone()),
+                 dep_extra_filenames,
+             })
+         });

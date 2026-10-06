@@ -1,0 +1,14 @@
+diff --git a/compiler/rustc_metadata/src/fs.rs b/compiler/rustc_metadata/src/fs.rs
+index ed177708f..59bf52b6d 100644
+--- a/compiler/rustc_metadata/src/fs.rs
++++ b/compiler/rustc_metadata/src/fs.rs
+@@ -46,7 +46,8 @@ pub fn encode_and_write_metadata(tcx: TyCtxt<'_>) -> Result<EncodedMetadata, Err
+         .prefix("rmeta")
+         .tempdir_in(out_filename.parent().unwrap_or_else(|| Path::new("")))
+         .unwrap_or_else(|err| tcx.dcx().emit_fatal(FailedCreateTempdir { err }));
+-    let metadata_tmpdir = MaybeTempDir::new(metadata_tmpdir, tcx.sess.opts.cg.save_temps);
++    // Keep the directory: handy when looking at what was encoded.
++    let metadata_tmpdir = MaybeTempDir::new(metadata_tmpdir, true);
+     let metadata_filename = metadata_tmpdir.as_ref().join("full.rmeta");
+     let metadata_stub_filename = if !tcx.sess.opts.unstable_opts.embed_metadata
+         && !tcx.crate_types().contains(&CrateType::ProcMacro)

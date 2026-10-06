@@ -1,0 +1,16 @@
+diff --git a/compiler/rustc_metadata/src/rmeta/encoder.rs b/compiler/rustc_metadata/src/rmeta/encoder.rs
+index 03493d0e1..db71cf90d 100644
+--- a/compiler/rustc_metadata/src/rmeta/encoder.rs
++++ b/compiler/rustc_metadata/src/rmeta/encoder.rs
+@@ -1986,9 +1986,8 @@ fn encode_default_body_stability(&mut self, def_id: DefId) {
+ 
+     #[instrument(level = "debug", skip(self))]
+     fn encode_deprecation(&mut self, def_id: DefId) {
+-        if let Some(depr) = self.tcx.lookup_deprecation(def_id) {
+-            record_some_lazy!(self.tables.lookup_deprecation_entry[def_id] <- depr);
+-        }
++        // Deprecation is only ever reported in the crate that declares it.
++        let _ = def_id;
+     }
+ 
+     #[instrument(level = "debug", skip(self))]
