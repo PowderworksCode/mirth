@@ -15,7 +15,24 @@ process in the build. [docs/plan.md](docs/plan.md) has the plan.
 
 ## Status
 
-Early. The plugin library and an example plugin work on the pinned nightly.
+Early. The plugin library, an example plugin, and `mirth-watch` with its
+runtime work on the pinned nightly, tested through Cargo on Linux, macOS and
+Windows. The instrumented compiler is next.
+
+## Watching a program
+
+```sh
+cargo build -p mirth-runtime
+MIRTH_WATCH=watch.toml MIRTH_RUNTIME=target/debug/libmirth_runtime.rlib \
+MIRTH_SITES=sites RUSTC_WRAPPER=target/debug/mirth-watch cargo build
+MIRTH_OUT=logs ./target/debug/my-program
+```
+
+`watch.toml` names what to record (`crates/mirth-watch/src/config.rs`
+documents it; `fixtures/effects/watch.toml` is an example). `sites/` gets a
+table of every instrumented site, written while compiling. `logs/` gets one
+log per process, written while it runs. `MIRTH_CRASH=<site>:<n>` aborts the
+program on the `n`th arrival at a site marked `point = true`.
 
 ## Using it
 
@@ -41,6 +58,8 @@ RUSTC_WRAPPER=path/to/my-plugin cargo build
 |---|---|
 | `crates/mirth` | the plugin library: driver, `optimized_mir` override, crate injection, MIR emission |
 | `crates/mirth-build` | what a plugin's `build.rs` has to do |
+| `crates/mirth-watch` | a plugin that records the frames, calls, arguments and static touches a configuration names, and can stop a process at a chosen call |
+| `crates/mirth-runtime` | what instrumented code calls: one log per process, with timestamps comparable across processes |
 | `examples/count-calls` | the smallest plugin, and its tests through Cargo |
 | `fixtures/` | small Cargo projects the tests build |
 | `docs/` | the plan, and later the properties and results |

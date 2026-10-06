@@ -5,8 +5,9 @@
 //! code generation, or not at all.
 
 use rustc_middle::mir::{
-    BasicBlock, CallSource, Const, ConstOperand, ConstValue, Local, Operand, Place, Rvalue,
-    SourceInfo, Statement, StatementKind, Terminator, TerminatorKind, UnwindAction, WithRetag,
+    BasicBlock, BasicBlockData, Body, BorrowKind, CallSource, Const, ConstOperand, ConstValue,
+    Local, Location, Operand, Place, Rvalue, SourceInfo, Statement, StatementKind, Terminator,
+    TerminatorKind, UnwindAction, WithRetag,
 };
 use rustc_middle::ty::{Ty, TyCtxt};
 use rustc_span::def_id::DefId;
@@ -46,6 +47,18 @@ impl<'tcx> Build<'tcx> {
             user_ty: None,
             const_: Const::Val(value, ty),
         }))
+    }
+
+    /// `place = &of`, a shared borrow. Regions are erased by the time a body
+    /// reaches `optimized_mir`, so the borrow carries the erased one.
+    pub fn reference(&self, place: impl Into<Place<'tcx>>, of: Place<'tcx>) -> Statement<'tcx> {
+        Statement::new(
+            self.source_info,
+            StatementKind::Assign(Box::new((
+                place.into(),
+                Rvalue::Ref(self.tcx.lifetimes.re_erased, BorrowKind::Shared, of),
+            ))),
+        )
     }
 
     pub fn assign(&self, place: impl Into<Place<'tcx>>, from: Operand<'tcx>) -> Statement<'tcx> {
@@ -92,4 +105,19 @@ impl<'tcx> Build<'tcx> {
             loop_hint_attrs: Default::default(),
         }
     }
+}
+
+/// Split a block before `at`, and return the new block holding everything
+/// from `at` on, the original terminator included.
+///
+/// The original block is left without a terminator, for the caller to end
+/// with whatever it inserts. `at.statement_index` may equal the number of
+/// statements, which splits just before the terminator.
+pub fn split<'tcx>(body: &mut Body<'tcx>, at: Location) -> BasicBlock {
+    let blocks = body.basic_blocks_mut();
+    let head = &mut blocks[at.block];
+    let rest = head.statements.split_off(at.statement_index);
+    let terminator = head.terminator.take();
+    let is_cleanup = head.is_cleanup;
+    blocks.push(BasicBlockData::new_stmts(rest, terminator, is_cleanup))
 }

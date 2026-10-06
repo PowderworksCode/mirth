@@ -1,0 +1,29 @@
+[scope]
+crates = ["store"]
+
+[[frame]]
+match = "store::save"
+
+[[frame]]
+match = "store::encode"
+
+[[call]]
+match = "std::fs::write"
+mode = "log"
+capture = [0]
+
+[[call]]
+match = "std::fs::rename"
+mode = "log"
+capture = [0, 1]
+point = true
+
+[[call]]
+match = "std::env::var"
+capture = [0]
+
+[[call]]
+match = "std::string::ToString::to_string"
+
+[statics]
+mode = "count"

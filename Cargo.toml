@@ -1,6 +1,12 @@
 [workspace]
 resolver = "3"
-members = ["crates/mirth", "crates/mirth-build", "examples/count-calls"]
+members = [
+    "crates/mirth",
+    "crates/mirth-build",
+    "crates/mirth-runtime",
+    "crates/mirth-watch",
+    "examples/count-calls",
+]
 exclude = ["fixtures"]
 
 [workspace.package]
