@@ -1,0 +1,34 @@
+# 3-env-var
+
+== clean build
+--- /home/exedev/mirth/tests/rmeta/chain.txt
++++ this build
+@@
+       43  new::{closure#1}                                   in CStore::register_crate
+      810  CrateMetadata::def_path_hash                       in encoder::encode_metadata
+        4  def_key::{closure#0}                               in encoder::encode_metadata
++state
++       1  std::env::var(RUSTC_EXTRA_FILENAME)  by encode_crate_root::{closure#33}  in encoder::encode_metadata
+ 
+ == mid (lib) emit dep-info,metadata,link ==
+ files
+@@
+       43  new::{closure#1}                                   in CStore::register_crate
+     1563  CrateMetadata::def_path_hash                       in encoder::encode_metadata
+        6  def_key::{closure#0}                               in encoder::encode_metadata
++state
++       1  std::env::var(RUSTC_EXTRA_FILENAME)  by encode_crate_root::{closure#33}  in encoder::encode_metadata
+ 
+mirth: the record differs from /home/exedev/mirth/tests/rmeta/chain.txt; rerun with --bless to accept it
+P4  base (lib) emit dep-info,metadata,link   std::env::var(RUSTC_EXTRA_FILENAME) read by encode_crate_root::{closure#33} while encoding, in encoder::encode_metadata
+P4  mid (lib) emit dep-info,metadata,link    std::env::var(RUSTC_EXTRA_FILENAME) read by encode_crate_root::{closure#33} while encoding, in encoder::encode_metadata
+== P5: a second clean build
+P5 holds: 2 .rmeta files identical
+== P6: an incremental rebuild after an edit
+P6 holds: incremental and clean .rmeta files identical
+check.sh exit 1
+
+
+existing tests (tests/incremental; tests/ui/{deprecation,crate-loading,rmeta,extern,cross-crate}):
+  test result: ok. 180 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+  test result: ok. 532 passed; 0 failed; 6 ignored; 0 measured; 21985 filtered out

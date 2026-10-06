@@ -1,0 +1,48 @@
+# 1-write-in-place
+
+== clean build
+--- /home/exedev/mirth/tests/rmeta/chain.txt
++++ this build
+@@
+   open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libmemchr-#.rmeta in CStore::register_crate
+   open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libpanic_unwind-#.rmeta in CStore::register_crate
+   create         target/debug/build/base/#/out/rmeta*     in fs::encode_and_write_metadata
+-  encode-to      target/debug/build/base/#/out/rmeta*/full.rmeta in encoder::encode_metadata
++  encode-to      target/debug/build/base/#/out/libbase-#.rmeta in encoder::encode_metadata
+   encoded                                                 in encoder::encode_metadata
+   encode-to      target/debug/build/base/#/out/rmeta*/stub.rmeta in encoder::encode_metadata
+   encoded                                                 in encoder::encode_metadata
+-  remove_file    target/debug/build/base/#/out/libbase-#.rmeta in fs::encode_and_write_metadata
+-  rename         target/debug/build/base/#/out/rmeta*/full.rmeta -> target/debug/build/base/#/out/libbase-#.rmeta in fs::encode_and_write_metadata
+   open           target/debug/build/base/#/out/libbase-#.rmeta in fs::encode_and_write_metadata
+   create         target/debug/build/base/#/out/rustc*     in -
+   write          target/debug/build/base/#/out/rustc*/lib.rmeta-link in -
+@@
+   open           target/debug/build/base/#/out/libbase-#.rmeta in -
+   open           target/debug/build/base/#/out/libbase-#.rmeta in -
+   create         target/debug/build/mid/#/out/rmeta*      in fs::encode_and_write_metadata
+-  encode-to      target/debug/build/mid/#/out/rmeta*/full.rmeta in encoder::encode_metadata
++  encode-to      target/debug/build/mid/#/out/libmid-#.rmeta in encoder::encode_metadata
+   encoded                                                 in encoder::encode_metadata
+   encode-to      target/debug/build/mid/#/out/rmeta*/stub.rmeta in encoder::encode_metadata
+   encoded                                                 in encoder::encode_metadata
+-  remove_file    target/debug/build/mid/#/out/libmid-#.rmeta in fs::encode_and_write_metadata
+-  rename         target/debug/build/mid/#/out/rmeta*/full.rmeta -> target/debug/build/mid/#/out/libmid-#.rmeta in fs::encode_and_write_metadata
+   open           target/debug/build/mid/#/out/libmid-#.rmeta in fs::encode_and_write_metadata
+   create         target/debug/build/mid/#/out/rustc*      in -
+   write          target/debug/build/mid/#/out/rustc*/lib.rmeta-link in -
+mirth: the record differs from /home/exedev/mirth/tests/rmeta/chain.txt; rerun with --bless to accept it
+P1  base (lib) emit dep-info,metadata,link   encoded straight to target/debug/build/base/#/out/libbase-#.rmeta
+P1  base (lib) emit dep-info,metadata,link   target/debug/build/base/#/out/libbase-#.rmeta was not published by renaming the encoded file
+P1  mid (lib) emit dep-info,metadata,link    encoded straight to target/debug/build/mid/#/out/libmid-#.rmeta
+P1  mid (lib) emit dep-info,metadata,link    target/debug/build/mid/#/out/libmid-#.rmeta was not published by renaming the encoded file
+== P5: a second clean build
+P5 holds: 2 .rmeta files identical
+== P6: an incremental rebuild after an edit
+P6 holds: incremental and clean .rmeta files identical
+check.sh exit 1
+
+
+existing tests (tests/incremental; tests/ui/{deprecation,crate-loading,rmeta,extern,cross-crate}):
+  test result: ok. 180 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+  test result: ok. 532 passed; 0 failed; 6 ignored; 0 measured; 21985 filtered out

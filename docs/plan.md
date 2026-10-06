@@ -99,9 +99,8 @@ patched compiler without instrumentation, to show which edits they catch.
    and the watch configuration for metadata.
 4. `mirth record`, `report` and `check`; the `chain` fixture and its blessed
    list; P1–P7 checked by `rustc/check.sh`.
-5. The edits, each with the failure it produces, and the comparison against
-   the existing suites.
-6. The writeup.
+5. The edits, each with the failure it produces, the comparison against
+   rustc's own tests, and the writeup (`docs/results.md`).
 
 ## Platforms
 

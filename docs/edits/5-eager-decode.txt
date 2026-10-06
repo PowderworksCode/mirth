@@ -1,0 +1,53 @@
+# 5-eager-decode
+
+== clean build
+--- /home/exedev/mirth/tests/rmeta/chain.txt
++++ this build
+@@
+      602  def_key::{closure#0}                               in -
+       41  get_ambig_module_children::{closure#0}             in -
+       52  imported_source_file::{closure#2}                  in -
++  175644  CrateMetadata::def_kind                            in CStore::register_crate
+       84  CrateMetadata::new                                 in CStore::register_crate
+       21  CrateRoot>::decode_crate_deps                      in CStore::register_crate
+       36  MetadataBlob::check_compatibility                  in CStore::register_crate
+@@
+      136  def_key::{closure#0}                               in -
+       47  get_ambig_module_children::{closure#0}             in -
+       54  imported_source_file::{closure#2}                  in -
++  175592  CrateMetadata::def_kind                            in CStore::register_crate
+       76  CrateMetadata::new                                 in CStore::register_crate
+       19  CrateRoot>::decode_crate_deps                      in CStore::register_crate
+       18  MetadataBlob::check_compatibility                  in CStore::register_crate
+@@
+      124  def_key::{closure#0}                               in -
+       39  get_ambig_module_children::{closure#0}             in -
+       48  imported_source_file::{closure#2}                  in -
++  175628  CrateMetadata::def_kind                            in CStore::register_crate
+       80  CrateMetadata::new                                 in CStore::register_crate
+       20  CrateRoot>::decode_crate_deps                      in CStore::register_crate
+       18  MetadataBlob::check_compatibility                  in CStore::register_crate
+mirth: the record differs from /home/exedev/mirth/tests/rmeta/chain.txt; rerun with --bless to accept it
+P1 P2 P4 P7 hold
+== P5: a second clean build
+P5 holds: 2 .rmeta files identical
+== P6: an incremental rebuild after an edit
+P6 holds: incremental and clean .rmeta files identical
+check.sh exit 1
+
+
+existing tests (tests/incremental; tests/ui/{deprecation,crate-loading,rmeta,extern,cross-crate}):
+  test result: FAILED. 174 passed; 6 failed; 0 ignored; 0 measured; 0 filtered out
+  test result: FAILED. 528 passed; 4 failed; 6 ignored; 0 measured; 21985 filtered out
+  failed:
+    [incremental] tests/incremental/derive_macro_expansion/proc_macro_unchanged.rs
+    [incremental] tests/incremental/incremental_proc_macro.rs
+    [incremental] tests/incremental/issue-110457-same-span-closures/main.rs
+    [incremental] tests/incremental/issue-49482.rs
+    [incremental] tests/incremental/issue-54059.rs
+    [incremental] tests/incremental/issue-85197-invalid-span/invalid_span_main.rs
+    [ui] tests/ui/attributes/use-extern-crate-named-macro-use.rs
+    [ui] tests/ui/crate-loading/cross-compiled-proc-macro.rs
+    [ui] tests/ui/impl-trait/precise-capturing/external-macro.rs
+    [ui] tests/ui/proc-macro/macros-in-extern.rs
+  (the failures under edit 5 are hangs: each test compile waited on a futex with no CPU use and was killed after 5 to 80 minutes)

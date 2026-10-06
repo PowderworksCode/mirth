@@ -120,6 +120,13 @@ rustc/check.sh chain --bless    # accept a changed list
 
 `docs/plan.md` describes the properties.
 
+## Results
+
+Seven plausible edits to rustc's metadata code, each rebuilt into the
+instrumented compiler and checked: mirth catches all seven, and rustc's own
+metadata-related tests catch three. `docs/results.md` has each one;
+`rustc/edits.sh` reproduces them.
+
 ## Platforms
 
 Linux, macOS and Windows. CI builds and tests all three.
