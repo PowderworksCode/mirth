@@ -17,6 +17,7 @@
 //!
 //! [statics]                     # touches of mutable and interior-mutable statics
 //! mode = "count"
+//! ignore = ["*::__CALLSITE"]    # statics not to watch
 //! ```
 //!
 //! A pattern is a function's path, as rustc prints it with the crate's name
@@ -74,6 +75,15 @@ pub struct Call {
 pub struct Statics {
     #[serde(default)]
     pub mode: Mode,
+    /// Statics not to watch, as patterns over their paths.
+    #[serde(default)]
+    pub ignore: Vec<String>,
+}
+
+impl Statics {
+    pub fn watches(&self, path: &str) -> bool {
+        !self.ignore.iter().any(|pattern| matches(pattern, path))
+    }
 }
 
 #[derive(Deserialize, Default, Clone, Copy, PartialEq, Eq)]

@@ -146,6 +146,10 @@ fn records_frames_calls_arguments_and_statics() {
         .map(|row| row[0].clone())
         .collect();
     assert_eq!(writes.len(), 2, "WRITES is touched in save and in writes");
+    assert!(
+        built.sites.iter().all(|row| row[5] != "store::IGNORED"),
+        "an ignored static is not watched"
+    );
 
     assert_eq!(log[0][0], "P", "the process comes first");
 

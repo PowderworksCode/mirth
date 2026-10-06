@@ -134,7 +134,10 @@ impl<'tcx> Finder<'_, 'tcx> {
         let Some(statics) = &self.config.statics else {
             return;
         };
-        if self.in_cleanup(at) || !is_state(self.tcx, target) {
+        if self.in_cleanup(at)
+            || !is_state(self.tcx, target)
+            || !statics.watches(&path_of(self.tcx, target))
+        {
             return;
         }
         let mode = statics.mode;

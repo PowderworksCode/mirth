@@ -4,6 +4,7 @@ use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 static WRITES: AtomicU64 = AtomicU64::new(0);
+static IGNORED: AtomicU64 = AtomicU64::new(0);
 
 /// Write a file the safe way: to a temporary file beside it, then rename.
 pub fn save(directory: &Path, name: &str, text: &str) -> io::Result<()> {
@@ -14,6 +15,7 @@ pub fn save(directory: &Path, name: &str, text: &str) -> io::Result<()> {
 }
 
 pub fn writes() -> u64 {
+    IGNORED.fetch_add(1, Ordering::Relaxed);
     WRITES.load(Ordering::Relaxed)
 }
 

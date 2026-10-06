@@ -32,3 +32,4 @@ match = "std::string::ToString::to_string"
 
 [statics]
 mode = "count"
+ignore = ["store::IGNORED"]
