@@ -76,9 +76,11 @@ path baked in at build time.
 
 - `--extern force:name=path` loads a crate nobody refers to; a plain
   `--extern` is dropped as unused. It needs `-Zunstable-options`.
-- `-L dependency=<its deps directory>` beside it, or rustc resolves the
-  injected crate's own dependencies against the sysroot's copies and rejects
-  them as different crates.
+- `-L dependency=` for the crate's own directory and its `deps` directory.
+  rustc finds a dependency of a dependency by searching, never through
+  `--extern`, so every crate downstream of an instrumented one needs the
+  runtime's directory on its search path. Without it the error names the
+  crate being loaded, not the runtime: "can't find crate for `rustc_middle`".
 - Its functions have no path to resolve. Mark them
   `#[rustc_diagnostic_item = "…"]` and look them up with
   `tcx.get_diagnostic_item`. Statics cannot carry that attribute: take the
@@ -106,6 +108,21 @@ Moving the pin breaks things in `rustc_private`. What has changed so far:
 | `type_of(..).instantiate_identity()` returns `Ty` | returns `Unnormalized<Ty>`; call `skip_normalization()` |
 
 `Ty::new_fn_def` takes a `ty::Binder` around the generic arguments.
+
+## Building rustc through a plugin
+
+Bootstrap's rustc shim runs `RUSTC_WRAPPER_REAL` as `<wrapper> <rustc>
+<args…>`. Two things need care:
+
+- **Stage 0 must not have `rustc-dev`.** Bootstrap copies stage 0's
+  libraries into the sysroot it compiles the compiler against. Prebuilt
+  `rustc_*` crates there are found ahead of the ones being built, and the
+  build fails with "found possibly newer version of crate". The plugin
+  itself needs `rustc-dev`, so `rustc/setup.sh` gives bootstrap a copy of
+  the pinned nightly with that component's files removed.
+- **Cargo does not know about the wrapper.** Changing the plugin or its
+  configuration does not rebuild anything. `rustc/build.sh --again` deletes
+  the fingerprints of the crates in scope.
 
 ## The allocator
 

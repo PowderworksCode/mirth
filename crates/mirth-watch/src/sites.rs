@@ -46,6 +46,18 @@ impl Hooks {
     }
 }
 
+/// The path of every function a body calls directly.
+pub fn callees<'tcx>(tcx: TyCtxt<'tcx>, body: &Body<'tcx>) -> Vec<String> {
+    body.basic_blocks
+        .iter()
+        .filter_map(|block| match &block.terminator().kind {
+            TerminatorKind::Call { func, .. } => func.const_fn_def(),
+            _ => None,
+        })
+        .map(|(target, _)| path_of(tcx, target))
+        .collect()
+}
+
 /// One instrumented place in the program, as the logs refer to it.
 pub struct Site {
     pub id: u64,
@@ -521,7 +533,7 @@ pub fn write(directory: &Path, krate: &str, sites: &[Site]) {
             site.snippet.replace('\t', " "),
         );
     }
-    let name = format!("{krate}-{}.sites", std::process::id());
+    let name = format!("{krate}.sites");
     if let Err(error) = std::fs::write(directory.join(name), text) {
         eprintln!("mirth-watch: writing the site table: {error}");
     }

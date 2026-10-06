@@ -18,6 +18,9 @@
 //! [statics]                     # touches of mutable and interior-mutable statics
 //! mode = "count"
 //! ignore = ["*::__CALLSITE"]    # statics not to watch
+//!
+//! [diagnostics]
+//! paths = true                  # write every path a pattern could match
 //! ```
 //!
 //! A pattern is a function's path, as rustc prints it with the crate's name
@@ -35,6 +38,19 @@ pub struct Config {
     #[serde(default, rename = "call")]
     pub calls: Vec<Call>,
     pub statics: Option<Statics>,
+    #[serde(default)]
+    pub diagnostics: Diagnostics,
+}
+
+/// For writing a configuration: what could be matched.
+#[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+pub struct Diagnostics {
+    /// Write the path of every function called, and every function with a
+    /// body, in the crates in scope, to `<crate>.paths` beside the site
+    /// table.
+    #[serde(default)]
+    pub paths: bool,
 }
 
 #[derive(Deserialize, Default)]

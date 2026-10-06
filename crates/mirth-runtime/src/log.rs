@@ -139,6 +139,8 @@ extern "C" fn finish() {
         }
         text.push('\n');
     }
+    let ns = log.start_ns + log.start.elapsed().as_nanos();
+    text.push_str(&format!("X\t{ns}\n"));
     let file = log.file.lock().unwrap_or_else(|it| it.into_inner());
     let _ = (&*file).write_all(text.as_bytes());
 }

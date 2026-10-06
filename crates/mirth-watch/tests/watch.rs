@@ -163,6 +163,7 @@ fn records_frames_calls_arguments_and_statics() {
     );
 
     assert_eq!(log[0][0], "P", "the process comes first");
+    assert_eq!(log[log.len() - 1][0], "X", "and its exit last");
 
     let logged: Vec<(String, String, Vec<String>)> = log
         .iter()
@@ -299,8 +300,8 @@ fn a_point_stops_the_process_where_asked() {
         "written as they happened: two writes, two renames"
     );
     assert!(
-        log.iter().all(|row| row[0] != "C"),
-        "counts are written at exit, and an abort is not an exit"
+        log.iter().all(|row| row[0] != "C" && row[0] != "X"),
+        "counts and the exit are written at exit, and an abort is not an exit"
     );
 }
 

@@ -64,7 +64,7 @@ frame lookup_deprecation_entry(dep)  decode tables.lookup_deprecation x1
 |---|---|---|
 | P1 | an `.rmeta` reaches its final path only by a rename from a temporary file beside it | torn files |
 | P2 | every open of an `.rmeta` happens after its writer renamed it into place | races between processes |
-| P3 | every table entry a dependent reads was written by the crate's writer | silent defaults |
+| P3 | for every table a dependent reads, how many of the entries it asked for the writer wrote, blessed: an entry not written is read as a default without complaint, so a table that stops being written shows up only here | silent defaults |
 | P4 | metadata is read only inside a query frame, and encoding reads no environment variable, clock or random state outside a list where each entry has a reason | state incremental compilation cannot see |
 | P5 | two clean builds give identical `.rmeta` bytes and identical lists | nondeterminism |
 | P6 | an incremental rebuild after an edit to a fixture gives the same `.rmeta` and lists as a clean build | incremental bugs |
@@ -78,7 +78,7 @@ might write:
 | # | edit | caught by |
 |---|---|---|
 | 1 | write the `.rmeta` straight to its final path, without the temporary file and rename | list diff, P1 |
-| 2 | drop one `record!` (deprecation) | P3: the dependent silently gets "not deprecated" |
+| 2 | drop one `record!` (deprecation) | P3: the deprecated item's entry is no longer written, and the dependent silently gets "not deprecated" |
 | 3 | read an environment variable or the clock while encoding | P4, P5 |
 | 4 | collect entries through a `std` `HashMap` before encoding them | P5 |
 | 5 | decode every item of a dependency when it is loaded | list diff (x12 becomes x400) |
@@ -93,13 +93,15 @@ patched compiler without instrumentation, to show which edits they catch.
 
 1. Skeleton: the plugin library, an example plugin tested through Cargo, CI
    on Linux, macOS and Windows.
-2. The runtime and the instrumenting plugin: frames, calls, touches, points,
-   argument capture; tested on a fixture through Cargo.
-3. The instrumented compiler: pinned rustc commit, setup and build scripts.
-4. `mirth record`, `mirth report`, blessing.
-5. The properties, `mirth check`.
-6. The edits, each with the failure it produces.
-7. The writeup, with the comparison against the existing suites.
+2. `mirth-watch` and its runtime: frames, calls, captured arguments, static
+   touches, crash points; tested on a fixture through Cargo.
+3. The instrumented compiler: pinned rustc commit, setup and build scripts,
+   and the watch configuration for metadata.
+4. `mirth record`, `report` and `check`; the `chain` fixture and its blessed
+   list; P1–P7 checked by `rustc/check.sh`.
+5. The edits, each with the failure it produces, and the comparison against
+   the existing suites.
+6. The writeup.
 
 ## Platforms
 

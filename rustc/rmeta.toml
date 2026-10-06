@@ -1,0 +1,134 @@
+# What the instrumented compiler records about crate metadata.
+#
+# Writing: the tables each crate encodes, and every file operation on the way
+# to a published .rmeta. Reading: which dependency's metadata each extern
+# query reads, which crate number is which crate, and which files are opened.
+# Everywhere in scope: environment, clock and randomness, and statics.
+
+[scope]
+crates = ["rustc_metadata", "tempfile"]
+
+# Writing.
+[[frame]]
+match = "rustc_metadata::fs::encode_and_write_metadata"
+
+[[frame]]
+match = "rustc_metadata::rmeta::encoder::encode_metadata"
+capture = [1]
+
+[[call]]
+match = "rustc_serialize::opaque::FileEncoder::<'a>::new"
+mode = "log"
+capture = [0]
+point = true
+
+[[call]]
+match = "rustc_serialize::opaque::FileEncoder::<'a>::with_flush_strategy"
+mode = "log"
+capture = [0]
+point = true
+
+[[call]]
+match = "rustc_serialize::opaque::FileEncoder::<'a>::finish"
+mode = "log"
+point = true
+
+[[call]]
+match = "rustc_metadata::rmeta::table::TableBuilder::<*>::set*"
+capture = [1]
+
+# Reading.
+[[frame]]
+match = "rustc_metadata::rmeta::decoder::cstore_impl::provide_extern::*"
+capture = [1]
+
+[[frame]]
+match = "rustc_metadata::creader::CStore::register_crate"
+debug = [6]
+
+[[call]]
+match = "rustc_metadata::creader::CStore::set_crate_data"
+capture = [1]
+
+[[call]]
+match = "rustc_metadata::rmeta::table::<impl rmeta::LazyTable<*>>::get"
+
+[[call]]
+match = "rustc_metadata::rmeta::decoder::<impl rmeta::Lazy*>::decode"
+
+# Files.
+[[call]]
+match = "rustc_fs_util::link_or_copy"
+mode = "log"
+capture = [0, 1]
+point = true
+
+[[call]]
+match = "std::fs::File::open"
+mode = "log"
+capture = [0]
+
+[[call]]
+match = "std::fs::File::create"
+mode = "log"
+capture = [0]
+point = true
+
+[[call]]
+match = "std::fs::write"
+mode = "log"
+capture = [0]
+point = true
+
+[[call]]
+match = "std::fs::rename"
+mode = "log"
+capture = [0, 1]
+point = true
+
+[[call]]
+match = "std::fs::copy"
+mode = "log"
+capture = [0, 1]
+point = true
+
+[[call]]
+match = "std::fs::remove_file"
+mode = "log"
+capture = [0]
+
+[[call]]
+match = "std::fs::remove_dir_all"
+mode = "log"
+capture = [0]
+
+[[call]]
+match = "std::fs::DirBuilder::create"
+mode = "log"
+capture = [1]
+
+[[call]]
+match = "std::fs::create_dir*"
+mode = "log"
+capture = [0]
+
+# State incremental compilation cannot see.
+[[call]]
+match = "std::env::var*"
+capture = [0]
+
+[[call]]
+match = "std::time::*::now"
+
+[[call]]
+match = "std::hash::RandomState::new"
+
+[[call]]
+match = "std::collections::hash_map::RandomState::new"
+
+[statics]
+mode = "count"
+ignore = ["*::__CALLSITE"]
+
+[diagnostics]
+paths = true

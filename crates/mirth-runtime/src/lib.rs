@@ -12,6 +12,7 @@
 //! P <pid> <start ns> <argument>…                                             the process, first
 //! L <ns> <thread> <site> <frame> <frame type> <frame arguments> <argument>…  a logged event, written at once
 //! C <site> <frame> <frame type> <frame arguments> <count> <argument>…       a counted event, written at exit
+//! X <ns>                                                                       the exit, last
 //! ```
 //!
 //! Fields are separated by tabs; a tab, newline or backslash inside one is

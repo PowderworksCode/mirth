@@ -4,8 +4,9 @@
 //! (`config.rs` documents it) and `MIRTH_RUNTIME` naming
 //! `libmirth_runtime.rlib`. Each crate in scope gets calls to the runtime at
 //! every site the configuration names, and the compilation writes a table of
-//! those sites to the directory `MIRTH_SITES` names: what each site's number
-//! means, for whoever reads the logs the program writes when it runs.
+//! those sites to `<crate>.sites` in the directory `MIRTH_SITES` names: what
+//! each site's number means, for whoever reads the logs the program writes
+//! when it runs. A crate compiled again replaces its table.
 
 #![feature(rustc_private)]
 
@@ -30,11 +31,20 @@ struct Watch {
     config: Config,
     runtime: PathBuf,
     sites: Vec<sites::Site>,
+    paths: std::collections::BTreeSet<String>,
 }
 
 impl mirth::Plugin for Watch {
     fn injects(&self) -> Option<PathBuf> {
         Some(self.runtime.clone())
+    }
+
+    /// The MIR inliner runs before `optimized_mir` hands a body over, and
+    /// would replace a call to a small function, such as `std::fs::rename`,
+    /// with that function's body and its own calls. Code generation still
+    /// inlines afterwards.
+    fn arguments(&self) -> Vec<String> {
+        vec!["-Zinline-mir=no".to_owned()]
     }
 
     fn body<'tcx>(
@@ -43,6 +53,15 @@ impl mirth::Plugin for Watch {
         def_id: LocalDefId,
         body: &'tcx Body<'tcx>,
     ) -> Option<&'tcx Body<'tcx>> {
+        if self.config.diagnostics.paths {
+            self.paths
+                .insert(format!("body\t{}", sites::path_of(tcx, def_id.to_def_id())));
+            self.paths.extend(
+                sites::callees(tcx, body)
+                    .into_iter()
+                    .map(|path| format!("call\t{path}")),
+            );
+        }
         let hooks = sites::Hooks::find(tcx)?;
         let (changed, found) = sites::instrument(tcx, &self.config, &hooks, def_id, body)?;
         self.sites.extend(found);
@@ -56,11 +75,15 @@ impl mirth::Plugin for Watch {
         let Some(directory) = std::env::var_os("MIRTH_SITES") else {
             return;
         };
-        sites::write(
-            &PathBuf::from(directory),
-            tcx.crate_name(LOCAL_CRATE).as_str(),
-            &self.sites,
-        );
+        let directory = PathBuf::from(directory);
+        let krate = tcx.crate_name(LOCAL_CRATE);
+        sites::write(&directory, krate.as_str(), &self.sites);
+        if !self.paths.is_empty() {
+            let mut text = self.paths.iter().cloned().collect::<Vec<_>>().join("\n");
+            text.push('\n');
+            let _ = std::fs::create_dir_all(&directory);
+            let _ = std::fs::write(directory.join(format!("{krate}.paths")), text);
+        }
     }
 }
 
@@ -140,6 +163,7 @@ fn main() -> ! {
                 config,
                 runtime,
                 sites: Vec::new(),
+                paths: Default::default(),
             },
         ),
         (_, runtime) => mirth::run(

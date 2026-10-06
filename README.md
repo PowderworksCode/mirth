@@ -15,9 +15,9 @@ process in the build. [docs/plan.md](docs/plan.md) has the plan.
 
 ## Status
 
-Early. The plugin library, an example plugin, and `mirth-watch` with its
-runtime work on the pinned nightly, tested through Cargo on Linux, macOS and
-Windows. The instrumented compiler is next.
+Early. The plugin library, `mirth-watch` and its runtime work on the pinned
+nightly, tested through Cargo on Linux, macOS and Windows. `rustc/` builds a
+compiler instrumented for crate metadata.
 
 ## Watching a program
 
@@ -77,11 +77,27 @@ RUSTC_WRAPPER=path/to/my-plugin cargo build
 | `crates/mirth-build` | what a plugin's `build.rs` has to do |
 | `crates/mirth-watch` | a plugin that records the frames, calls, arguments and static touches a configuration names, and can stop a process at a chosen call |
 | `crates/mirth-runtime` | what instrumented code calls: one log per process, with timestamps comparable across processes |
+| `rustc/` | building rustc instrumented for crate metadata |
 | `examples/count-calls` | the smallest plugin, and its tests through Cargo |
 | `fixtures/` | small Cargo projects the tests build |
 | `docs/` | the plan, and later the properties and results |
 
 `HACKING.md` records every `rustc_private` workaround.
+
+## An instrumented compiler
+
+```sh
+export MIRTH_RUST=$HOME/mirth-rust   # where the rustc checkout goes
+rustc/setup.sh                        # fetch the pinned commit, configure bootstrap
+rustc/build.sh                        # build stage 1 with mirth-watch, and its std
+```
+
+`rustc/rmeta.toml` says what is recorded: the tables each crate writes, which
+dependency's metadata each extern query reads, crate loading, every file
+operation on the way to a published `.rmeta`, and environment, clock and
+randomness reads. A full build takes about an hour on 16 cores and needs
+roughly 30 GB. After changing the plugin or the configuration,
+`rustc/build.sh --again` recompiles the crates in scope.
 
 ## Platforms
 
