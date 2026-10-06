@@ -124,7 +124,8 @@ rustc/check.sh chain --bless    # accept a changed list
 
 Seven plausible edits to rustc's metadata code, each rebuilt into the
 instrumented compiler and checked: mirth catches all seven, and rustc's own
-metadata-related tests catch three. `docs/results.md` has each one;
+metadata-related tests catch three. `docs/report.md` is the writeup for
+readers new to the project; `docs/results.md` has each edit in detail;
 `rustc/edits.sh` reproduces them.
 
 ## Platforms
