@@ -64,3 +64,7 @@ pub struct Name(pub &'static str);
 pub fn lookup(key: Key, name: Name) -> usize {
     label().len() + key.index.get() as usize + name.0.len()
 }
+
+pub fn pair(of: (u8, Key)) -> usize {
+    label().len() + of.0 as usize + of.1.krate as usize
+}

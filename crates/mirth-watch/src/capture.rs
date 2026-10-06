@@ -5,7 +5,7 @@
 //!
 //! - **text and numbers** (`str`, `String`, `Path`, `PathBuf`, `OsStr`,
 //!   `OsString`, integers, `bool`, `char`), through the runtime's `Capture`;
-//! - **plain data**: a struct whose fields are, recursively, numbers
+//! - **plain data**: a struct or tuple whose fields are, recursively, numbers
 //!   (including pattern types over integers, which rustc's index types use),
 //!   such as a `DefId`. Each number is captured and the runtime joins them, as
 //!   `2:15`. Rendering it any other way could run the program's own code;
@@ -84,6 +84,14 @@ fn plain<'tcx>(
         }
         ty::Pat(base, _) if matches!(base.kind(), ty::Int(_) | ty::Uint(_)) => {
             leaves.push((at, *base, ty));
+            Some(())
+        }
+        ty::Tuple(fields) => {
+            for (index, field_ty) in fields.iter().enumerate() {
+                let mut deeper = at.clone();
+                deeper.push(ProjectionElem::Field(index.into(), field_ty));
+                plain(tcx, field_ty, deeper, depth + 1, leaves)?;
+            }
             Some(())
         }
         ty::Ref(_, inner, _) => {

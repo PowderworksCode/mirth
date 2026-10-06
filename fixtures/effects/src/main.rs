@@ -10,8 +10,15 @@ fn main() {
             krate: 3,
             index: store::Index::new(9),
         }, store::Name("n"));
+    let paired = store::pair((
+        1,
+        store::Key {
+            krate: 4,
+            index: store::Index::new(2),
+        },
+    ));
     println!(
-        "{} {} {} {label} {found}",
+        "{} {} {} {label} {found} {paired}",
         store::writes(),
         store::encode(7u32),
         store::encode("x"),

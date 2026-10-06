@@ -8,6 +8,10 @@ match = "store::save"
 match = "store::encode"
 
 [[frame]]
+match = "store::pair"
+capture = [0]
+
+[[frame]]
 match = "store::lookup"
 capture = [0]
 debug = [1]

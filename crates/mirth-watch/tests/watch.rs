@@ -132,7 +132,7 @@ fn records_frames_calls_arguments_and_statics() {
     let built = build("record");
     let (ran, _, log) = built.run("record-run", None);
     assert!(ran.status.success(), "{}", text(&ran.stderr));
-    assert_eq!(text(&ran.stdout).trim(), "3 7 x LL 11");
+    assert_eq!(text(&ran.stdout).trim(), "3 7 x LL 11 6");
 
     let save = built.site("frame", "store::save");
     let write = built.site("call", "std::fs::write");
@@ -227,6 +227,12 @@ fn records_frames_calls_arguments_and_statics() {
         ),
         "1",
         "inside lookup, which is named by its key's numbers and its name's Debug",
+    );
+    let pair = built.site("frame", "store::pair");
+    assert_eq!(
+        count(&var, &format!("{pair} 1:4:2"), "", &["STORE_LABEL"]),
+        "1",
+        "inside pair, named by its tuple's numbers",
     );
     let touches = |frame: &str| -> u64 {
         counted
