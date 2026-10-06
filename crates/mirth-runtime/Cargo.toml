@@ -1,0 +1,10 @@
+# No dependencies: everything this links into has to be able to link it.
+[package]
+name = "mirth-runtime"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "What code instrumented by mirth-watch calls."
+
+[dependencies]

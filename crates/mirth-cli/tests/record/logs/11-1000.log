@@ -1,0 +1,7 @@
+P	11	1000	rustc	--crate-name	dep	--crate-type	lib	--emit=dep-info,metadata,link
+L	1100	1	2	1			/w/target/debug/deps/rmetaAb3XyZ/full.rmeta
+L	1200	1	3	0			/w/target/debug/deps/rmetaAb3XyZ/full.rmeta	/w/target/debug/deps/libdep-0123456789abcdef.rmeta
+C	4	1			3	1
+C	4	1			1	2
+C	9	1			1	X
+X	1300

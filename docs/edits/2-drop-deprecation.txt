@@ -1,0 +1,152 @@
+# 2-drop-deprecation
+
+== clean build
+--- /home/exedev/mirth/tests/rmeta/chain.txt
++++ this build
+@@
+   create         target/debug/build/app/#/out/rustc*      in -
+   remove_dir_all target/debug/build/app/#/out/rustc*      in -
+ read through queries: reads, items, items whose query recorded a dependency on the crate, entries the writer wrote
+-     560    23 items    23 tracked               <sysroot>          adt_def
++     574    23 items    23 tracked               <sysroot>          adt_def
+       11     9 items     9 tracked               <sysroot>          adt_destructor
+      152    76 items    76 tracked               <sysroot>          anon_const_kind
+-    2338   336 items   336 tracked               <sysroot>          associated_item
++    2358   336 items   336 tracked               <sysroot>          associated_item
+      110    55 items    55 tracked               <sysroot>          associated_item_def_ids
+        6     6 items     6 tracked               <sysroot>          asyncness
+-     144    51 items    51 tracked               <sysroot>          attrs_for_def
++     150    51 items    51 tracked               <sysroot>          attrs_for_def
+       19    19 items    19 tracked               <sysroot>          canonical_symbols
+       10     5 items     5 tracked               <sysroot>          closure_saved_names_of_captured_variables
+      388   194 items   194 tracked               <sysroot>          codegen_fn_attrs
+@@
+       19    19 items    19 tracked               <sysroot>          debugger_visualizers
+       10     5 items     5 tracked               <sysroot>          def_ident_span
+      485   485 items   485 tracked               <sysroot>          def_kind
+-     598   283 items   283 tracked               <sysroot>          def_span
++     604   283 items   283 tracked               <sysroot>          def_span
+       79    79 items    79 tracked               <sysroot>          defaultness
+       35    19 items    19 tracked               <sysroot>          defined_lang_items
+        7     7 items     7 tracked               <sysroot>          diagnostic_items
+-     394   180 items   180 tracked               <sysroot>          explicit_clauses_of
+-      58    31 items    31 tracked               <sysroot>          explicit_implied_clauses_of
++     398   180 items   180 tracked               <sysroot>          explicit_clauses_of
++      66    31 items    31 tracked               <sysroot>          explicit_implied_clauses_of
+        3     3 items     3 tracked               <sysroot>          explicit_implied_const_bounds
+        2     1 items     1 tracked               <sysroot>          explicit_item_bounds
+        2     1 items     1 tracked               <sysroot>          explicit_item_self_bounds
+@@
+       19    19 items    19 tracked               <sysroot>          exported_non_generic_symbols
+       19    19 items    19 tracked               <sysroot>          externally_implementable_items
+      358   178 items   178 tracked               <sysroot>          fn_sig
+-     722   360 items   360 tracked               <sysroot>          generics_of
++     724   360 items   360 tracked               <sysroot>          generics_of
+       21    21 items    21 tracked               <sysroot>          impl_parent
+       98    49 items    49 tracked               <sysroot>          impl_trait_header
+       97    97 items    97 tracked               <sysroot>          implementations_of_trait
+      182   180 items   180 tracked               <sysroot>          inferred_outlives_of
+        6     3 items     3 tracked               <sysroot>          inherent_impls
+       86    80 items    80 tracked               <sysroot>          intrinsic_raw
+-    1375  1375 items  1375 tracked               <sysroot>          is_doc_hidden
+       43    43 items    43 tracked               <sysroot>          is_mir_available
+        8     8 items     8 tracked               <sysroot>          lookup_deprecation_entry
+       20    10 items    10 tracked               <sysroot>          lookup_stability
+      198    90 items    90 tracked               <sysroot>          mir_for_ctfe
+       19    19 items    19 tracked               <sysroot>          missing_lang_items
+-   22321   414 items   414 tracked               <sysroot>          module_children
++    2110    38 items    38 tracked               <sysroot>          module_children
+       23    19 items    19 tracked               <sysroot>          native_libraries
+-     342    43 items    43 tracked               <sysroot>          optimized_mir
++     350    43 items    43 tracked               <sysroot>          optimized_mir
+     1468     3 items     3 tracked               <sysroot>          reachable_non_generics
+        3     3 items     3 tracked               <sysroot>          stable_order_of_exportable_impls
+-      66    33 items    33 tracked               <sysroot>          trait_def
++      68    33 items    33 tracked               <sysroot>          trait_def
+       98    87 items    87 tracked               <sysroot>          trivial_const
+      598   299 items   299 tracked               <sysroot>          type_of
+       18     9 items     9 tracked               <sysroot>          variances_of
+@@
+        9     9 items     9 tracked    9 written  base               inferred_outlives_of
+        2     1 items     1 tracked               base               inherent_impls
+        4     4 items     4 tracked               base               intrinsic_raw
+-       2     2 items     2 tracked               base               is_doc_hidden
+        3     3 items     3 tracked               base               is_mir_available
+-       7     6 items     6 tracked    1 written  base               lookup_deprecation_entry
++       6     6 items     6 tracked               base               lookup_deprecation_entry
+        5     5 items     5 tracked               base               lookup_stability
+        1     1 items     1 tracked               base               missing_lang_items
+       76     2 items     2 tracked               base               module_children
+@@
+        4     4 items     4 tracked    4 written  mid                inferred_outlives_of
+        2     1 items     1 tracked               mid                inherent_impls
+        1     1 items     1 tracked               mid                intrinsic_raw
+-       2     2 items     2 tracked               mid                is_doc_hidden
+        1     1 items     1 tracked               mid                is_mir_available
+-       5     5 items     5 tracked none written  mid                lookup_deprecation_entry
++       5     5 items     5 tracked               mid                lookup_deprecation_entry
+        4     4 items     4 tracked               mid                lookup_stability
+        2     1 items     1 tracked    1 written  mid                mir_for_ctfe
+        1     1 items     1 tracked               mid                missing_lang_items
+@@
+       10     5 items     5 tracked    5 written  mid                visibility
+ read outside a query
+       75  CrateMetadata::def_kind                            in -
+-   85880  CrateMetadata::def_path_hash                       in -
++   32811  CrateMetadata::def_path_hash                       in -
+      132  CrateMetadata::get_expn_that_defined               in -
+        4  CrateMetadata::get_item_attrs                      in -
+        6  CrateMetadata::get_macro                           in -
+@@
+       20  MetadataBlob::get_header                           in -
+        4  MetadataBlob::get_root                             in -
+       28  decode_expn_id::{closure#0}                        in -
+-     602  def_key::{closure#0}                               in -
++     706  def_key::{closure#0}                               in -
+       41  get_ambig_module_children::{closure#0}             in -
+       52  imported_source_file::{closure#2}                  in -
+       84  CrateMetadata::new                                 in CStore::register_crate
+@@
+        1     1 items  record_some_lazy!(self.tables.fn_sig[variant.def_id] <- fn_sig)
+       23    23 items  record_some_lazy!(self.tables.generics_of[def_id] <- g)
+        7     7 items  record_some_lazy!(self.tables.impl_trait_header[def_id] <- header)
+-       1     1 items  record_some_lazy!(self.tables.lookup_deprecation_entry[def_id] <- depr)
+        1     1 items  record_some_lazy!(self.tables.mir_const_qualif[def_id.to_def_id()] <- qualifs)
+        1     1 items  record_some_lazy!(self.tables.mir_for_ctfe[def_id.to_def_id()] <- tcx.mir_for_ctfe(def_id))
+        2     2 items  record_some_lazy!(self.tables.object_lifetime_default[def_id] <- default)
+@@
+        7     7 items  record_value!(self.tables.defaultness[def_id] <- tcx.defaultness(def_id))
+        7     7 items  record_value!(self.tables.impl_is_fully_generic_for_reflection[def_id] <- impl_is_fully_generic_for_reflection)
+        1     1 items  record_value!(self.tables.safety[field.did] <- field.safety)
+-     391     0 items  self.set(i, Some(value))
++     390     0 items  self.set(i, Some(value))
+       10    10 items  syntax_contexts.set_some(index, this.lazy(ctxt_data))
+ read through queries: reads, items, items whose query recorded a dependency on the crate, entries the writer wrote
+      467    19 items    19 tracked               <sysroot>          adt_def
+@@
+        4     4 items     4 tracked    4 written  base               inferred_outlives_of
+        2     2 items     2 tracked               base               intrinsic_raw
+        1     1 items     1 tracked               base               is_mir_available
+-       5     5 items     5 tracked    0 written  base               lookup_deprecation_entry
++       5     5 items     5 tracked               base               lookup_deprecation_entry
+        6     6 items     6 tracked               base               lookup_stability
+        1     1 items     1 tracked               base               missing_lang_items
+       76     2 items     2 tracked               base               module_children
+mirth: the record differs from /home/exedev/mirth/tests/rmeta/chain.txt; rerun with --bless to accept it
+P1 P2 P4 P7 hold
+== P5: a second clean build
+P5 holds: 2 .rmeta files identical
+== P6: an incremental rebuild after an edit
+P6 holds: incremental and clean .rmeta files identical
+check.sh exit 1
+
+
+existing tests (tests/incremental; tests/ui/{deprecation,crate-loading,rmeta,extern,cross-crate}):
+  test result: ok. 180 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+  test result: FAILED. 527 passed; 5 failed; 6 ignored; 0 measured; 21985 filtered out
+  failed:
+    [ui] tests/ui/deprecation/atomic_initializers.rs
+    [ui] tests/ui/deprecation/deprecation-lint-2.rs
+    [ui] tests/ui/deprecation/deprecation-lint-3.rs
+    [ui] tests/ui/deprecation/deprecation-lint.rs
+    [ui] tests/ui/deprecation/issue-84637-deprecated-associated-function.rs

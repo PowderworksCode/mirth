@@ -1,0 +1,17 @@
+diff --git a/compiler/rustc_metadata/src/creader.rs b/compiler/rustc_metadata/src/creader.rs
+index 10693448e..144adce44 100644
+--- a/compiler/rustc_metadata/src/creader.rs
++++ b/compiler/rustc_metadata/src/creader.rs
+@@ -660,6 +660,12 @@ fn register_crate<'tcx>(
+ 
+         self.set_crate_data(cnum, crate_metadata);
+ 
++        // Warm the def_kind table while the file is hot.
++        for index in 0..self.num_def_ids_untracked(cnum) {
++            let index = rustc_span::def_id::DefIndex::from_u32(index as u32);
++            let _ = self.def_kind_untracked(DefId { krate: cnum, index });
++        }
++
+         Ok(cnum)
+     }
+ 

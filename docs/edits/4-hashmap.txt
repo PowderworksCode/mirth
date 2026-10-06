@@ -1,0 +1,46 @@
+# 4-hashmap
+
+== clean build
+--- /home/exedev/mirth/tests/rmeta/chain.txt
++++ this build
+@@
+       43  new::{closure#1}                                   in CStore::register_crate
+      810  CrateMetadata::def_path_hash                       in encoder::encode_metadata
+        4  def_key::{closure#0}                               in encoder::encode_metadata
++state
++       1  std::collections::HashMap::<K, V>::new  by <'a, 'tcx>::encode_impls  in encoder::encode_metadata
+ 
+ == mid (lib) emit dep-info,metadata,link ==
+ files
+@@
+       43  new::{closure#1}                                   in CStore::register_crate
+     1563  CrateMetadata::def_path_hash                       in encoder::encode_metadata
+        6  def_key::{closure#0}                               in encoder::encode_metadata
++state
++       1  std::collections::HashMap::<K, V>::new  by <'a, 'tcx>::encode_impls  in encoder::encode_metadata
+ 
+mirth: the record differs from /home/exedev/mirth/tests/rmeta/chain.txt; rerun with --bless to accept it
+P4  base (lib) emit dep-info,metadata,link   std::collections::HashMap::<K, V>::new read by <'a, 'tcx>::encode_impls while encoding, in encoder::encode_metadata
+P4  mid (lib) emit dep-info,metadata,link    std::collections::HashMap::<K, V>::new read by <'a, 'tcx>::encode_impls while encoding, in encoder::encode_metadata
+== P5: a second clean build
+P5 broken: .rmeta files differ between two clean builds
+1,2c1,2
+< b60b671ef77645eb345f9a7210c12a6facfbc786d72816471149fc789e9038e5  ./debug/build/base/df112b7deaca9a22/out/libbase-df112b7deaca9a22.rmeta
+< ec4d335274ed9d875321fd4b7d0820121c0be0d18663d8702f17cddf5f1f7d44  ./debug/build/mid/b728536ffc6a92a7/out/libmid-b728536ffc6a92a7.rmeta
+---
+> 0631cf45c75822873443f55de15e591d4efca53c6461a518115de77b9003575c  ./debug/build/base/df112b7deaca9a22/out/libbase-df112b7deaca9a22.rmeta
+> 5f569b39ebc3516698f884a95ebf23b7afaac55e1007e9d3c7a16e868af9677a  ./debug/build/mid/b728536ffc6a92a7/out/libmid-b728536ffc6a92a7.rmeta
+== P6: an incremental rebuild after an edit
+P6 broken: the incremental rebuild's .rmeta files differ from a clean build's
+1,2c1,2
+< f9db13be906f9969c4739c021594f2566417916547328f912fae9eaf9e260bce  ./debug/build/base/df112b7deaca9a22/out/libbase-df112b7deaca9a22.rmeta
+< cd94ab640f471909161fa2c052f1adfdc1c7b0d8930a29a81c19ca887579e244  ./debug/build/mid/b728536ffc6a92a7/out/libmid-b728536ffc6a92a7.rmeta
+---
+> 84a55dc26b0d1996ff8d5918346480d78b433bd4f39ba17d1973ce6c027585ff  ./debug/build/base/df112b7deaca9a22/out/libbase-df112b7deaca9a22.rmeta
+> 476087ffde3243d9b4516fc4dcd1805f91024098b251cc6277d25dbbd1c7f24b  ./debug/build/mid/b728536ffc6a92a7/out/libmid-b728536ffc6a92a7.rmeta
+check.sh exit 1
+
+
+existing tests (tests/incremental; tests/ui/{deprecation,crate-loading,rmeta,extern,cross-crate}):
+  test result: ok. 180 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+  test result: ok. 532 passed; 0 failed; 6 ignored; 0 measured; 21985 filtered out

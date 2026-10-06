@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# The edit P6 rebuilds after: a change to base's interface and a body.
+set -euo pipefail
+sed -i 's/pub const LIMIT: u32 = 100;/pub const LIMIT: u32 = 90;/' base/src/lib.rs
+sed -i 's/self.0 \* self.0/self.0 * self.0 + 0/' base/src/lib.rs

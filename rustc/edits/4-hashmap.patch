@@ -1,0 +1,18 @@
+diff --git a/compiler/rustc_metadata/src/rmeta/encoder.rs b/compiler/rustc_metadata/src/rmeta/encoder.rs
+index 03493d0e1..78deadf2f 100644
+--- a/compiler/rustc_metadata/src/rmeta/encoder.rs
++++ b/compiler/rustc_metadata/src/rmeta/encoder.rs
+@@ -2268,8 +2268,11 @@ fn encode_traits(&mut self) -> LazyArray<DefIndex> {
+     fn encode_impls(&mut self) -> LazyArray<TraitImpls> {
+         empty_proc_macro!(self);
+         let tcx = self.tcx;
+-        let mut trait_impls: FxIndexMap<DefId, Vec<(DefIndex, Option<SimplifiedType>)>> =
+-            FxIndexMap::default();
++        // A plain HashMap: the grouping is all that matters here.
++        let mut trait_impls: std::collections::HashMap<
++            DefId,
++            Vec<(DefIndex, Option<SimplifiedType>)>,
++        > = std::collections::HashMap::new();
+ 
+         for id in tcx.hir_free_items() {
+             let DefKind::Impl { of_trait } = tcx.def_kind(id.owner_id) else {

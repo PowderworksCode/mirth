@@ -1,0 +1,39 @@
+[scope]
+crates = ["store", "app"]
+
+[[frame]]
+match = "store::save"
+
+[[frame]]
+match = "store::encode"
+
+[[frame]]
+match = "store::pair"
+capture = [0]
+
+[[frame]]
+match = "store::lookup"
+capture = [0]
+debug = [1]
+
+[[call]]
+match = "std::fs::write"
+mode = "log"
+capture = [0]
+
+[[call]]
+match = "std::fs::rename"
+mode = "log"
+capture = [0, 1]
+point = true
+
+[[call]]
+match = "std::env::var"
+capture = [0]
+
+[[call]]
+match = "std::string::ToString::to_string"
+
+[statics]
+mode = "count"
+ignore = ["store::IGNORED"]

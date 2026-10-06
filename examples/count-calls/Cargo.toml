@@ -1,0 +1,17 @@
+[package]
+name = "count-calls"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "The smallest mirth plugin: count the calls in each function."
+
+[dependencies]
+mirth = { path = "../../crates/mirth" }
+
+[build-dependencies]
+mirth-build = { path = "../../crates/mirth-build" }
+
+# Lets rust-analyzer find the compiler crates; see HACKING.md.
+[package.metadata.rust-analyzer]
+rustc_private = true

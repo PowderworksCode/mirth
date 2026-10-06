@@ -1,0 +1,7 @@
+P	12	2000	rustc	--crate-name	app	--crate-type	bin	--emit=dep-info,link
+L	2100	1	10	0			/w/target/debug/deps/libdep-0123456789abcdef.rmeta
+C	8	7		"dep"	1	1
+C	6	5		1:1	2
+C	6	5		5:1	1
+C	11	5		1:1	1
+X	2300

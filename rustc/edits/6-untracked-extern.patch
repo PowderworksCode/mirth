@@ -1,0 +1,16 @@
+diff --git a/compiler/rustc_metadata/src/rmeta/decoder/cstore_impl.rs b/compiler/rustc_metadata/src/rmeta/decoder/cstore_impl.rs
+index 154cf4f06..eb9e398b6 100644
+--- a/compiler/rustc_metadata/src/rmeta/decoder/cstore_impl.rs
++++ b/compiler/rustc_metadata/src/rmeta/decoder/cstore_impl.rs
+@@ -149,10 +149,7 @@ fn $name<'tcx>(
+             // External query providers call `crate_hash` in order to register a dependency
+             // on the crate metadata. The exception is `crate_hash` itself, which obviously
+             // doesn't need to do this (and can't, as it would cause a query cycle).
+-            use rustc_middle::dep_graph::DepKind;
+-            if DepKind::$name != DepKind::crate_hash && $tcx.dep_graph.is_fully_enabled() {
+-                $tcx.ensure_ok().crate_hash($def_id.krate);
+-            }
++            // The crate is already tracked from the moment it is loaded.
+ 
+             let cstore = CStore::from_tcx($tcx);
+             let $cdata = cstore.get_crate_data($def_id.krate);

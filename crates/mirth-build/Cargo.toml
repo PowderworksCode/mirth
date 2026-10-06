@@ -1,0 +1,11 @@
+# No dependencies: a build script cannot link rustc_private, and this is all
+# a plugin's build script needs.
+[package]
+name = "mirth-build"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "What a mirth plugin's build script has to do."
+
+[dependencies]

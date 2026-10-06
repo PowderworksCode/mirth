@@ -1,0 +1,36 @@
+diff --git a/compiler/rustc_metadata/src/fs.rs b/compiler/rustc_metadata/src/fs.rs
+index ed177708f..96edf3fe3 100644
+--- a/compiler/rustc_metadata/src/fs.rs
++++ b/compiler/rustc_metadata/src/fs.rs
+@@ -47,7 +47,13 @@ pub fn encode_and_write_metadata(tcx: TyCtxt<'_>) -> Result<EncodedMetadata, Err
+         .tempdir_in(out_filename.parent().unwrap_or_else(|| Path::new("")))
+         .unwrap_or_else(|err| tcx.dcx().emit_fatal(FailedCreateTempdir { err }));
+     let metadata_tmpdir = MaybeTempDir::new(metadata_tmpdir, tcx.sess.opts.cg.save_temps);
+-    let metadata_filename = metadata_tmpdir.as_ref().join("full.rmeta");
++    // When the metadata file is wanted, encode straight into it and skip the
++    // rename at the end.
++    let need_metadata_file = tcx.sess.opts.output_types.contains_key(&OutputType::Metadata);
++    let metadata_filename = match &out_filename {
++        OutFileName::Real(path) if need_metadata_file => path.clone(),
++        _ => metadata_tmpdir.as_ref().join("full.rmeta"),
++    };
+     let metadata_stub_filename = if !tcx.sess.opts.unstable_opts.embed_metadata
+         && !tcx.crate_types().contains(&CrateType::ProcMacro)
+     {
+@@ -80,15 +86,9 @@ pub fn encode_and_write_metadata(tcx: TyCtxt<'_>) -> Result<EncodedMetadata, Err
+     // If the user requests metadata as output, rename `metadata_filename`
+     // to the expected output `out_filename`. The match above should ensure
+     // this file always exists.
+-    let need_metadata_file = tcx.sess.opts.output_types.contains_key(&OutputType::Metadata);
+     let (metadata_filename, metadata_tmpdir) = if need_metadata_file {
+         let filename = match out_filename {
+-            OutFileName::Real(ref path) => {
+-                if let Err(err) = non_durable_rename(&metadata_filename, path) {
+-                    tcx.dcx().emit_fatal(FailedWriteError { filename: path.to_path_buf(), err });
+-                }
+-                path.clone()
+-            }
++            OutFileName::Real(ref path) => path.clone(),
+             OutFileName::Stdout => {
+                 if out_filename.is_tty() {
+                     tcx.dcx().emit_err(BinaryOutputToTty);
