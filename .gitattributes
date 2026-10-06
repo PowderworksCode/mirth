@@ -1,0 +1,6 @@
+# Blessed lists, records and fixture data are compared as text written on
+# any platform; keep them with LF endings everywhere.
+tests/** text eol=lf
+crates/mirth-cli/tests/** text eol=lf
+fixtures/** text eol=lf
+rustc/** text eol=lf

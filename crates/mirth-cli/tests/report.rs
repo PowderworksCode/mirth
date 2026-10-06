@@ -30,7 +30,8 @@ fn lists_each_process() {
     let expected = std::fs::read_to_string(
         Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/record/expected.txt"),
     )
-    .expect("the expected report");
+    .expect("the expected report")
+    .replace("\r\n", "\n");
     assert_eq!(text, expected);
 }
 

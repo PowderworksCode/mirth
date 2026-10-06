@@ -137,7 +137,10 @@ fn report(arguments: &Arguments) -> Result<ExitCode, String> {
         eprintln!("mirth: blessed {expected}");
         return Ok(ExitCode::SUCCESS);
     }
-    let blessed = std::fs::read_to_string(expected).unwrap_or_default();
+    // A blessed file may have been checked out with CRLF line endings.
+    let blessed = std::fs::read_to_string(expected)
+        .unwrap_or_default()
+        .replace("\r\n", "\n");
     if blessed == text {
         return Ok(ExitCode::SUCCESS);
     }
