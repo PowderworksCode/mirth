@@ -68,3 +68,9 @@ pub fn lookup(key: Key, name: Name) -> usize {
 pub fn pair(of: (u8, Key)) -> usize {
     label().len() + of.0 as usize + of.1.krate as usize
 }
+
+/// A call inside a closure, whose body is compiled separately.
+pub fn in_closure() -> usize {
+    let read = || std::env::var("CLOSURE_VAR").unwrap_or_default().len();
+    read()
+}

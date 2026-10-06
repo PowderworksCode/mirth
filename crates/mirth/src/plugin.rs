@@ -74,15 +74,15 @@ impl rustc_driver::Callbacks for Callbacks {
     }
 
     /// Analysis finishes before code generation asks for most bodies, so
-    /// every function's MIR is requested here first. Otherwise `finished`
-    /// would run before the plugin had seen them.
+    /// the MIR of every function and closure is requested here first.
+    /// Otherwise `finished` would run before the plugin had seen them.
     fn after_analysis(
         &mut self,
         _compiler: &rustc_interface::interface::Compiler,
         tcx: TyCtxt<'_>,
     ) -> rustc_driver::Compilation {
         for def_id in tcx.mir_keys(()) {
-            if is_a_function(tcx, *def_id) {
+            if has_optimized_mir(tcx, *def_id) {
                 tcx.ensure_ok().optimized_mir(def_id.to_def_id());
             }
         }
@@ -91,12 +91,14 @@ impl rustc_driver::Callbacks for Callbacks {
     }
 }
 
-/// Whether `optimized_mir` may be requested for a definition: a function
-/// that is not evaluated at compile time. rustc asserts the second part.
-pub fn is_a_function(tcx: TyCtxt<'_>, def_id: LocalDefId) -> bool {
+/// Whether `optimized_mir` may be requested for a definition: a function or
+/// closure that is not evaluated at compile time. rustc asserts the second
+/// part.
+pub fn has_optimized_mir(tcx: TyCtxt<'_>, def_id: LocalDefId) -> bool {
+    use rustc_hir::def::DefKind;
     matches!(
         tcx.def_kind(def_id),
-        rustc_hir::def::DefKind::Fn | rustc_hir::def::DefKind::AssocFn
+        DefKind::Fn | DefKind::AssocFn | DefKind::Closure | DefKind::SyntheticCoroutineBody
     ) && tcx.hir_body_const_context(def_id).is_none()
 }
 

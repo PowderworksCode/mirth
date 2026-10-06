@@ -217,6 +217,13 @@ fn records_frames_calls_arguments_and_statics() {
             .clone()
     };
     assert_eq!(count(&var, "0", "", &["STORE_LABEL"]), "2");
+    let in_closure = built
+        .sites
+        .iter()
+        .find(|row| row[1] == "call" && row[5] == "std::env::var" && row[4].contains("closure"))
+        .expect("the call inside a closure has a site")[0]
+        .clone();
+    assert_eq!(count(&in_closure, "0", "", &["CLOSURE_VAR"]), "1");
     let lookup = built.site("frame", "store::lookup");
     assert_eq!(
         count(

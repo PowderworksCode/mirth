@@ -6,6 +6,7 @@ fn main() {
         store::save(&directory, name, name).expect("saving");
     }
     let label = format!("{}{}", store::label(), store::label());
+    let _ = store::in_closure();
     let found = store::lookup(store::Key {
             krate: 3,
             index: store::Index::new(9),
