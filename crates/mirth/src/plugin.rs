@@ -120,8 +120,9 @@ fn optimized_mir<'tcx>(tcx: TyCtxt<'tcx>, def_id: LocalDefId) -> &'tcx Body<'tcx
 ///   that names `rustc` is dropped, so the same binary works as a wrapper and
 ///   as `RUSTC=`.
 /// - An `.rlib` from [`Plugin::injects`] is added with `--extern force:`,
-///   which loads a crate the source never names, and with its `deps`
-///   directory on the search path for its own dependencies.
+///   which loads a crate the source never names. Its directory and its
+///   `deps` directory go on the search path: rustc finds a dependency of a
+///   dependency by searching, not through `--extern`.
 pub fn run(sysroot: &str, plugin: impl Plugin + 'static) -> ! {
     let mut args: Vec<String> = std::env::args().collect();
 
@@ -162,8 +163,10 @@ fn inject(args: &mut Vec<String>, rlib: &Path) {
     args.push("--extern".to_owned());
     args.push(format!("force:{name}={}", rlib.display()));
     if let Some(beside) = rlib.parent() {
-        args.push("-L".to_owned());
-        args.push(format!("dependency={}", beside.join("deps").display()));
+        for directory in [beside.to_path_buf(), beside.join("deps")] {
+            args.push("-L".to_owned());
+            args.push(format!("dependency={}", directory.display()));
+        }
     }
 }
 

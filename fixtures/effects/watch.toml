@@ -1,5 +1,5 @@
 [scope]
-crates = ["store"]
+crates = ["store", "app"]
 
 [[frame]]
 match = "store::save"
