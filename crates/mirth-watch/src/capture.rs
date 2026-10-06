@@ -4,7 +4,8 @@
 //! hook is only ever called with a type it is known to accept:
 //!
 //! - **text and numbers** (`str`, `String`, `Path`, `PathBuf`, `OsStr`,
-//!   `OsString`, integers, `bool`, `char`), through the runtime's `Capture`;
+//!   `OsString`, integers, `bool`, `char`), behind references and boxes,
+//!   through the runtime's `Capture`;
 //! - **plain data**: a struct or tuple whose fields are, recursively, numbers
 //!   (including pattern types over integers, which rustc's index types use),
 //!   such as a `DefId`. Each number is captured and the runtime joins them, as
@@ -46,9 +47,16 @@ pub fn how<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>, debug: bool) -> Option<How<'tc
     (!leaves.is_empty()).then_some(How::Plain(leaves))
 }
 
+/// Whether a type is text or a number, behind any references and boxes.
 fn text<'tcx>(tcx: TyCtxt<'tcx>, mut ty: Ty<'tcx>) -> bool {
-    while let ty::Ref(_, inner, _) = ty.kind() {
-        ty = *inner;
+    loop {
+        if let ty::Ref(_, inner, _) = ty.kind() {
+            ty = *inner;
+        } else if let Some(inner) = ty.boxed_ty() {
+            ty = inner;
+        } else {
+            break;
+        }
     }
     match ty.kind() {
         ty::Str | ty::Bool | ty::Char | ty::Int(_) | ty::Uint(_) => true,

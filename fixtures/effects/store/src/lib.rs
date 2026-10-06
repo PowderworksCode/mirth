@@ -74,3 +74,9 @@ pub fn in_closure() -> usize {
     let read = || std::env::var("CLOSURE_VAR").unwrap_or_default().len();
     read()
 }
+
+/// Removes a file named by a `Box<Path>`, as rustc_metadata does.
+pub fn tidy(directory: &Path) {
+    let gone: Box<Path> = directory.join("gone.tmp").into_boxed_path();
+    let _ = std::fs::remove_file(&gone);
+}

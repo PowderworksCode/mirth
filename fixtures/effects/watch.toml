@@ -28,6 +28,11 @@ capture = [0, 1]
 point = true
 
 [[call]]
+match = "std::fs::remove_file"
+mode = "log"
+capture = [0]   # a `&Box<Path>`
+
+[[call]]
 match = "std::env::var"
 capture = [0]
 
