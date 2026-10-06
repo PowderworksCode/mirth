@@ -15,6 +15,10 @@
 //! `report` turns the logs into one list per process. With `--expect`, it
 //! compares them to a blessed file and fails on any difference; `--bless`
 //! writes the file instead.
+//!
+//! `check` checks the properties in `check.rs` across every process in the
+//! record, and the target directory for leftovers, and fails if any is
+//! broken.
 
 mod check;
 mod diff;

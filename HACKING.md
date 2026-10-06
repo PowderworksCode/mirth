@@ -30,7 +30,7 @@ in the editor's settings.
   source file. `mirth::run` drops argument 1 when its file stem is `rustc`.
   By shape, not position, so the same binary also works as `RUSTC=`.
 - **Cargo probes the compiler first.** `rustc -vV` and `rustc --print …`
-  compile nothing; `rustc_driver::run_compiler` answers them correctly.
+  compile nothing; `rustc_driver::compiler_entrypoint` answers them correctly.
   `examples/count-calls/tests/cargo.rs` compares the answer with the real
   compiler's.
 - **What Cargo tells a wrapper.** `CARGO_PRIMARY_PACKAGE` marks the packages
@@ -66,8 +66,18 @@ path baked in at build time.
   `Mutex` (not a thread-local: the query is asked from any thread).
 - **Not for const bodies.** rustc asserts that `optimized_mir` is not asked
   for a body evaluated at compile time, and `DefKind::Fn` is not enough to
-  rule that out. `mirth::plugin::is_a_function` also checks
+  rule that out. `mirth::plugin::has_optimized_mir` also checks
   `hir_body_const_context`. Found compiling `core` with `-Zbuild-std`.
+- **Closures too.** After analysis, mirth asks for the optimized MIR of every
+  function *and closure* before calling the plugin's `finished`. Code
+  generation asks for most bodies only later, so a closure left out is
+  rewritten after the plugin has reported, and anything it recorded about
+  that body is lost.
+- **The MIR inliner runs first.** `optimized_mir` hands over a body the
+  inliner has already worked on, so a call to a small function such as
+  `std::fs::rename` may be gone, replaced by that function's own calls.
+  `mirth-watch` passes `-Zinline-mir=no` to the crates it instruments; code
+  generation still inlines afterwards.
 - **Nothing checks what is put in.** `optimized_mir` runs after borrow
   checking and unsafety checking, so MIR emitted there is never verified. A
   wrong type surfaces as an ICE in codegen, or not at all.
@@ -89,6 +99,23 @@ path baked in at build time.
 - Cargo runs `rustdoc` directly, not through the wrapper, so doctests of an
   instrumented crate need the same `--extern force:` and `-L` in
   `RUSTDOCFLAGS`.
+
+## Capturing values
+
+`mirth-watch` writes down arguments by passing a reference to a generic hook,
+`argument::<T>(&T)`, with `T: Capture`. MIR built in `optimized_mir` is not
+type-checked, so the plugin checks `T` itself and only calls the hook for a
+type the runtime accepts.
+
+- **Plain data** (structs and tuples of numbers, such as `DefId`) is captured
+  number by number, with field projections; nothing of the program's own
+  code runs.
+- **Pattern types.** rustc's `newtype_index` types store their value as
+  `pattern_type!(u32 is 0..=MAX)`. Such a field is transmuted to its base
+  integer (same layout) before it is captured.
+- **`Debug`** runs the program's code, so it is used only where the
+  configuration asks, and only for a type that implements it, checked with
+  `type_implements_trait`.
 
 ## API changes between nightlies
 
@@ -112,7 +139,7 @@ Moving the pin breaks things in `rustc_private`. What has changed so far:
 ## Building rustc through a plugin
 
 Bootstrap's rustc shim runs `RUSTC_WRAPPER_REAL` as `<wrapper> <rustc>
-<args…>`. Two things need care:
+<args…>`, so a plugin can build rustc itself. Four things need care:
 
 - **Stage 0 must not have `rustc-dev`.** Bootstrap copies stage 0's
   libraries into the sysroot it compiles the compiler against. Prebuilt
@@ -136,9 +163,10 @@ Bootstrap's rustc shim runs `RUSTC_WRAPPER_REAL` as `<wrapper> <rustc>
 
 ## The allocator
 
-`rustc` uses jemalloc; a plugin binary uses the system allocator unless it
-does the same, which cost about 16% on a large build. `#[global_allocator]`
-aborts, because `librustc_driver` already has an allocator compiled in. What
-works is rustc's own trick: link `tikv-jemalloc-sys` with
-`unprefixed_malloc_on_supported_platforms`, and keep its C symbols with
-`#[used]` statics so they interpose `malloc` for the whole process.
+`rustc` uses jemalloc. A plugin binary uses the system allocator unless it
+does the same, which measured about 16% slower on a large build. mirth does
+not do this yet. `#[global_allocator]` aborts, because `librustc_driver`
+already has an allocator compiled in. What works is rustc's own trick: link
+`tikv-jemalloc-sys` with `unprefixed_malloc_on_supported_platforms`, and
+keep its C symbols with `#[used]` statics so they interpose `malloc` for the
+whole process.

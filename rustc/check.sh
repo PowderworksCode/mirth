@@ -2,7 +2,8 @@
 # Check a fixture with the instrumented compiler:
 #
 #   P1 P2 P4 P7  `mirth check` on a recorded clean build
-#   P3 and more  the record's lists against tests/rmeta/<fixture>.txt
+#   the list     everything each process did with metadata, P3 among it,
+#                against tests/rmeta/<fixture>.txt
 #   P5           a second clean build gives the same .rmeta bytes
 #   P6           an incremental rebuild after fixtures/<fixture>/edit gives the
 #                same .rmeta bytes as a clean build of the edited source

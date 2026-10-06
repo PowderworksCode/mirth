@@ -46,6 +46,7 @@ fn runtime() -> &'static Path {
 struct Built {
     program: PathBuf,
     sites: Vec<Vec<String>>,
+    stderr: String,
 }
 
 /// `fixtures/effects`, built through mirth-watch with its `watch.toml`.
@@ -88,6 +89,7 @@ fn build_with(name: &str, profile: &str, environment: &[(&str, &str)]) -> Built 
         );
     }
     Built {
+        stderr: text(&built.stderr),
         program: target
             .join(profile)
             .join(format!("app{}", std::env::consts::EXE_SUFFIX)),
@@ -162,6 +164,13 @@ fn records_frames_calls_arguments_and_statics() {
         "an ignored static is not watched"
     );
 
+    assert!(
+        built.stderr.contains(
+            "a call to std::string::ToString::to_string: argument 0 is a `&T`, not captured"
+        ),
+        "an argument that cannot be captured is reported: {}",
+        built.stderr
+    );
     assert_eq!(log[0][0], "P", "the process comes first");
     assert_eq!(log[log.len() - 1][0], "X", "and its exit last");
 

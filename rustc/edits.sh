@@ -34,7 +34,7 @@ for edit in "${edits[@]}"; do
     echo "# $edit"
     echo
     if ! "$here/build.sh" > "$MIRTH_RUST/build/edit-$edit.log" 2>&1; then
-      echo "the compiler did not build; see build/edit-$edit.log"
+      echo "the compiler did not build; see $MIRTH_RUST/build/edit-$edit.log"
       continue
     fi
     "$here/check.sh" "$fixture"

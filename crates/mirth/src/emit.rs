@@ -13,7 +13,7 @@ use rustc_middle::ty::{Ty, TyCtxt};
 use rustc_span::def_id::DefId;
 use rustc_span::{Span, Spanned};
 
-/// Builds MIR that all carries one span.
+/// Builds statements and terminators that all carry one span.
 pub struct Build<'tcx> {
     tcx: TyCtxt<'tcx>,
     pub span: Span,
@@ -85,7 +85,8 @@ impl<'tcx> Build<'tcx> {
     }
 
     /// A call to `callee` with `over` as its generic arguments, continuing at
-    /// `target`. A panic in the callee unwinds to this function's caller.
+    /// `target`. A panic in the callee unwinds straight out of this
+    /// function, without running its cleanup blocks.
     pub fn call_over(
         &self,
         callee: DefId,

@@ -234,9 +234,9 @@ files
   open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libpanic_unwind-#.rmeta in CStore::register_crate
   create         target/debug/build/base/#/out/rmeta*     in fs::encode_and_write_metadata
   encode-to      target/debug/build/base/#/out/rmeta*/full.rmeta in encoder::encode_metadata
-  encoded                                                 in encoder::encode_metadata
+  finished                                                in encoder::encode_metadata
   encode-to      target/debug/build/base/#/out/rmeta*/stub.rmeta in encoder::encode_metadata
-  encoded                                                 in encoder::encode_metadata
+  finished                                                in encoder::encode_metadata
   remove_file    target/debug/build/base/#/out/libbase-#.rmeta in fs::encode_and_write_metadata
   rename         target/debug/build/base/#/out/rmeta*/full.rmeta -> target/debug/build/base/#/out/libbase-#.rmeta in fs::encode_and_write_metadata
   open           target/debug/build/base/#/out/libbase-#.rmeta in fs::encode_and_write_metadata
@@ -414,9 +414,9 @@ files
   open           target/debug/build/base/#/out/libbase-#.rmeta in -
   create         target/debug/build/mid/#/out/rmeta*      in fs::encode_and_write_metadata
   encode-to      target/debug/build/mid/#/out/rmeta*/full.rmeta in encoder::encode_metadata
-  encoded                                                 in encoder::encode_metadata
+  finished                                                in encoder::encode_metadata
   encode-to      target/debug/build/mid/#/out/rmeta*/stub.rmeta in encoder::encode_metadata
-  encoded                                                 in encoder::encode_metadata
+  finished                                                in encoder::encode_metadata
   remove_file    target/debug/build/mid/#/out/libmid-#.rmeta in fs::encode_and_write_metadata
   rename         target/debug/build/mid/#/out/rmeta*/full.rmeta -> target/debug/build/mid/#/out/libmid-#.rmeta in fs::encode_and_write_metadata
   open           target/debug/build/mid/#/out/libmid-#.rmeta in fs::encode_and_write_metadata

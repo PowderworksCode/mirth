@@ -16,10 +16,10 @@
 //! ```
 //!
 //! Fields are separated by tabs; a tab, newline or backslash inside one is
-//! escaped. A frame's arguments share one field, separated by `\x1f`.
-//! Times are nanoseconds since the Unix epoch, measured as the
-//! process's start time plus a monotonic offset, so they are comparable
-//! across processes on one machine and never go backwards within one.
+//! escaped. A frame's arguments share one field, separated by `\x1f`. Times
+//! are nanoseconds since the Unix epoch, measured as the process's start time
+//! plus a monotonic offset, so they are comparable across processes on one
+//! machine and never go backwards within one.
 //!
 //! Logged events are written as they happen, so they survive a crash.
 //! Counted events are written at exit, through the C runtime's `atexit`,
@@ -154,8 +154,9 @@ pub fn join(parts: u64) {
     });
 }
 
-/// How an event is recorded.
+/// `mode` for [`event`]: count it; counts are written at exit.
 pub const COUNT: u64 = 0;
+/// `mode` for [`event`]: log it with a timestamp, written at once.
 pub const LOG: u64 = 1;
 
 /// An event at `site`, with the arguments captured since the last one.

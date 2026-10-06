@@ -2,8 +2,8 @@
 //! to build, and changes nothing.
 //!
 //! ```text
-//! $ RUSTC_WRAPPER=count-calls cargo build
-//! count-calls: `app`: 4 calls in 2 functions
+//! $ RUSTC_WRAPPER=count-calls cargo build      # in fixtures/two-crates
+//! count-calls: `app`: 5 calls in 1 function
 //! ```
 
 #![feature(rustc_private)]
@@ -38,11 +38,13 @@ impl mirth::Plugin for CountCalls {
     }
 
     fn finished(&mut self, tcx: TyCtxt<'_>) {
+        let plural =
+            |n: usize, one: &str, many: &str| format!("{n} {}", if n == 1 { one } else { many });
         eprintln!(
-            "count-calls: `{}`: {} calls in {} functions",
+            "count-calls: `{}`: {} in {}",
             tcx.crate_name(LOCAL_CRATE),
-            self.calls,
-            self.functions,
+            plural(self.calls, "call", "calls"),
+            plural(self.functions, "function", "functions"),
         );
     }
 }
