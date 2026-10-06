@@ -23,6 +23,9 @@ cargo +"$TOOLCHAIN" build -q --release --manifest-path "$repo/Cargo.toml" -p mir
 mirth=$repo/target/release/mirth
 failed=0
 
+# Every build is incremental, as Cargo's debug profile is by default: extern
+# queries record their dependencies only when incremental compilation is on.
+#
 # Every build happens in $work/run and is moved aside afterwards: Cargo
 # derives each crate's identity from its path, so builds in two directories
 # would differ for that reason alone.
@@ -34,7 +37,7 @@ fresh() {
 }
 
 build() {
-  CARGO_INCREMENTAL=${INCREMENTAL:-0} "$mirth" record --rustc "$rustc" --out "$work/$1.record" -- \
+  CARGO_INCREMENTAL=1 "$mirth" record --rustc "$rustc" --out "$work/$1.record" -- \
     cargo +"$TOOLCHAIN" build --manifest-path "$work/run/src/Cargo.toml" --target-dir "$work/run/target"
 }
 
@@ -44,8 +47,10 @@ keep() {
 }
 
 rmetas() {
-  (cd "$work/$1/target" && find . -path ./debug/incremental -prune -o -name '*.rmeta' -type f -print |
-    sort | xargs sha256sum)
+  # The published .rmeta files: not the incremental cache's copies, nor any
+  # left in a temporary directory (P7 reports those).
+  (cd "$work/$1/target" && find . -path ./debug/incremental -prune -o -name '*.rmeta' -type f \
+    -not -path '*/rmeta??????/*' -print | sort | xargs sha256sum)
 }
 
 roots=(--root "$work/run/target=target" --root "$work/run/src=."
@@ -78,13 +83,13 @@ fi
 if [ -x "$repo/fixtures/$fixture/edit" ]; then
   echo "== P6: an incremental rebuild after an edit"
   fresh
-  INCREMENTAL=1 build inc-before || exit 1
+  build inc-before || exit 1
   (cd "$work/run/src" && "$repo/fixtures/$fixture/edit")
-  INCREMENTAL=1 build inc || exit 1
+  build inc || exit 1
   keep inc
   fresh
   (cd "$work/run/src" && "$repo/fixtures/$fixture/edit")
-  INCREMENTAL=1 build clean || exit 1
+  build clean || exit 1
   keep clean
   if diff <(rmetas inc) <(rmetas clean) > "$work/p6.diff"; then
     echo "P6 holds: incremental and clean .rmeta files identical"

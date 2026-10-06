@@ -8,11 +8,13 @@ fn main() {
         height: 6,
     };
     let clamped = base::old_clamp(250);
+    let buffer: mid::Buffer = [0; _];
     println!(
-        "{} {} {} {}",
+        "{} {} {} {} {}",
         largest.describe(),
         rectangle.area(),
         mid::total(&squares),
         clamped,
+        buffer.len(),
     );
 }

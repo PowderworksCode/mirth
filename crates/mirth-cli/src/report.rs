@@ -13,6 +13,7 @@ pub enum Role {
     Encode,
     Read,
     Register,
+    Track,
     State,
     Other,
 }
@@ -28,6 +29,8 @@ pub fn role(site: &Site) -> Role {
     if target.starts_with("std::env::")
         || target.starts_with("std::time::")
         || target.contains("RandomState::new")
+        || target.starts_with("std::collections::HashMap::")
+        || target.starts_with("std::collections::HashSet::")
     {
         return Role::State;
     }
@@ -39,6 +42,9 @@ pub fn role(site: &Site) -> Role {
     }
     if target.ends_with("set_crate_data") {
         return Role::Register;
+    }
+    if target.ends_with("TyCtxtEnsureOk<'tcx>>::crate_hash") {
+        return Role::Track;
     }
     Role::Other
 }
@@ -264,6 +270,7 @@ impl Report<'_> {
 
         let mut encodes: BTreeMap<String, (BTreeSet<String>, u64)> = BTreeMap::new();
         let mut reads: BTreeMap<(String, String), (BTreeSet<String>, u64)> = BTreeMap::new();
+        let mut tracked: BTreeMap<(String, String), BTreeSet<String>> = BTreeMap::new();
         let mut untracked: BTreeMap<(String, String), u64> = BTreeMap::new();
         let mut state: BTreeMap<(String, String, String), u64> = BTreeMap::new();
         for counted in &process.counted {
@@ -275,6 +282,18 @@ impl Report<'_> {
                     let entry = encodes.entry(site.snippet.clone()).or_default();
                     entry.0.extend(counted.arguments.first().cloned());
                     entry.1 += counted.count;
+                }
+                Role::Track => {
+                    if let Some(frame) = self.record.site(counted.frame.site)
+                        && frame.caller.contains("provide_extern")
+                        && let Some(key) = counted.frame.arguments.first()
+                    {
+                        let query = frame.caller.rsplit("::").next().unwrap_or("?");
+                        tracked
+                            .entry((crate_of(key), query.to_owned()))
+                            .or_default()
+                            .insert(key.clone());
+                    }
                 }
                 Role::Read => {
                     let frame = self.record.site(counted.frame.site);
@@ -318,7 +337,7 @@ impl Report<'_> {
             let written = self.written();
             let tables: std::collections::HashSet<&str> =
                 written.keys().map(|(_, table)| table.as_str()).collect();
-            text.push_str("read through queries\n");
+            text.push_str("read through queries: reads, items, items whose query recorded a dependency on the crate, entries the writer wrote\n");
             for ((krate, query), (keys, count)) in &reads {
                 let found = match written.get(&(krate.clone(), query.clone())) {
                     Some(entries) => {
@@ -336,9 +355,12 @@ impl Report<'_> {
                     }
                     None => String::new(),
                 };
+                let kept = tracked
+                    .get(&(krate.clone(), query.clone()))
+                    .map_or(0, |it| it.intersection(keys).count());
                 let _ = writeln!(
                     text,
-                    "  {count:>6} {:>5} items {found:>12}  {krate:<18} {query}",
+                    "  {count:>6} {:>5} items {kept:>5} tracked {found:>12}  {krate:<18} {query}",
                     keys.len()
                 );
             }

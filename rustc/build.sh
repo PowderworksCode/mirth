@@ -35,6 +35,13 @@ if [ "${1:-}" = --again ]; then
   done
 fi
 
+# Every crate downstream of an instrumented one needs the runtime, including
+# crates bootstrap compiles without the wrapper, such as rustdoc. They all
+# search the stage 0 sysroot, whose std is the pinned nightly's.
+sysroot_lib=$MIRTH_RUST/build/$host/stage0-sysroot/lib/rustlib/$host/lib
+mkdir -p "$sysroot_lib"
+cp "$out/libmirth_runtime.rlib" "$sysroot_lib/"
+
 cd "$MIRTH_RUST"
 env RUSTC_WRAPPER_REAL="$out/mirth-watch" \
     MIRTH_RUNTIME="$out/libmirth_runtime.rlib" \

@@ -8,3 +8,4 @@
 8	call	count	rustc_metadata	rustc_metadata::creader::CStore::register_crate	rustc_metadata::creader::CStore::set_crate_data	creader.rs:8:1	self.set_crate_data(cnum, data)
 9	call	count	rustc_metadata	rustc_metadata::rmeta::encoder::encode_metadata	std::env::var	encoder.rs:9:1	std::env::var("X")
 10	call	log	rustc_metadata	rustc_metadata::locator::get_rmeta_metadata_section	std::fs::File::open	locator.rs:10:1	std::fs::File::open(filename)
+11	call	count	rustc_metadata	rustc_metadata::rmeta::decoder::cstore_impl::provide_extern::def_kind	rustc_middle::queries::<impl rustc_middle::query::TyCtxtEnsureOk<'tcx>>::crate_hash	cstore_impl.rs:11:1	provide!

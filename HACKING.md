@@ -120,6 +120,16 @@ Bootstrap's rustc shim runs `RUSTC_WRAPPER_REAL` as `<wrapper> <rustc>
   build fails with "found possibly newer version of crate". The plugin
   itself needs `rustc-dev`, so `rustc/setup.sh` gives bootstrap a copy of
   the pinned nightly with that component's files removed.
+- **Crates compiled without the plugin need the runtime too.** Bootstrap
+  compiles some crates without `RUSTC_WRAPPER_REAL`, `rustdoc` among them,
+  and they link compiler crates that were instrumented. `rustc/build.sh`
+  copies the runtime into the stage 0 sysroot, which every compile
+  searches.
+- **`rustdoc` does not build with the pinned nightly's Cargo.** Its
+  per-crate build directories hide the compiler crates `rustdoc` links
+  through `rustc_private`, so `tests/run-make`, which needs `rustdoc`, is
+  not run. Bootstrap normally uses beta Cargo, which lays out builds the
+  old way.
 - **Cargo does not know about the wrapper.** Changing the plugin or its
   configuration does not rebuild anything. `rustc/build.sh --again` deletes
   the fingerprints of the crates in scope.

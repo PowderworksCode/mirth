@@ -14,6 +14,10 @@ impl Shape for Rectangle {
     }
 }
 
+/// A type whose size is computed from `base`'s constant, so it changes when
+/// that constant does.
+pub type Buffer = [u8; base::LIMIT as usize];
+
 pub fn total<T: Shape>(shapes: &[T]) -> u32 {
     shapes.iter().map(Shape::area).sum()
 }

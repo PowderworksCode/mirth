@@ -46,6 +46,11 @@ capture = [1]
 match = "rustc_metadata::creader::CStore::register_crate"
 debug = [6]
 
+# Each extern query records a dependency on the crate it reads, so that
+# incremental compilation sees the crate change.
+[[call]]
+match = "rustc_middle::queries::<impl rustc_middle::query::TyCtxtEnsureOk<'tcx>>::crate_hash"
+
 [[call]]
 match = "rustc_metadata::creader::CStore::set_crate_data"
 capture = [1]
@@ -125,6 +130,9 @@ match = "std::hash::RandomState::new"
 
 [[call]]
 match = "std::collections::hash_map::RandomState::new"
+
+[[call]]
+match = "std::collections::Hash*::new"
 
 [statics]
 mode = "count"
