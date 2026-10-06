@@ -5,8 +5,9 @@
 //!
 //! - **text and numbers** (`str`, `String`, `Path`, `PathBuf`, `OsStr`,
 //!   `OsString`, integers, `bool`, `char`), through the runtime's `Capture`;
-//! - **plain data**: a struct whose fields are, recursively, numbers, such
-//!   as a `DefId`. Each number is captured and the runtime joins them, as
+//! - **plain data**: a struct whose fields are, recursively, numbers
+//!   (including pattern types over integers, which rustc's index types use),
+//!   such as a `DefId`. Each number is captured and the runtime joins them, as
 //!   `2:15`. Rendering it any other way could run the program's own code;
 //! - **`Debug`**, only where the configuration asks for it, and only for a
 //!   type that implements it. That does run the program's code, which may
@@ -20,7 +21,10 @@ use rustc_trait_selection::infer::InferCtxtExt;
 
 pub enum How<'tcx> {
     Text(Ty<'tcx>),
-    Plain(Vec<(Vec<PlaceElem<'tcx>>, Ty<'tcx>)>),
+    /// Each number in the value: where it is, the type to capture it as, and
+    /// its own type, which differs for a pattern type such as
+    /// `u32 is 0..=0xFFFF_FF00` and is then transmuted to the first.
+    Plain(Vec<(Vec<PlaceElem<'tcx>>, Ty<'tcx>, Ty<'tcx>)>),
     Debug(Ty<'tcx>),
 }
 
@@ -68,14 +72,18 @@ fn plain<'tcx>(
     ty: Ty<'tcx>,
     at: Vec<PlaceElem<'tcx>>,
     depth: usize,
-    leaves: &mut Vec<(Vec<PlaceElem<'tcx>>, Ty<'tcx>)>,
+    leaves: &mut Vec<(Vec<PlaceElem<'tcx>>, Ty<'tcx>, Ty<'tcx>)>,
 ) -> Option<()> {
     if depth > DEEPEST || leaves.len() > MOST_FIELDS {
         return None;
     }
     match ty.kind() {
         ty::Bool | ty::Char | ty::Int(_) | ty::Uint(_) => {
-            leaves.push((at, ty));
+            leaves.push((at, ty, ty));
+            Some(())
+        }
+        ty::Pat(base, _) if matches!(base.kind(), ty::Int(_) | ty::Uint(_)) => {
+            leaves.push((at, *base, ty));
             Some(())
         }
         ty::Ref(_, inner, _) => {

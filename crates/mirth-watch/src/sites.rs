@@ -362,29 +362,36 @@ fn argument_hooks<'tcx>(
     for (operand, how) in captured {
         let ty = operand.ty(&body.local_decls, tcx);
         let (place, before) = materialize(build, body, operand, ty);
-        let mut borrow = |of: Place<'tcx>, of_ty: Ty<'tcx>, callee, mut before: Vec<_>| {
-            let reference = new_local(body, Ty::new_imm_ref(tcx, tcx.lifetimes.re_erased, of_ty));
-            before.push(build.reference(reference, of));
-            Hook {
-                callee,
-                over: vec![of_ty],
-                arguments: vec![build.copy(reference)],
-                before,
-            }
-        };
         match how {
-            How::Text(ty) => out.push(borrow(place, ty, hooks.argument, before)),
-            How::Debug(ty) => out.push(borrow(place, ty, hooks.argument_debug, before)),
+            How::Text(ty) => out.push(borrow(tcx, build, body, place, ty, hooks.argument, before)),
+            How::Debug(ty) => out.push(borrow(
+                tcx,
+                build,
+                body,
+                place,
+                ty,
+                hooks.argument_debug,
+                before,
+            )),
             How::Plain(leaves) => {
                 let parts = leaves.len() as u64;
                 let mut before = Some(before);
-                for (projection, leaf) in leaves {
-                    let at = place.project_deeper(&projection, tcx);
+                for (projection, leaf, own) in leaves {
+                    let mut at = place.project_deeper(&projection, tcx);
+                    let mut statements = before.take().unwrap_or_default();
+                    if own != leaf {
+                        let value = new_local(body, leaf);
+                        statements.push(build.transmute(value, Operand::Copy(at), leaf));
+                        at = Place::from(value);
+                    }
                     out.push(borrow(
+                        tcx,
+                        build,
+                        body,
                         at,
                         leaf,
                         hooks.argument,
-                        before.take().unwrap_or_default(),
+                        statements,
                     ));
                 }
                 if parts > 1 {
@@ -399,6 +406,26 @@ fn argument_hooks<'tcx>(
         }
     }
     out
+}
+
+/// A call to `callee::<ty>(&of)`, after `before`.
+fn borrow<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    build: &mirth::emit::Build<'tcx>,
+    body: &mut Body<'tcx>,
+    of: Place<'tcx>,
+    ty: Ty<'tcx>,
+    callee: DefId,
+    mut before: Vec<Statement<'tcx>>,
+) -> Hook<'tcx> {
+    let reference = new_local(body, Ty::new_imm_ref(tcx, tcx.lifetimes.re_erased, ty));
+    before.push(build.reference(reference, of));
+    Hook {
+        callee,
+        over: vec![ty],
+        arguments: vec![build.copy(reference)],
+        before,
+    }
 }
 
 /// The value of an operand in a place that can be borrowed.

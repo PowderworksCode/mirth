@@ -5,9 +5,9 @@
 //! code generation, or not at all.
 
 use rustc_middle::mir::{
-    BasicBlock, BasicBlockData, Body, BorrowKind, CallSource, Const, ConstOperand, ConstValue,
-    Local, Location, Operand, Place, Rvalue, SourceInfo, Statement, StatementKind, Terminator,
-    TerminatorKind, UnwindAction, WithRetag,
+    BasicBlock, BasicBlockData, Body, BorrowKind, CallSource, CastKind, Const, ConstOperand,
+    ConstValue, Local, Location, Operand, Place, Rvalue, SourceInfo, Statement, StatementKind,
+    Terminator, TerminatorKind, UnwindAction, WithRetag,
 };
 use rustc_middle::ty::{Ty, TyCtxt};
 use rustc_span::def_id::DefId;
@@ -57,6 +57,22 @@ impl<'tcx> Build<'tcx> {
             StatementKind::Assign(Box::new((
                 place.into(),
                 Rvalue::Ref(self.tcx.lifetimes.re_erased, BorrowKind::Shared, of),
+            ))),
+        )
+    }
+
+    /// `place = transmute::<_, ty>(from)`.
+    pub fn transmute(
+        &self,
+        place: impl Into<Place<'tcx>>,
+        from: Operand<'tcx>,
+        ty: Ty<'tcx>,
+    ) -> Statement<'tcx> {
+        Statement::new(
+            self.source_info,
+            StatementKind::Assign(Box::new((
+                place.into(),
+                Rvalue::Cast(CastKind::Transmute, from, ty),
             ))),
         )
     }
