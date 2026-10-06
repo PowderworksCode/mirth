@@ -109,6 +109,6 @@ the other two follow once the demo works.
 
 ## Pins
 
-nightly-2026-07-18, and the rustc commit it was built from, `b6839f4d0`. The
+nightly-2026-10-06, and the rustc commit it was built from, `ea137335b`. The
 instrumented compiler is built from that commit with that nightly as stage 0,
 so the injected runtime and the compiler agree about `std`.

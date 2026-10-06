@@ -1,25 +1,15 @@
-//! Change a Rust program's MIR from a rustc driver that Cargo accepts.
-//!
-//! A plugin implements [`Plugin`] and calls [`run`]. Mirth does the rest:
-//! being a `rustc` that Cargo will run as a wrapper, overriding
-//! `optimized_mir` so the plugin sees each body and can hand back another,
-//! injecting a crate the program never named, and writing MIR by hand.
+//! A rustc driver that Cargo accepts as a wrapper, and that hands each
+//! function's MIR to a plugin, which can replace it.
 //!
 //! ```ignore
-//! # struct Counting;
-//! # impl mirth::Plugin for Counting {}
 //! fn main() -> ! {
-//!     mirth::run(env!("MIRTH_SYSROOT"), Counting)
+//!     mirth::run(env!("MIRTH_SYSROOT"), MyPlugin)
 //! }
 //! ```
 //!
-//! with a `build.rs` of one line, [`mirth_build::link_to_the_toolchain`].
-//!
-//! # The compiler this is written against
-//!
-//! `rustc_private` has no stability guarantee: an API that exists on one
-//! nightly can be gone on the next. `rust-toolchain.toml` pins the one this
-//! compiles against, and HACKING.md records every workaround.
+//! with `mirth_build::link_to_the_toolchain()` in the plugin's `build.rs`.
+//! `rustc_private` has no stability guarantee, so this is built against the
+//! nightly in `rust-toolchain.toml`.
 
 #![feature(rustc_private)]
 

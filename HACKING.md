@@ -76,9 +76,11 @@ path baked in at build time.
   instrumented crate need the same `--extern force:` and `-L` in
   `RUSTDOCFLAGS`.
 
-## MIR on this nightly
+## API changes between nightlies
 
-| expected from older sources | on nightly-2026-07-18 |
+Moving the pin breaks things in `rustc_private`. What has changed so far:
+
+| older | now |
 |---|---|
 | `Rvalue::Use(Operand)` | `Rvalue::Use(Operand, WithRetag)` |
 | `Rvalue::Len`, `NullaryOp`, `ShallowInitBox` | gone; a slice's length is `UnOp::PtrMetadata` |
@@ -87,15 +89,16 @@ path baked in at build time.
 | `Rvalue::CheckedBinaryOp` | `BinOp::AddWithOverflow` and friends |
 | `providers.optimized_mir` | `providers.queries.optimized_mir` |
 | struct literals for `Statement`, `BasicBlockData` | `Statement::new`, `BasicBlockData::new_stmts` |
-| `Terminator { source_info, kind }` | plus `attributes` |
+| `Terminator { source_info, kind }` | plus `attributes` (2026-07-18), renamed `loop_hint_attrs` (2026-10-06) |
+| `rustc_driver::run_compiler` | `rustc_driver::compiler_entrypoint` (2026-10-06) |
+| `type_of(..).instantiate_identity()` returns `Ty` | returns `Unnormalized<Ty>`; call `skip_normalization()` |
 
 `Ty::new_fn_def` takes a `ty::Binder` around the generic arguments.
 
 ## The allocator
 
-`rustc` replaces the system allocator with jemalloc before handing over to
-`rustc_driver`; a plugin binary does not, and pays for it: about 16% on a
-large build, against about 2% for a plugin's own analysis. `#[global_allocator]`
+`rustc` uses jemalloc; a plugin binary uses the system allocator unless it
+does the same, which cost about 16% on a large build. `#[global_allocator]`
 aborts, because `librustc_driver` already has an allocator compiled in. What
 works is rustc's own trick: link `tikv-jemalloc-sys` with
 `unprefixed_malloc_on_supported_platforms`, and keep its C symbols with

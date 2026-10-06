@@ -1,7 +1,5 @@
-//! Count the calls in each function of the crates Cargo was asked to build.
-//!
-//! The smallest program that is honestly a mirth plugin: a `rustc` Cargo
-//! accepts, reading MIR, changing nothing.
+//! The smallest mirth plugin: counts the calls in the crates Cargo was asked
+//! to build, and changes nothing.
 //!
 //! ```text
 //! $ RUSTC_WRAPPER=count-calls cargo build
@@ -49,7 +47,7 @@ impl mirth::Plugin for CountCalls {
     }
 }
 
-/// A dependency is compiled as plain rustc would.
+/// For dependencies: compile as plain rustc would.
 struct Untouched;
 impl mirth::Plugin for Untouched {}
 

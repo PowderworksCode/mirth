@@ -1,5 +1,5 @@
 # rustc_private has no stability guarantee, so mirth is built against one
 # nightly. HACKING.md lists what changes when this moves.
 [toolchain]
-channel = "nightly-2026-07-18"
+channel = "nightly-2026-10-06"
 components = ["rustc-dev", "rust-src", "llvm-tools", "rustfmt", "clippy"]

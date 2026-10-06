@@ -1,4 +1,4 @@
-//! The plugin driven by Cargo, the way a user would run it.
+//! count-calls run by Cargo as a wrapper.
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
