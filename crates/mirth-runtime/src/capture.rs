@@ -25,6 +25,12 @@ impl<T: Capture + ?Sized> Capture for &mut T {
     }
 }
 
+impl<T: Capture + ?Sized> Capture for Box<T> {
+    fn capture(&self, into: &mut String) {
+        (**self).capture(into);
+    }
+}
+
 impl Capture for str {
     fn capture(&self, into: &mut String) {
         into.push_str(self);

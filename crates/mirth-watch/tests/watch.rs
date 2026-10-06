@@ -176,7 +176,7 @@ fn records_frames_calls_arguments_and_statics() {
 
     let logged: Vec<(String, String, Vec<String>)> = log
         .iter()
-        .filter(|row| row[0] == "L")
+        .filter(|row| row[0] == "L" && (row[3] == write || row[3] == rename))
         .map(|row| (row[3].clone(), row[4].clone(), row[7..].to_vec()))
         .collect();
     let named: Vec<(&str, Vec<&str>)> = logged
@@ -199,6 +199,14 @@ fn records_frames_calls_arguments_and_statics() {
             ("rename", vec!["c.txt.tmp", "c.txt"]),
         ]
     );
+    let remove = built.site("call", "std::fs::remove_file");
+    let removed: Vec<&str> = log
+        .iter()
+        .filter(|row| row[0] == "L" && row[3] == remove)
+        .map(|row| file_name(&row[7]))
+        .collect();
+    assert_eq!(removed, ["gone.tmp"], "a path behind a Box is captured");
+
     let times: Vec<u128> = log
         .iter()
         .filter(|row| row[0] == "L")
@@ -398,8 +406,8 @@ fn cargo_mirth_runs_a_project() {
             .lines()
             .filter(|line| line.starts_with("L\t"))
             .count(),
-        6,
-        "three writes and three renames"
+        7,
+        "three writes, three renames and a removal"
     );
 }
 

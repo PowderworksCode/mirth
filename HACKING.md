@@ -116,6 +116,12 @@ type the runtime accepts.
 - **`Debug`** runs the program's code, so it is used only where the
   configuration asks, and only for a type that implements it, checked with
   `type_implements_trait`.
+- **What cannot be captured** is reported while compiling, naming the site,
+  the argument and its type. Two kinds remain in `rustc/rmeta.toml`: a
+  generic parameter (`TableBuilder::set` called inside generic code, where
+  the index type is still `Ie`), because capture is decided before
+  monomorphization; and an enum (the `(CrateNum, SimplifiedType)` key of
+  `crate_incoherent_impls`), because plain data is structs and tuples only.
 
 ## API changes between nightlies
 

@@ -7,6 +7,7 @@ fn main() {
     }
     let label = format!("{}{}", store::label(), store::label());
     let _ = store::in_closure();
+    store::tidy(&directory);
     let found = store::lookup(store::Key {
             krate: 3,
             index: store::Index::new(9),
