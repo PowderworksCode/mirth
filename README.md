@@ -22,6 +22,19 @@ Windows. The instrumented compiler is next.
 ## Watching a program
 
 ```sh
+cargo install --path crates/mirth-watch    # installs cargo-mirth and mirth-watch
+cargo mirth run -- program-arguments       # in a project with a mirth.toml
+```
+
+`cargo mirth` takes any Cargo command. It reads `mirth.toml` (the format is
+documented in `crates/mirth-watch/src/config.rs`; `fixtures/effects/watch.toml`
+is an example), compiles the runtime with the plugin's toolchain, and builds
+into `target/mirth/target`, apart from the ordinary build. Site tables go to
+`target/mirth/sites` and the logs of `run` and `test` to `target/mirth/logs`.
+
+### By hand
+
+```sh
 rustc --edition 2024 --crate-type rlib --crate-name mirth_runtime -O \
   crates/mirth-runtime/src/lib.rs --out-dir target/runtime
 cargo build -p mirth-watch
