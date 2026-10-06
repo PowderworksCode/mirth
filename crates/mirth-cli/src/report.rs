@@ -58,7 +58,7 @@ pub fn short(path: &str) -> String {
 /// The short name of a file operation: `rename`, `open`, `create`, ….
 fn operation(target: &str) -> String {
     if target.contains("FileEncoder") && target.ends_with("::finish") {
-        return "encoded".to_owned();
+        return "finished".to_owned();
     }
     if target.contains("FileEncoder") {
         return "encode-to".to_owned();

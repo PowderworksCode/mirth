@@ -6,33 +6,66 @@ function's MIR as the compiler produced it, and the plugin can hand back a
 changed body: one that records what the function did, or that stops at a
 chosen point.
 
-The first use is the Rust compiler itself. A compiler built through mirth
+Its first use is the Rust compiler itself. A compiler built through mirth
 records what each `rustc` process in a `cargo build` does with crate metadata
 (`.rmeta`): what it writes, how it publishes the file, what dependents read,
-and whether anything it reads is invisible to incremental compilation. Those
-records are blessed as plain lists, and properties are checked across every
-process in the build. [docs/plan.md](docs/plan.md) has the plan.
+and whether those reads are tracked for incremental compilation. The
+records are blessed as plain lists, and seven properties are checked across
+every process in the build.
 
-## Status
+## Results
 
-Early. The plugin library, `mirth-watch` and its runtime work on the pinned
-nightly, tested through Cargo on Linux, macOS and Windows. `rustc/` builds a
-compiler instrumented for crate metadata.
+Seven plausible edits to rustc's metadata code were each built into the
+instrumented compiler and checked. mirth catches all seven; rustc's own
+metadata-related tests catch three.
 
-## Watching a program
+- [`docs/report.md`](docs/report.md): the experiment, for readers new to it
+- [`docs/results.md`](docs/results.md): each edit and the output that caught it
+- [`docs/plan.md`](docs/plan.md): the plan the work followed, with the properties
+
+## An instrumented compiler
+
+On Linux, with about 30 GB free:
+
+```sh
+export MIRTH_RUST=$HOME/mirth-rust   # where the rustc checkout goes
+rustc/setup.sh                        # fetch the pinned commit, configure bootstrap
+rustc/build.sh                        # build stage 1 through mirth-watch, then its std
+rustc/check.sh chain                  # check fixtures/chain
+rustc/edits.sh chain                  # apply, check and revert each edit in rustc/edits
+```
+
+The build takes about an hour on 16 cores. `rustc/rmeta.toml` says what is
+recorded: the tables each crate writes, which dependency's metadata each
+extern query reads and whether it tracks that dependency, crate loading,
+every file operation on the way to a published `.rmeta`, and environment,
+clock and randomness reads. After changing the plugin or the configuration,
+`rustc/build.sh --again` recompiles the crates in scope.
+
+`rustc/check.sh` builds a fixture with Cargo and the instrumented compiler,
+then:
+
+- compares what each compiler process did with metadata against the blessed
+  list in `tests/rmeta/<fixture>.txt`; `--bless` accepts a changed list;
+- runs `mirth check` for P1, P2, P4 and P7;
+- builds again and compares every published `.rmeta` byte for byte (P5);
+- applies `fixtures/<fixture>/edit`, rebuilds incrementally, and compares
+  with a clean build of the edited source (P6).
+
+## Watching any program
 
 ```sh
 cargo install --path crates/mirth-watch    # installs cargo-mirth and mirth-watch
 cargo mirth run -- program-arguments       # in a project with a mirth.toml
 ```
 
-`cargo mirth` takes any Cargo command. It reads `mirth.toml` (the format is
-documented in `crates/mirth-watch/src/config.rs`; `fixtures/effects/watch.toml`
-is an example), compiles the runtime with the plugin's toolchain, and builds
-into `target/mirth/target`, apart from the ordinary build. Site tables go to
-`target/mirth/sites` and the logs of `run` and `test` to `target/mirth/logs`.
+`cargo mirth` takes any Cargo command. It reads `mirth.toml` (documented in
+`crates/mirth-watch/src/config.rs`; `fixtures/effects/watch.toml` is an
+example), compiles the runtime with the plugin's toolchain, and builds into
+`target/mirth/target`, apart from the ordinary build. Site tables go to
+`target/mirth/sites`, and the logs of `run` and `test` to `target/mirth/logs`.
 
-### By hand
+The same by hand:
 
 ```sh
 rustc --edition 2024 --crate-type rlib --crate-name mirth_runtime -O \
@@ -43,15 +76,13 @@ MIRTH_SITES=sites RUSTC_WRAPPER=target/debug/mirth-watch cargo build
 MIRTH_OUT=logs ./target/debug/my-program
 ```
 
-The runtime is compiled with `rustc` directly: Cargo would put its metadata
-in a separate `.rmeta`, and the runtime is injected as one file.
-`watch.toml` names what to record (`crates/mirth-watch/src/config.rs`
-documents it; `fixtures/effects/watch.toml` is an example). `sites/` gets a
-table of every instrumented site, written while compiling. `logs/` gets one
-log per process, written while it runs. `MIRTH_CRASH=<site>:<n>` aborts the
-program on the `n`th arrival at a site marked `point = true`.
+The runtime is compiled with `rustc` directly because Cargo would put its
+metadata in a separate `.rmeta`, and it is injected as one file. `sites/`
+gets a table of every instrumented site, written while compiling; `logs/`
+gets one log per process, written while it runs. `MIRTH_CRASH=<site>:<n>`
+aborts the program on the `n`th arrival at a site marked `point = true`.
 
-## Using it
+## Writing a plugin
 
 A plugin is a binary:
 
@@ -61,75 +92,30 @@ fn main() -> ! {
 }
 ```
 
-with a `build.rs` of one line, `mirth_build::link_to_the_toolchain()`. Then:
-
-```sh
-RUSTC_WRAPPER=path/to/my-plugin cargo build
-```
-
-`examples/count-calls` is the smallest complete plugin.
+with a `build.rs` of one line, `mirth_build::link_to_the_toolchain()`, run
+as `RUSTC_WRAPPER=path/to/my-plugin cargo build`. `examples/count-calls` is
+the smallest complete one. `HACKING.md` records every `rustc_private`
+workaround mirth needed.
 
 ## Layout
 
-| path | what |
+| Path | What |
 |---|---|
-| `crates/mirth` | the plugin library: driver, `optimized_mir` override, crate injection, MIR emission |
+| `crates/mirth` | the plugin library: driver, `optimized_mir` override, crate injection, MIR building |
 | `crates/mirth-build` | what a plugin's `build.rs` has to do |
-| `crates/mirth-watch` | a plugin that records the frames, calls, arguments and static touches a configuration names, and can stop a process at a chosen call |
+| `crates/mirth-watch` | the plugin that records frames, calls, arguments and static touches, and `cargo mirth` |
 | `crates/mirth-runtime` | what instrumented code calls: one log per process, with timestamps comparable across processes |
-| `rustc/` | building rustc instrumented for crate metadata, and checking fixtures with it |
 | `crates/mirth-cli` | `mirth record`, `report` and `check` |
+| `rustc/` | building the instrumented compiler, checking fixtures with it, and the edits |
+| `fixtures/` | small Cargo projects the tests and checks build |
 | `tests/rmeta/` | blessed lists, one per fixture |
-| `examples/count-calls` | the smallest plugin, and its tests through Cargo |
-| `fixtures/` | small Cargo projects the tests build |
-| `docs/` | the plan, and later the properties and results |
-
-`HACKING.md` records every `rustc_private` workaround.
-
-## An instrumented compiler
-
-```sh
-export MIRTH_RUST=$HOME/mirth-rust   # where the rustc checkout goes
-rustc/setup.sh                        # fetch the pinned commit, configure bootstrap
-rustc/build.sh                        # build stage 1 with mirth-watch, and its std
-```
-
-`rustc/rmeta.toml` says what is recorded: the tables each crate writes, which
-dependency's metadata each extern query reads, crate loading, every file
-operation on the way to a published `.rmeta`, and environment, clock and
-randomness reads. A full build takes about an hour on 16 cores and needs
-roughly 30 GB. After changing the plugin or the configuration,
-`rustc/build.sh --again` recompiles the crates in scope.
-
-## Checking a fixture
-
-```sh
-rustc/check.sh chain            # P1–P7 on fixtures/chain
-rustc/check.sh chain --bless    # accept a changed list
-```
-
-`check.sh` builds the fixture with Cargo and the instrumented compiler and:
-
-- compares what each compiler process did with metadata against the blessed
-  list in `tests/rmeta/chain.txt` (P3 is a column there: for each table a
-  dependent reads, how many entries the writer wrote);
-- runs `mirth check` for P1, P2, P4 and P7;
-- builds the fixture again and compares every `.rmeta` byte for byte (P5);
-- builds incrementally, applies `fixtures/chain/edit`, rebuilds, and
-  compares with a clean build of the edited source (P6).
-
-`docs/plan.md` describes the properties.
-
-## Results
-
-Seven plausible edits to rustc's metadata code, each rebuilt into the
-instrumented compiler and checked: mirth catches all seven, and rustc's own
-metadata-related tests catch three. `docs/results.md` has each one;
-`rustc/edits.sh` reproduces them.
+| `examples/count-calls` | the smallest plugin, tested through Cargo |
+| `docs/` | the report, the results of each edit, and the plan |
 
 ## Platforms
 
-Linux, macOS and Windows. CI builds and tests all three.
+mirth, its runtime and `cargo mirth` are tested on Linux, macOS and Windows
+in CI. The instrumented compiler has only been built on Linux.
 
 ## License
 

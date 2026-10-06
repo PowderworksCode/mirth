@@ -1,4 +1,6 @@
-//! The bottom of the chain: one of each kind of item a dependent reads.
+//! The bottom of the chain: a constant, a trait with a default method, a
+//! struct and its impl, a generic function, an `#[inline]` function and a
+//! deprecated one, for dependents to read.
 
 pub const LIMIT: u32 = 100;
 

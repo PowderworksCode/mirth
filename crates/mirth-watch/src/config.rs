@@ -4,7 +4,7 @@
 //! [scope]
 //! crates = ["rustc_metadata"]   # crates to instrument; empty: the packages Cargo was asked to build
 //!
-//! [[frame]]                     # functions whose calls attribute what happens inside them
+//! [[frame]]                     # functions that name what happens while they run
 //! match = "rustc_metadata::rmeta::encoder::encode_metadata"
 //! capture = [0]                 # the function's own arguments that name the frame
 //!

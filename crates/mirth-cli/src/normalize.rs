@@ -11,8 +11,9 @@ pub struct Normalize {
 }
 
 impl Normalize {
-    /// `roots` are prefixes to shorten, longest first, with what to show
-    /// instead: the target directory as `target`, the project as `.`.
+    /// `roots` are path prefixes to shorten, each with what to show instead:
+    /// the target directory as `target`, the project as `.`. The longest
+    /// matching prefix wins.
     pub fn new(mut roots: Vec<(String, String)>) -> Normalize {
         roots.retain(|(prefix, _)| !prefix.is_empty());
         roots.sort_by_key(|(prefix, _)| std::cmp::Reverse(prefix.len()));

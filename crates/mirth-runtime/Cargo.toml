@@ -1,4 +1,5 @@
-# No dependencies: everything this links into has to be able to link it.
+# No dependencies: this is linked into every crate mirth-watch instruments,
+# and those crates' dependents must find it on its own.
 [package]
 name = "mirth-runtime"
 version.workspace = true

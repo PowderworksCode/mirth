@@ -84,13 +84,16 @@ pub fn path_of(tcx: TyCtxt<'_>, def_id: DefId) -> String {
 type Captured<'tcx> = Vec<(Operand<'tcx>, How<'tcx>)>;
 
 /// The operands at `capture` and `debug`, each with how it is written down.
-/// One whose type cannot be is left out.
+/// One that cannot be captured, because the position does not exist or its
+/// type is not one the runtime accepts, is left out with a warning naming
+/// `site`, so a configuration never records less than it says in silence.
 fn captured<'tcx>(
     tcx: TyCtxt<'tcx>,
     body: &Body<'tcx>,
     operands: &[Operand<'tcx>],
     capture: &[usize],
     debug: &[usize],
+    site: &str,
 ) -> Captured<'tcx> {
     let mut indices: Vec<(usize, bool)> = capture
         .iter()
@@ -101,9 +104,26 @@ fn captured<'tcx>(
     indices
         .into_iter()
         .filter_map(|(index, debug)| {
-            let operand = operands.get(index)?.clone();
-            let how = capture::how(tcx, operand.ty(body, tcx), debug)?;
-            Some((operand, how))
+            let Some(operand) = operands.get(index) else {
+                eprintln!(
+                    "mirth-watch: {site}: there is no argument {index} (it takes {})",
+                    operands.len()
+                );
+                return None;
+            };
+            let ty = operand.ty(body, tcx);
+            let Some(how) = capture::how(tcx, ty, debug) else {
+                let instead = if debug {
+                    "it does not implement Debug, or is generic here"
+                } else {
+                    "it is not text, a number or plain data; try `debug`"
+                };
+                eprintln!(
+                    "mirth-watch: {site}: argument {index} is a `{ty}`, not captured: {instead}"
+                );
+                return None;
+            };
+            Some((operand.clone(), how))
         })
         .collect()
 }
@@ -205,7 +225,15 @@ impl<'tcx> Visitor<'tcx> for Finder<'_, 'tcx> {
             return;
         };
         let operands: Vec<Operand<'tcx>> = args.iter().map(|it| it.node.clone()).collect();
-        let captured = captured(self.tcx, self.body, &operands, &call.capture, &call.debug);
+        let site = format!("a call to {}", path_of(self.tcx, target));
+        let captured = captured(
+            self.tcx,
+            self.body,
+            &operands,
+            &call.capture,
+            &call.debug,
+            &site,
+        );
         self.found.push(Found {
             at,
             what: What::Call {
@@ -250,7 +278,15 @@ pub fn instrument<'tcx>(
         let parameters: Vec<Operand<'tcx>> = (1..=original.arg_count)
             .map(|index| Operand::Copy(Place::from(Local::from_usize(index))))
             .collect();
-        let captured = captured(tcx, original, &parameters, &frame.capture, &frame.debug);
+        let site = format!("the frame {caller}");
+        let captured = captured(
+            tcx,
+            original,
+            &parameters,
+            &frame.capture,
+            &frame.debug,
+            &site,
+        );
         found.push(Found {
             at: START_BLOCK.start_location(),
             what: What::Enter { captured },

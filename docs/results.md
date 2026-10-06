@@ -16,7 +16,7 @@ run is in `docs/edits/`, and `rustc/edits.sh` reproduces all of it.
 | 2 | stop recording deprecations | **caught**: the list shows the table no longer written | **caught**: 5 UI tests |
 | 3 | let an environment variable override a value encoded in the crate root | **caught**: P4 | pass |
 | 4 | group trait impls in a `std` `HashMap` instead of an `FxIndexMap` | **caught**: P4, P5, P6 | pass |
-| 5 | decode every item's `def_kind` when a crate is loaded | **caught**: the list shows 175,000 more reads per process | **caught**: 10 tests hang |
+| 5 | decode every item's `def_kind` when a crate is loaded | **caught**: the list shows 175,644 more reads per process | **caught**: 10 tests hang |
 | 6 | drop the dependency each extern query records on its crate | **caught**: the list shows no read tracked | **caught**: 9 incremental tests |
 | 7 | keep the metadata's temporary directory | **caught**: P7 | pass |
 
@@ -82,10 +82,9 @@ from every dependency as it loads it:
 
 In this fixture that is only slow. In rustc's tests, ten compiles hang, and
 every one of them loads a proc macro; the one inspected was waiting on a
-futex with no CPU use. The fixture has no
-proc macro, so mirth saw the cost and not the hang. (The hang was not
-reproduced without the instrumentation; the runtime does nothing in those
-runs, since nothing sets `MIRTH_OUT`.)
+futex with no CPU use. The fixture has no proc macro, so mirth saw the cost
+and not the hang. The hang was not reproduced without the instrumentation;
+the runtime does nothing in those runs, since nothing sets `MIRTH_OUT`.
 
 **6. An untracked extern query.** Each extern query calls
 `tcx.ensure_ok().crate_hash(krate)` so that incremental compilation knows the

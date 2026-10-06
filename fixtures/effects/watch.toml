@@ -33,6 +33,7 @@ capture = [0]
 
 [[call]]
 match = "std::string::ToString::to_string"
+capture = [0]   # a generic `&T`: not captured, and the build says so
 
 [statics]
 mode = "count"

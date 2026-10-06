@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Fetch the pinned rustc commit into $MIRTH_RUST and configure bootstrap to
-# build it quickly, with the pinned nightly as stage 0.
+# build it quickly, with the pinned nightly, minus rustc-dev, as stage 0.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 . "$here/pins.env"
