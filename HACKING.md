@@ -11,6 +11,18 @@ component (not `rustlib/src/rust`, which is `rust-src`, the standard library
 only). `rustc_middle/src/mir/syntax.rs` defines every MIR enum. Documentation
 and blog posts describe some other nightly.
 
+## Editing with rust-analyzer
+
+The crates that use `rustc_private` say so in
+`[package.metadata.rust-analyzer]`. rust-analyzer also needs the compiler's
+source, which `rustc-dev` installs; point it there with
+
+```json
+"rust-analyzer.rustc.source": "discover"
+```
+
+in the editor's settings.
+
 ## Being a wrapper Cargo accepts
 
 - **Cargo puts the real compiler first.** A `RUSTC_WRAPPER` is invoked as

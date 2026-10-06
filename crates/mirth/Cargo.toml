@@ -8,3 +8,7 @@ description = "Change a Rust program's MIR from a rustc driver that Cargo accept
 
 [dependencies]
 twox-hash = { version = "2.1.3", default-features = false, features = ["xxhash3_64"] }
+
+# Lets rust-analyzer find the compiler crates; see HACKING.md.
+[package.metadata.rust-analyzer]
+rustc_private = true

@@ -13,3 +13,7 @@ toml = "0.9"
 
 [build-dependencies]
 mirth-build = { path = "../mirth-build" }
+
+# Lets rust-analyzer find the compiler crates; see HACKING.md.
+[package.metadata.rust-analyzer]
+rustc_private = true

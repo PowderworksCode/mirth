@@ -11,3 +11,7 @@ mirth = { path = "../../crates/mirth" }
 
 [build-dependencies]
 mirth-build = { path = "../../crates/mirth-build" }
+
+# Lets rust-analyzer find the compiler crates; see HACKING.md.
+[package.metadata.rust-analyzer]
+rustc_private = true
