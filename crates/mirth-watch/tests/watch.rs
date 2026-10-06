@@ -50,12 +50,23 @@ struct Built {
 
 /// `fixtures/effects`, built through mirth-watch with its `watch.toml`.
 fn build(name: &str) -> Built {
+    build_with(name, "debug", &[])
+}
+
+/// `fixtures/effects` in `profile`, with extra environment for Cargo.
+fn build_with(name: &str, profile: &str, environment: &[(&str, &str)]) -> Built {
     let fixture = workspace().join("fixtures/effects");
     let root = scratch(name);
     let target = root.join("target");
     let sites = root.join("sites");
-    let built = Command::new(env!("CARGO"))
-        .arg("build")
+    let mut command = Command::new(env!("CARGO"));
+    if profile == "release" {
+        command.arg("build").arg("--release");
+    } else {
+        command.arg("build");
+    }
+    let built = command
+        .envs(environment.iter().copied())
         .arg("--manifest-path")
         .arg(fixture.join("Cargo.toml"))
         .env("CARGO_TARGET_DIR", &target)
@@ -78,7 +89,7 @@ fn build(name: &str) -> Built {
     }
     Built {
         program: target
-            .join("debug")
+            .join(profile)
             .join(format!("app{}", std::env::consts::EXE_SUFFIX)),
         sites: rows,
     }
@@ -291,4 +302,108 @@ fn a_point_stops_the_process_where_asked() {
         log.iter().all(|row| row[0] != "C"),
         "counts are written at exit, and an abort is not an exit"
     );
+}
+
+/// The hooks are generic Rust functions taking references, not `extern "C"`
+/// symbols: check they survive whole-program optimization.
+#[test]
+fn records_under_fat_lto() {
+    let built = build_with(
+        "lto",
+        "release",
+        &[
+            ("CARGO_PROFILE_RELEASE_LTO", "fat"),
+            ("CARGO_PROFILE_RELEASE_CODEGEN_UNITS", "1"),
+        ],
+    );
+    let (ran, _, log) = built.run("lto-run", None);
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    let rename = built.site("call", "std::fs::rename");
+    let renamed: Vec<Vec<&str>> = log
+        .iter()
+        .filter(|row| row[0] == "L" && row[3] == rename)
+        .map(|row| row[7..].iter().map(|it| file_name(it)).collect())
+        .collect();
+    assert_eq!(
+        renamed,
+        [
+            vec!["a.txt.tmp", "a.txt"],
+            vec!["b.txt.tmp", "b.txt"],
+            vec!["c.txt.tmp", "c.txt"],
+        ]
+    );
+    let lookup = built.site("frame", "store::lookup");
+    assert!(
+        log.iter().any(|row| row[0] == "C"
+            && row[2] == lookup
+            && row[4] == "3:9\u{1f}Name(\"n\")"
+            && row.get(6).map(String::as_str) == Some("STORE_LABEL")),
+        "frame arguments survive LTO: {log:#?}"
+    );
+}
+
+/// `cargo mirth run` in a project with a `mirth.toml`, the way a user runs it.
+#[test]
+fn cargo_mirth_runs_a_project() {
+    let root = scratch("cargo-mirth");
+    let project = root.join("effects");
+    copy(&workspace().join("fixtures/effects"), &project);
+    std::fs::rename(project.join("watch.toml"), project.join("mirth.toml")).expect("renaming");
+    let files = root.join("files");
+    std::fs::create_dir_all(&files).expect("a directory for the program");
+
+    let ran = Command::new(env!("CARGO_BIN_EXE_cargo-mirth"))
+        .args(["mirth", "run", "--quiet", "--"])
+        .arg(&files)
+        .current_dir(&project)
+        .env_remove("CARGO_TARGET_DIR")
+        .env("STORE_LABEL", "L")
+        .output()
+        .expect("running cargo mirth");
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    assert_eq!(text(&ran.stdout).trim(), "3 7 x LL 11 6");
+
+    let mirth = project.join("target").join("mirth");
+    let sites: Vec<String> = std::fs::read_dir(mirth.join("sites"))
+        .expect("sites")
+        .map(|entry| {
+            entry
+                .expect("an entry")
+                .file_name()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect();
+    assert!(
+        sites.iter().any(|name| name.starts_with("store")),
+        "store's site table: {sites:?}"
+    );
+    let logs: Vec<_> = std::fs::read_dir(mirth.join("logs"))
+        .expect("logs")
+        .map(|entry| std::fs::read_to_string(entry.expect("an entry").path()).expect("a log"))
+        .collect();
+    assert_eq!(logs.len(), 1, "one process ran with the runtime recording");
+    assert_eq!(
+        logs[0]
+            .lines()
+            .filter(|line| line.starts_with("L\t"))
+            .count(),
+        6,
+        "three writes and three renames"
+    );
+}
+
+fn copy(from: &Path, to: &Path) {
+    std::fs::create_dir_all(to).expect("a directory");
+    for entry in std::fs::read_dir(from).expect("a fixture") {
+        let entry = entry.expect("an entry");
+        let path = entry.path();
+        if entry.file_type().expect("a type").is_dir() {
+            if entry.file_name() != "target" {
+                copy(&path, &to.join(entry.file_name()));
+            }
+        } else {
+            std::fs::copy(&path, to.join(entry.file_name())).expect("copying");
+        }
+    }
 }
