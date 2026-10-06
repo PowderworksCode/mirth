@@ -24,3 +24,18 @@ pub fn label() -> String {
 pub fn encode<T: Display>(value: T) -> String {
     value.to_string()
 }
+
+/// Plain data: written down as its numbers.
+#[derive(Clone, Copy)]
+pub struct Key {
+    pub krate: u32,
+    pub index: u32,
+}
+
+/// Written down through its `Debug`.
+#[derive(Debug)]
+pub struct Name(pub &'static str);
+
+pub fn lookup(key: Key, name: Name) -> usize {
+    label().len() + key.index as usize + name.0.len()
+}

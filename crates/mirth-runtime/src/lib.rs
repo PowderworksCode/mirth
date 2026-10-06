@@ -9,13 +9,14 @@
 //! starts. Then each process writes one log there, `<pid>-<start>.log`:
 //!
 //! ```text
-//! P <pid> <start ns>        <argument>…        the process, first
-//! L <ns> <thread> <site> <frame> <frame type> <argument>…   a logged event, written at once
-//! C <site> <frame> <frame type> <count> <argument>…       a counted event, written at exit
+//! P <pid> <start ns> <argument>…                                             the process, first
+//! L <ns> <thread> <site> <frame> <frame type> <frame arguments> <argument>…  a logged event, written at once
+//! C <site> <frame> <frame type> <frame arguments> <count> <argument>…       a counted event, written at exit
 //! ```
 //!
 //! Fields are separated by tabs; a tab, newline or backslash inside one is
-//! escaped. Times are nanoseconds since the Unix epoch, measured as the
+//! escaped. A frame's arguments share one field, separated by `\x1f`.
+//! Times are nanoseconds since the Unix epoch, measured as the
 //! process's start time plus a monotonic offset, so they are comparable
 //! across processes on one machine and never go backwards within one.
 //!
@@ -36,7 +37,7 @@ pub use capture::Capture;
 
 thread_local! {
     static BUSY: Cell<bool> = const { Cell::new(false) };
-    static FRAMES: RefCell<Vec<(u64, &'static str)>> = const { RefCell::new(Vec::new()) };
+    static FRAMES: RefCell<Vec<Frame>> = const { RefCell::new(Vec::new()) };
     static ARGUMENTS: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
 }
 
@@ -55,12 +56,23 @@ fn guarded(work: impl FnOnce()) {
     let _ = BUSY.try_with(|busy| busy.set(false));
 }
 
-fn frame() -> (u64, &'static str) {
+#[derive(Clone)]
+struct Frame {
+    site: u64,
+    generic: &'static str,
+    arguments: String,
+}
+
+fn frame() -> Frame {
     FRAMES
-        .try_with(|frames| frames.borrow().last().copied())
+        .try_with(|frames| frames.borrow().last().cloned())
         .ok()
         .flatten()
-        .unwrap_or((0, ""))
+        .unwrap_or(Frame {
+            site: 0,
+            generic: "",
+            arguments: String::new(),
+        })
 }
 
 fn take_arguments() -> Vec<String> {
@@ -69,16 +81,23 @@ fn take_arguments() -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// Entering a frame. `T` is the tuple of the function's own type
-/// parameters, so one generic function is a different frame per
-/// instantiation.
+/// Entering a frame, with the arguments captured since the last event as
+/// the frame's own. `T` is the tuple of the function's type parameters, so
+/// one generic function is a different frame per instantiation.
 #[rustc_diagnostic_item = "mirth_enter"]
 #[inline(never)]
 pub fn enter<T: ?Sized>(site: u64) {
     guarded(|| {
         let generic = std::any::type_name::<T>();
         let generic = if generic == "()" { "" } else { generic };
-        let _ = FRAMES.try_with(|frames| frames.borrow_mut().push((site, generic)));
+        let arguments = take_arguments().join("\u{1f}");
+        let _ = FRAMES.try_with(|frames| {
+            frames.borrow_mut().push(Frame {
+                site,
+                generic,
+                arguments,
+            })
+        });
     });
 }
 
@@ -91,7 +110,7 @@ pub fn exit(site: u64) {
     guarded(|| {
         let _ = FRAMES.try_with(|frames| {
             let mut frames = frames.borrow_mut();
-            if let Some(at) = frames.iter().rposition(|&(open, _)| open == site) {
+            if let Some(at) = frames.iter().rposition(|frame| frame.site == site) {
                 frames.truncate(at);
             }
         });
@@ -109,6 +128,31 @@ pub fn argument<T: Capture + ?Sized>(value: &T) {
     });
 }
 
+/// One argument, as its `Debug` renders it.
+#[rustc_diagnostic_item = "mirth_argument_debug"]
+#[inline(never)]
+pub fn argument_debug<T: std::fmt::Debug + ?Sized>(value: &T) {
+    guarded(|| {
+        let text = format!("{value:?}");
+        let _ = ARGUMENTS.try_with(|arguments| arguments.borrow_mut().push(text));
+    });
+}
+
+/// The last `parts` arguments are the fields of one value: join them, as
+/// `a:b`.
+#[rustc_diagnostic_item = "mirth_join"]
+#[inline(never)]
+pub fn join(parts: u64) {
+    guarded(|| {
+        let _ = ARGUMENTS.try_with(|arguments| {
+            let mut arguments = arguments.borrow_mut();
+            let at = arguments.len().saturating_sub(parts as usize);
+            let joined = arguments.split_off(at).join(":");
+            arguments.push(joined);
+        });
+    });
+}
+
 /// How an event is recorded.
 pub const COUNT: u64 = 0;
 pub const LOG: u64 = 1;
@@ -119,11 +163,11 @@ pub const LOG: u64 = 1;
 pub fn event(site: u64, mode: u64) {
     guarded(|| {
         let arguments = take_arguments();
-        let (frame, generic) = frame();
+        let frame = frame();
         if mode == LOG {
-            log::logged(site, frame, generic, &arguments);
+            log::logged(site, &frame, &arguments);
         } else {
-            log::counted(site, frame, generic, arguments);
+            log::counted(site, frame, arguments);
         }
     });
 }

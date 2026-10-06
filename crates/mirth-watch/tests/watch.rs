@@ -127,7 +127,7 @@ fn records_frames_calls_arguments_and_statics() {
     let built = build("record");
     let (ran, _, log) = built.run("record-run", None);
     assert!(ran.status.success(), "{}", text(&ran.stderr));
-    assert_eq!(text(&ran.stdout).trim(), "3 7 x LL");
+    assert_eq!(text(&ran.stdout).trim(), "3 7 x LL 11");
 
     let save = built.site("frame", "store::save");
     let write = built.site("call", "std::fs::write");
@@ -147,7 +147,7 @@ fn records_frames_calls_arguments_and_statics() {
     let logged: Vec<(String, String, Vec<String>)> = log
         .iter()
         .filter(|row| row[0] == "L")
-        .map(|row| (row[3].clone(), row[4].clone(), row[6..].to_vec()))
+        .map(|row| (row[3].clone(), row[4].clone(), row[7..].to_vec()))
         .collect();
     let named: Vec<(&str, Vec<&str>)> = logged
         .iter()
@@ -176,7 +176,8 @@ fn records_frames_calls_arguments_and_statics() {
         .collect();
     assert!(times.windows(2).all(|pair| pair[0] <= pair[1]));
 
-    let counted: HashMap<(String, String, String, Vec<String>), String> = log
+    type Key = (String, String, String, String, Vec<String>);
+    let counted: HashMap<Key, String> = log
         .iter()
         .filter(|row| row[0] == "C")
         .map(|row| {
@@ -185,17 +186,20 @@ fn records_frames_calls_arguments_and_statics() {
                     row[1].clone(),
                     row[2].clone(),
                     row[3].clone(),
-                    row[5..].to_vec(),
+                    row[4].clone(),
+                    row[6..].to_vec(),
                 ),
-                row[4].clone(),
+                row[5].clone(),
             )
         })
         .collect();
     let count = |site: &str, frame: &str, generic: &str, arguments: &[&str]| {
+        let (frame, frame_arguments) = frame.split_once(' ').unwrap_or((frame, ""));
         let key = (
             site.to_owned(),
             frame.to_owned(),
             generic.to_owned(),
+            frame_arguments.to_owned(),
             arguments.iter().map(|it| (*it).to_owned()).collect(),
         );
         counted
@@ -204,10 +208,21 @@ fn records_frames_calls_arguments_and_statics() {
             .clone()
     };
     assert_eq!(count(&var, "0", "", &["STORE_LABEL"]), "2");
+    let lookup = built.site("frame", "store::lookup");
+    assert_eq!(
+        count(
+            &var,
+            &format!("{lookup} 3:9\u{1f}Name(\"n\")"),
+            "",
+            &["STORE_LABEL"]
+        ),
+        "1",
+        "inside lookup, which is named by its key's numbers and its name's Debug",
+    );
     let touches = |frame: &str| -> u64 {
         counted
             .iter()
-            .filter(|((site, at, _, _), _)| writes.contains(site) && at == frame)
+            .filter(|((site, at, _, _, _), _)| writes.contains(site) && at == frame)
             .map(|(_, count)| count.parse::<u64>().expect("a count"))
             .sum()
     };

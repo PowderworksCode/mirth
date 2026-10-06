@@ -6,11 +6,13 @@
 //!
 //! [[frame]]                     # functions whose calls attribute what happens inside them
 //! match = "rustc_metadata::rmeta::encoder::encode_metadata"
+//! capture = [0]                 # the function's own arguments that name the frame
 //!
 //! [[call]]                      # calls to record
 //! match = "std::fs::rename"
 //! mode = "log"                  # "log": each one, timestamped, written at once; "count": counted
 //! capture = [0, 1]              # the arguments to write down
+//! debug = [2]                   # arguments to write down through their `Debug`
 //! point = true                  # also a point where MIRTH_CRASH can stop the process
 //!
 //! [statics]                     # touches of mutable and interior-mutable statics
@@ -46,6 +48,10 @@ pub struct Scope {
 pub struct Frame {
     #[serde(rename = "match")]
     pub pattern: String,
+    #[serde(default)]
+    pub capture: Vec<usize>,
+    #[serde(default)]
+    pub debug: Vec<usize>,
 }
 
 #[derive(Deserialize)]
@@ -57,6 +63,8 @@ pub struct Call {
     pub mode: Mode,
     #[serde(default)]
     pub capture: Vec<usize>,
+    #[serde(default)]
+    pub debug: Vec<usize>,
     #[serde(default)]
     pub point: bool,
 }
@@ -104,10 +112,10 @@ impl Config {
         )
     }
 
-    pub fn is_frame(&self, path: &str) -> bool {
+    pub fn frame(&self, path: &str) -> Option<&Frame> {
         self.frames
             .iter()
-            .any(|frame| matches(&frame.pattern, path))
+            .find(|frame| matches(&frame.pattern, path))
     }
 
     pub fn call(&self, path: &str) -> Option<&Call> {

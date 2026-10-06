@@ -7,6 +7,11 @@ match = "store::save"
 [[frame]]
 match = "store::encode"
 
+[[frame]]
+match = "store::lookup"
+capture = [0]
+debug = [1]
+
 [[call]]
 match = "std::fs::write"
 mode = "log"

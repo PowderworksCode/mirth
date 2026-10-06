@@ -13,10 +13,11 @@ use rustc_middle::mir::{
     Rvalue, START_BLOCK, Statement, TerminatorKind,
 };
 use rustc_middle::ty::print::with_no_trimmed_paths;
-use rustc_middle::ty::{self, GenericArgs, Ty, TyCtxt, TypingEnv};
+use rustc_middle::ty::{GenericArgs, Ty, TyCtxt, TypingEnv};
 use rustc_span::Symbol;
 use rustc_span::def_id::{DefId, LocalDefId};
 
+use crate::capture::{self, How};
 use crate::config::{Config, Mode};
 
 /// The runtime's functions, found by diagnostic item.
@@ -24,6 +25,8 @@ pub struct Hooks {
     enter: DefId,
     exit: DefId,
     argument: DefId,
+    argument_debug: DefId,
+    join: DefId,
     event: DefId,
     point: DefId,
 }
@@ -35,6 +38,8 @@ impl Hooks {
             enter: item("mirth_enter")?,
             exit: item("mirth_exit")?,
             argument: item("mirth_argument")?,
+            argument_debug: item("mirth_argument_debug")?,
+            join: item("mirth_join")?,
             event: item("mirth_event")?,
             point: item("mirth_point")?,
         })
@@ -64,13 +69,42 @@ pub fn path_of(tcx: TyCtxt<'_>, def_id: DefId) -> String {
     }
 }
 
+type Captured<'tcx> = Vec<(Operand<'tcx>, How<'tcx>)>;
+
+/// The operands at `capture` and `debug`, each with how it is written down.
+/// One whose type cannot be is left out.
+fn captured<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    body: &Body<'tcx>,
+    operands: &[Operand<'tcx>],
+    capture: &[usize],
+    debug: &[usize],
+) -> Captured<'tcx> {
+    let mut indices: Vec<(usize, bool)> = capture
+        .iter()
+        .map(|&index| (index, false))
+        .chain(debug.iter().map(|&index| (index, true)))
+        .collect();
+    indices.sort();
+    indices
+        .into_iter()
+        .filter_map(|(index, debug)| {
+            let operand = operands.get(index)?.clone();
+            let how = capture::how(tcx, operand.ty(body, tcx), debug)?;
+            Some((operand, how))
+        })
+        .collect()
+}
+
 enum What<'tcx> {
-    Enter,
+    Enter {
+        captured: Captured<'tcx>,
+    },
     Exit,
     Call {
         target: DefId,
         mode: Mode,
-        captured: Vec<Operand<'tcx>>,
+        captured: Captured<'tcx>,
         point: bool,
     },
     Touch {
@@ -155,13 +189,8 @@ impl<'tcx> Visitor<'tcx> for Finder<'_, 'tcx> {
         let Some(call) = self.config.call(&path_of(self.tcx, target)) else {
             return;
         };
-        let captured = call
-            .capture
-            .iter()
-            .filter_map(|&index| args.get(index))
-            .map(|argument| argument.node.clone())
-            .filter(|operand| capturable(self.tcx, operand.ty(self.body, self.tcx)))
-            .collect();
+        let operands: Vec<Operand<'tcx>> = args.iter().map(|it| it.node.clone()).collect();
+        let captured = captured(self.tcx, self.body, &operands, &call.capture, &call.debug);
         self.found.push(Found {
             at,
             what: What::Call {
@@ -171,25 +200,6 @@ impl<'tcx> Visitor<'tcx> for Finder<'_, 'tcx> {
                 point: call.point,
             },
         });
-    }
-}
-
-/// Whether the runtime's `Capture` covers a type, references peeled.
-fn capturable<'tcx>(tcx: TyCtxt<'tcx>, mut ty: Ty<'tcx>) -> bool {
-    while let ty::Ref(_, inner, _) = ty.kind() {
-        ty = *inner;
-    }
-    match ty.kind() {
-        ty::Str | ty::Bool | ty::Char | ty::Int(_) | ty::Uint(_) => true,
-        ty::Adt(adt, _) => matches!(
-            with_no_trimmed_paths!(tcx.def_path_str(adt.did())).as_str(),
-            "std::string::String"
-                | "std::path::Path"
-                | "std::path::PathBuf"
-                | "std::ffi::OsStr"
-                | "std::ffi::OsString"
-        ),
-        _ => false,
     }
 }
 
@@ -221,10 +231,14 @@ pub fn instrument<'tcx>(
 
     let caller = path_of(tcx, def_id.to_def_id());
     let is_function = matches!(tcx.def_kind(def_id), DefKind::Fn | DefKind::AssocFn);
-    if is_function && config.is_frame(&caller) {
+    if is_function && let Some(frame) = config.frame(&caller) {
+        let parameters: Vec<Operand<'tcx>> = (1..=original.arg_count)
+            .map(|index| Operand::Copy(Place::from(Local::from_usize(index))))
+            .collect();
+        let captured = captured(tcx, original, &parameters, &frame.capture, &frame.debug);
         found.push(Found {
             at: START_BLOCK.start_location(),
-            what: What::Enter,
+            what: What::Enter { captured },
         });
         for (block, data) in original.basic_blocks.iter_enumerated() {
             if matches!(data.terminator().kind, TerminatorKind::Return) {
@@ -251,7 +265,7 @@ pub fn instrument<'tcx>(
     for (n, Found { at, what }) in found.into_iter().enumerate() {
         let span = original.source_info(at).span;
         let id = match what {
-            What::Enter | What::Exit => frame_site,
+            What::Enter { .. } | What::Exit => frame_site,
             _ => mirth::identity::identity(&format!(
                 "{caller}|{:?}|{}|{}|{n}",
                 at.block,
@@ -272,8 +286,9 @@ pub fn instrument<'tcx>(
         };
         let hooks_here = at_location.entry(at).or_default();
         match what {
-            What::Enter => {
+            What::Enter { captured } => {
                 site("frame", Mode::Count, caller.clone());
+                hooks_here.extend(argument_hooks(tcx, &build, &mut body, hooks, captured));
                 let types: Vec<Ty<'tcx>> = GenericArgs::identity_for_item(tcx, def_id)
                     .types()
                     .collect();
@@ -297,19 +312,7 @@ pub fn instrument<'tcx>(
                 point,
             } => {
                 site("call", mode, path_of(tcx, target));
-                for operand in captured {
-                    let ty = operand.ty(&body.local_decls, tcx);
-                    let (place, mut before) = materialize(&build, &mut body, operand, ty);
-                    let reference =
-                        new_local(&mut body, Ty::new_imm_ref(tcx, tcx.lifetimes.re_erased, ty));
-                    before.push(build.reference(reference, place));
-                    hooks_here.push(Hook {
-                        callee: hooks.argument,
-                        over: vec![ty],
-                        arguments: vec![build.copy(reference)],
-                        before,
-                    });
-                }
+                hooks_here.extend(argument_hooks(tcx, &build, &mut body, hooks, captured));
                 hooks_here.push(Hook {
                     callee: hooks.event,
                     over: Vec::new(),
@@ -342,6 +345,57 @@ pub fn instrument<'tcx>(
         insert(tcx, &build, &mut body, at, hooks_here);
     }
     Some((body, sites))
+}
+
+/// The calls that write down `captured`, for the next event or frame.
+fn argument_hooks<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    build: &mirth::emit::Build<'tcx>,
+    body: &mut Body<'tcx>,
+    hooks: &Hooks,
+    captured: Captured<'tcx>,
+) -> Vec<Hook<'tcx>> {
+    let mut out = Vec::new();
+    for (operand, how) in captured {
+        let ty = operand.ty(&body.local_decls, tcx);
+        let (place, before) = materialize(build, body, operand, ty);
+        let mut borrow = |of: Place<'tcx>, of_ty: Ty<'tcx>, callee, mut before: Vec<_>| {
+            let reference = new_local(body, Ty::new_imm_ref(tcx, tcx.lifetimes.re_erased, of_ty));
+            before.push(build.reference(reference, of));
+            Hook {
+                callee,
+                over: vec![of_ty],
+                arguments: vec![build.copy(reference)],
+                before,
+            }
+        };
+        match how {
+            How::Text(ty) => out.push(borrow(place, ty, hooks.argument, before)),
+            How::Debug(ty) => out.push(borrow(place, ty, hooks.argument_debug, before)),
+            How::Plain(leaves) => {
+                let parts = leaves.len() as u64;
+                let mut before = Some(before);
+                for (projection, leaf) in leaves {
+                    let at = place.project_deeper(&projection, tcx);
+                    out.push(borrow(
+                        at,
+                        leaf,
+                        hooks.argument,
+                        before.take().unwrap_or_default(),
+                    ));
+                }
+                if parts > 1 {
+                    out.push(Hook {
+                        callee: hooks.join,
+                        over: Vec::new(),
+                        arguments: vec![build.number(parts)],
+                        before: Vec::new(),
+                    });
+                }
+            }
+        }
+    }
+    out
 }
 
 /// The value of an operand in a place that can be borrowed.

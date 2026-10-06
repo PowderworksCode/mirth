@@ -6,8 +6,9 @@ fn main() {
         store::save(&directory, name, name).expect("saving");
     }
     let label = format!("{}{}", store::label(), store::label());
+    let found = store::lookup(store::Key { krate: 3, index: 9 }, store::Name("n"));
     println!(
-        "{} {} {} {label}",
+        "{} {} {} {label} {found}",
         store::writes(),
         store::encode(7u32),
         store::encode("x"),

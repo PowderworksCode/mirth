@@ -10,9 +10,12 @@
 #![feature(rustc_private)]
 
 extern crate rustc_hir;
+extern crate rustc_infer;
 extern crate rustc_middle;
 extern crate rustc_span;
+extern crate rustc_trait_selection;
 
+mod capture;
 mod config;
 mod sites;
 

@@ -7,7 +7,9 @@ use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Instant, SystemTime};
 
-type Key = (u64, u64, &'static str, Vec<String>);
+use crate::Frame;
+
+type Key = (u64, u64, &'static str, String, Vec<String>);
 
 struct Log {
     file: Mutex<File>,
@@ -82,11 +84,13 @@ fn thread() -> u64 {
     THIS.try_with(|it| *it).unwrap_or(0)
 }
 
-pub(crate) fn logged(site: u64, frame: u64, generic: &str, arguments: &[String]) {
+pub(crate) fn logged(site: u64, frame: &Frame, arguments: &[String]) {
     let Some(log) = the() else { return };
     let ns = log.start_ns + log.start.elapsed().as_nanos();
-    let mut line = format!("L\t{ns}\t{}\t{site}\t{frame}\t", thread());
-    escape(generic, &mut line);
+    let mut line = format!("L\t{ns}\t{}\t{site}\t{}\t", thread(), frame.site);
+    escape(frame.generic, &mut line);
+    line.push('\t');
+    escape(&frame.arguments, &mut line);
     for argument in arguments {
         line.push('\t');
         escape(argument, &mut line);
@@ -96,10 +100,11 @@ pub(crate) fn logged(site: u64, frame: u64, generic: &str, arguments: &[String])
     let _ = (&*file).write_all(line.as_bytes());
 }
 
-pub(crate) fn counted(site: u64, frame: u64, generic: &'static str, arguments: Vec<String>) {
+pub(crate) fn counted(site: u64, frame: Frame, arguments: Vec<String>) {
     let Some(log) = the() else { return };
     let mut counts = log.counts.lock().unwrap_or_else(|it| it.into_inner());
-    *counts.entry((site, frame, generic, arguments)).or_insert(0) += 1;
+    let key = (site, frame.site, frame.generic, frame.arguments, arguments);
+    *counts.entry(key).or_insert(0) += 1;
 }
 
 pub(crate) fn arrive(site: u64) {
@@ -122,9 +127,11 @@ extern "C" fn finish() {
     let mut counts: Vec<_> = counts.into_iter().collect();
     counts.sort();
     let mut text = String::new();
-    for ((site, frame, generic, arguments), count) in counts {
+    for ((site, frame, generic, frame_arguments, arguments), count) in counts {
         text.push_str(&format!("C\t{site}\t{frame}\t"));
         escape(generic, &mut text);
+        text.push('\t');
+        escape(&frame_arguments, &mut text);
         text.push_str(&format!("\t{count}"));
         for argument in &arguments {
             text.push('\t');
