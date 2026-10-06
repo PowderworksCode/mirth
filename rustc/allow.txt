@@ -1,0 +1,2 @@
+# What encoding may read that incremental compilation does not track, one
+# entry per line: <pattern> -- <reason>. `*` matches any run of characters.

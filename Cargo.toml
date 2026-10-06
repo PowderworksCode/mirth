@@ -3,6 +3,7 @@ resolver = "3"
 members = [
     "crates/mirth",
     "crates/mirth-build",
+    "crates/mirth-cli",
     "crates/mirth-runtime",
     "crates/mirth-watch",
     "examples/count-calls",

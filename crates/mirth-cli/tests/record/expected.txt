@@ -1,0 +1,15 @@
+== app (bin) emit dep-info,link ==
+files
+  open           target/debug/deps/libdep-#.rmeta         in -
+read through queries
+       3     2 items    1 written  dep                def_kind
+
+== dep (lib) emit dep-info,metadata,link ==
+files
+  encode-to      target/debug/deps/rmeta*/full.rmeta      in encoder::encode_metadata
+  rename         target/debug/deps/rmeta*/full.rmeta -> target/debug/deps/libdep-#.rmeta in -
+encoded
+       4     2 items  record!(self.tables.def_kind[def_id] <- def_kind)
+state
+       1  std::env::var(X)  by encoder::encode_metadata  in encoder::encode_metadata
+

@@ -77,7 +77,9 @@ RUSTC_WRAPPER=path/to/my-plugin cargo build
 | `crates/mirth-build` | what a plugin's `build.rs` has to do |
 | `crates/mirth-watch` | a plugin that records the frames, calls, arguments and static touches a configuration names, and can stop a process at a chosen call |
 | `crates/mirth-runtime` | what instrumented code calls: one log per process, with timestamps comparable across processes |
-| `rustc/` | building rustc instrumented for crate metadata |
+| `rustc/` | building rustc instrumented for crate metadata, and checking fixtures with it |
+| `crates/mirth-cli` | `mirth record`, `report` and `check` |
+| `tests/rmeta/` | blessed lists, one per fixture |
 | `examples/count-calls` | the smallest plugin, and its tests through Cargo |
 | `fixtures/` | small Cargo projects the tests build |
 | `docs/` | the plan, and later the properties and results |
@@ -98,6 +100,25 @@ operation on the way to a published `.rmeta`, and environment, clock and
 randomness reads. A full build takes about an hour on 16 cores and needs
 roughly 30 GB. After changing the plugin or the configuration,
 `rustc/build.sh --again` recompiles the crates in scope.
+
+## Checking a fixture
+
+```sh
+rustc/check.sh chain            # P1–P7 on fixtures/chain
+rustc/check.sh chain --bless    # accept a changed list
+```
+
+`check.sh` builds the fixture with Cargo and the instrumented compiler and:
+
+- compares what each compiler process did with metadata against the blessed
+  list in `tests/rmeta/chain.txt` (P3 is a column there: for each table a
+  dependent reads, how many entries the writer wrote);
+- runs `mirth check` for P1, P2, P4 and P7;
+- builds the fixture again and compares every `.rmeta` byte for byte (P5);
+- builds incrementally, applies `fixtures/chain/edit`, rebuilds, and
+  compares with a clean build of the edited source (P6).
+
+`docs/plan.md` describes the properties.
 
 ## Platforms
 
