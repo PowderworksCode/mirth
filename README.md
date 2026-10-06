@@ -22,12 +22,16 @@ Windows. The instrumented compiler is next.
 ## Watching a program
 
 ```sh
-cargo build -p mirth-runtime
-MIRTH_WATCH=watch.toml MIRTH_RUNTIME=target/debug/libmirth_runtime.rlib \
+rustc --edition 2024 --crate-type rlib --crate-name mirth_runtime -O \
+  crates/mirth-runtime/src/lib.rs --out-dir target/runtime
+cargo build -p mirth-watch
+MIRTH_WATCH=watch.toml MIRTH_RUNTIME=target/runtime/libmirth_runtime.rlib \
 MIRTH_SITES=sites RUSTC_WRAPPER=target/debug/mirth-watch cargo build
 MIRTH_OUT=logs ./target/debug/my-program
 ```
 
+The runtime is compiled with `rustc` directly: Cargo would put its metadata
+in a separate `.rmeta`, and the runtime is injected as one file.
 `watch.toml` names what to record (`crates/mirth-watch/src/config.rs`
 documents it; `fixtures/effects/watch.toml` is an example). `sites/` gets a
 table of every instrumented site, written while compiling. `logs/` gets one

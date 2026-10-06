@@ -64,15 +64,22 @@ impl mirth::Plugin for Watch {
     }
 }
 
-/// Compiled as plain rustc would, but able to link against crates that
-/// were instrumented.
+/// For crates out of scope: compile as plain rustc would, with the
+/// runtime's directory on the search path, for a dependency that was
+/// instrumented and links it.
 struct Untouched {
     runtime: Option<PathBuf>,
 }
 
 impl mirth::Plugin for Untouched {
-    fn injects(&self) -> Option<PathBuf> {
-        self.runtime.clone()
+    fn arguments(&self) -> Vec<String> {
+        match self.runtime.as_ref().and_then(|it| it.parent()) {
+            Some(directory) => vec![
+                "-L".to_owned(),
+                format!("dependency={}", directory.display()),
+            ],
+            None => Vec::new(),
+        }
     }
 }
 
@@ -138,7 +145,7 @@ fn main() -> ! {
         (_, runtime) => mirth::run(
             sysroot,
             Untouched {
-                runtime: runtime.filter(|_| !beneath && name.is_some()),
+                runtime: runtime.filter(|_| !beneath),
             },
         ),
     }

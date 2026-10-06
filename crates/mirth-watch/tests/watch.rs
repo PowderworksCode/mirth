@@ -21,20 +21,25 @@ fn workspace() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
-/// The runtime, built once into a directory of its own.
+/// The runtime, compiled once with `rustc` directly. Cargo builds an rlib
+/// whose metadata is in a separate `.rmeta`; rustc on its own embeds it, so
+/// the rlib can be injected alone.
 fn runtime() -> &'static Path {
     static RUNTIME: OnceLock<PathBuf> = OnceLock::new();
     RUNTIME.get_or_init(|| {
-        let target = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("runtime");
-        let built = Command::new(env!("CARGO"))
-            .args(["build", "--quiet", "-p", "mirth-runtime", "--target-dir"])
-            .arg(&target)
+        let out = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("runtime");
+        std::fs::create_dir_all(&out).expect("a directory for the runtime");
+        let built = Command::new("rustc")
+            .args(["--edition", "2024", "--crate-type", "rlib", "-O"])
+            .args(["--crate-name", "mirth_runtime"])
+            .arg(workspace().join("crates/mirth-runtime/src/lib.rs"))
+            .arg("--out-dir")
+            .arg(&out)
             .current_dir(workspace())
-            .env_remove("RUSTC_WRAPPER")
             .output()
-            .expect("building the runtime");
+            .expect("compiling the runtime");
         assert!(built.status.success(), "{}", text(&built.stderr));
-        target.join("debug").join("libmirth_runtime.rlib")
+        out.join("libmirth_runtime.rlib")
     })
 }
 

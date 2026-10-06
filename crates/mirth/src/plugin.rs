@@ -20,6 +20,11 @@ pub trait Plugin: Send {
         None
     }
 
+    /// Flags to add to this compilation's own.
+    fn arguments(&self) -> Vec<String> {
+        Vec::new()
+    }
+
     /// The AST, before name resolution. New items can only be added here:
     /// creating a definition once MIR is being built is an ICE.
     fn before_lowering(&mut self, _krate: &mut rustc_ast::ast::Crate) {}
@@ -128,6 +133,8 @@ pub fn run(sysroot: &str, plugin: impl Plugin + 'static) -> ! {
         args.push("--sysroot".to_owned());
         args.push(sysroot.to_owned());
     }
+
+    args.extend(plugin.arguments());
 
     if let Some(rlib) = plugin.injects() {
         inject(&mut args, &rlib);
