@@ -1,9 +1,9 @@
-# Five untracked options change results that incremental compilation reuses; with `-Zno-leak-check`, a rebuild accepts a program a clean build rejects
+# Six untracked options change results that incremental compilation reuses; with `-Zno-leak-check`, a rebuild accepts a program a clean build rejects
 
 <!-- Draft comment for rust-lang/rust#84232 ("Audit all UNTRACKED options"). -->
 
-`-Zno-leak-check`, `-C extra-filename`, `-Zemit-stack-sizes`, `-Zcodegen-source-order` and
-`-Zbuild-sdylib-interface` are marked `[UNTRACKED]` in `compiler/rustc_session/src/options.rs`,
+`-Zno-leak-check`, `-C extra-filename`, `-Zfuture-incompat-test`, `-Zemit-stack-sizes`,
+`-Zcodegen-source-order` and `-Zbuild-sdylib-interface` are marked `[UNTRACKED]` in `compiler/rustc_session/src/options.rs`,
 so they're left out of the dependency-tracking hash. Changing one between two incremental
 sessions leaves the second session's results as the first's. A clean build with the second
 session's options produces something different.
@@ -42,6 +42,22 @@ grep -a -c -- -aaa out/liblib-bbb.rmeta   # 1 on 1.90.0 and the nightly, 0 on 1.
 The lookup falls back to any matching file and checks the crate hash, so the stale hint
 costs at most a wrong first guess; Cargo changes `-C metadata` along with
 `-C extra-filename`, which is tracked. It is the same class, found the same way.
+
+### `-Zfuture-incompat-test`: replayed warnings keep the old marking
+
+A testing option that reports every lint as future-incompatible. Lints are emitted by
+queries, and an incremental rebuild replays them as the previous session marked them:
+
+```sh
+printf 'pub fn f() {\n    let unused = 1;\n}\n' > lib.rs
+F="--crate-type lib --error-format=json --json=future-incompat"
+rustc $F -C incremental=incr -Zfuture-incompat-test lib.rs 2>&1 | grep -c future_incompat_report   # 1
+rustc $F -C incremental=incr                        lib.rs 2>&1 | grep -c future_incompat_report   # 1
+rustc $F -C incremental=clean                       lib.rs 2>&1 | grep -c future_incompat_report   # 0
+```
+
+And the other way round: 0, 0, and 1 for a clean build with the flag. Minor, as it is for
+testing the report, but the same class.
 
 ### `-Zemit-stack-sizes`, `-Zcodegen-source-order`, `-Zbuild-sdylib-interface`
 
@@ -88,7 +104,7 @@ debugging option.
 
 ### Suggested fix
 
-Mark `no_leak_check`, `extra_filename`, `emit_stack_sizes`, `codegen_source_order` and
+Mark `no_leak_check`, `extra_filename`, `future_incompat_test`, `emit_stack_sizes`, `codegen_source_order` and
 `build_sdylib_interface` `[TRACKED]` (`extra_filename` perhaps `[TRACKED_NO_CRATE_HASH]`).
 An audit like the one above could run in CI over every untracked option, so a new option
 marked `[UNTRACKED]` that changes reused output is caught when it is added; that is the
@@ -100,7 +116,7 @@ long tail this issue's discussion worries about.
 run time, every read of an `[UNTRACKED]` option (and of other state the dependency graph
 does not track) inside a computation whose result incremental compilation may reuse
 ([`report-untracked.patch`](report-untracked.patch)). Leaving out options that only produce
-debugging output, a build of its test workspace reports exactly these five. The first
+debugging output, a build of its test workspace reports exactly these six. The first
 three were found earlier by writing #66955's pattern as a query over rustc's source and
 auditing every untracked boolean option differentially, which did not exercise the leak
 check.

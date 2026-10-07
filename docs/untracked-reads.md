@@ -57,7 +57,7 @@ A build of `fixtures/sink`, with the three fixes:
 | `-C extra-filename` | `Metadata` | **new**: reused metadata names the old value (since 1.90) |
 | `-Zemit-stack-sizes`, `-Zcodegen-source-order` | `CompileCodegenUnit` | finding 5 |
 | `-Zbuild-sdylib-interface` | `mir_built`, `exportable_items`, ... | finding 5 |
-| `-Zfuture-incompat-test` | lint passes | a testing option for the future-incompatibility report; switching it between sessions did not change the output |
+| `-Zfuture-incompat-test` | lint passes | **new**, minor: a testing option that marks every lint future-incompatible; replayed warnings keep the previous session's marking |
 | the crate store (`injected_panic_runtime`) | `dependency_formats` | covered: which panic runtime is injected follows from the crate graph (`crates`, `eval_always`), each crate's dependency kind and `-C panic`; declared |
 
 Before the debugging options were left out, the list also had `-Zdump-mir`,
