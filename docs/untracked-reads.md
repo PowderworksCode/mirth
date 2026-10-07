@@ -42,6 +42,7 @@ Applied after the three fixes and [`verify-reuse.patch`](hunt/verify-reuse.patch
   - reads of source file contents: codegen's debuginfo (checksum, embedded source) and the
     metadata's source map;
   - the crate store's crate-wide state (`injected_panic_runtime` and the allocator flags).
+  - source text read through the source map (see below).
 - **Options that only make debugging output** (MIR dumps, statistics, extra validation) are
   not reported: a result reused without them is still correct. The list, with a reason for
   each, is `DEBUGGING_OPTIONS` in `rustc_middle::dep_graph`.
@@ -91,6 +92,27 @@ The fuzzer on `fixtures/sink`, serde and regex adds two more groups, neither a n
 Environment variables and files are read almost only before the first query (option
 parsing, crate loading) or while linking, which happens again on every build; the few
 exceptions (a manifest for GPU offload, the Apple deployment target) were not hooked.
+
+## Source text
+
+Spans are tracked by position, not by the text they cover. `SourceMap::span_to_source`, under
+`span_to_snippet` and the other text helpers, reports reads of "source text" (the helpers are
+`#[track_caller]`, so the report names their caller). Over `fixtures/sink` and the ten
+crates, inside reusable tasks:
+
+| read at | while computing | what it does with the text |
+|---|---|---|
+| `rustc_hir_typeck/src/loops.rs` | `typeck_root` | finds `break` in a `break` expression to place a label; used only for an error |
+| `rustc_hir_typeck/src/pat.rs` | `typeck_root` | trims a pattern's span at `&` or a binding mode, stored in the type-check results for the edition-2024 pattern migration lint |
+| `rustc_trait_selection/src/traits/dyn_compatibility.rs` | `dyn_compatibility_violations` | finds `(` in a method signature to place a suggestion |
+| `rustc_lint/src/unused/must_use.rs` | `lint_mod` | checks whether the text before an expression ends with `let _ =`, to word the warning |
+| `rustc_mir_build/.../check_match.rs` | `check_match` | finds the `else` keyword for a suggestion |
+| `rustc_metadata/src/rmeta/encoder.rs` | `Metadata` | renders a constant's literal as written, for documentation; covered by the source-file fingerprint with the stale-metadata fix (declared) |
+
+Each computes a position or a wording from raw text. The text can change without anything
+tracked changing only when the change keeps every token and position, such as a comment
+rewritten to the same length inside the span, so these can go stale but hardly will. Not
+reported upstream.
 
 ## Printing modes inherited from the caller
 

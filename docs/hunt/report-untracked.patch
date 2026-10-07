@@ -1008,7 +1008,7 @@ index 6cb6ad001..8586b036d 100644
                          diagnostics::StaticLinkingNotSupported::UserRequested {
                              lib_name: lib.name,
 diff --git a/compiler/rustc_metadata/src/rmeta/encoder.rs b/compiler/rustc_metadata/src/rmeta/encoder.rs
-index 989ca8361..657b3a5cd 100644
+index 989ca8361..0bba24a5c 100644
 --- a/compiler/rustc_metadata/src/rmeta/encoder.rs
 +++ b/compiler/rustc_metadata/src/rmeta/encoder.rs
 @@ -589,6 +589,8 @@ fn encode_source_map(
@@ -1038,11 +1038,12 @@ index 989ca8361..657b3a5cd 100644
              use std::fmt::Write;
  
              self.opaque.flush();
-@@ -2612,6 +2614,7 @@ pub fn encode_metadata(tcx: TyCtxt<'_>, path: &Path, ref_path: Option<&Path>) {
+@@ -2612,6 +2614,8 @@ pub fn encode_metadata(tcx: TyCtxt<'_>, path: &Path, ref_path: Option<&Path>) {
          || {
              // Make the metadata depend on the source files it describes.
              let _ = tcx.local_source_files_fingerprint(());
 +            rustc_middle::dep_graph::declare_untracked_input("source file contents");
++            rustc_middle::dep_graph::declare_untracked_input("source text");
              with_encode_metadata_header(tcx, path, |ecx| {
                  // Encode all the entries and extra information in the crate,
                  // culminating in the `CrateRoot` which points to all of it.
@@ -1924,6 +1925,144 @@ index f068aaa58..447a2d9a6 100644
          && let Some(compatible_list) = sess.target.linker_flavor.check_compatibility(flavor)
      {
          let flavor = flavor.desc();
+diff --git a/compiler/rustc_span/src/source_map.rs b/compiler/rustc_span/src/source_map.rs
+index f394765ab..eb96cf619 100644
+--- a/compiler/rustc_span/src/source_map.rs
++++ b/compiler/rustc_span/src/source_map.rs
+@@ -558,6 +558,7 @@ pub fn is_line_before_span_empty(&self, sp: Span) -> bool {
+         }
+     }
+ 
++    #[track_caller]
+     pub fn span_to_lines(&self, sp: Span) -> FileLinesResult {
+         debug!("span_to_lines(sp={:?})", sp);
+         let (lo, hi) = self.is_valid_span(sp)?;
+@@ -596,6 +597,7 @@ pub fn span_to_lines(&self, sp: Span) -> FileLinesResult {
+     /// Extracts the source surrounding the given `Span` using the `extract_source` function. The
+     /// extract function takes three arguments: a string slice containing the source, an index in
+     /// the slice for the beginning of the span and an index in the slice for the end of the span.
++    #[track_caller]
+     pub fn span_to_source<F, T>(
+         &self,
+         sp: Span,
+@@ -604,6 +606,8 @@ pub fn span_to_source<F, T>(
+     where
+         F: FnMut(&str, usize, usize) -> Result<T, SpanSnippetError>,
+     {
++        // The text of a source file is not tracked; spans are, by position.
++        rustc_data_structures::untracked::untracked_read("source text");
+         let local_begin = self.lookup_byte_offset(sp.lo());
+         let local_end = self.lookup_byte_offset(sp.hi());
+ 
+@@ -646,6 +650,7 @@ pub fn is_span_accessible(&self, sp: Span) -> bool {
+     }
+ 
+     /// Returns the source snippet as `String` corresponding to the given `Span`.
++    #[track_caller]
+     pub fn span_to_snippet(&self, sp: Span) -> Result<String, SpanSnippetError> {
+         self.span_to_source(sp, |src, start_index, end_index| {
+             src.get(start_index..end_index)
+@@ -654,6 +659,7 @@ pub fn span_to_snippet(&self, sp: Span) -> Result<String, SpanSnippetError> {
+         })
+     }
+ 
++    #[track_caller]
+     pub fn span_to_margin(&self, sp: Span) -> Option<usize> {
+         Some(self.indentation_before(sp)?.len())
+     }
+@@ -671,6 +677,7 @@ pub fn indentation_before(&self, sp: Span) -> Option<String> {
+     }
+ 
+     /// Returns the source snippet as `String` before the given `Span`.
++    #[track_caller]
+     pub fn span_to_prev_source(&self, sp: Span) -> Result<String, SpanSnippetError> {
+         self.span_to_source(sp, |src, start_index, _| {
+             src.get(..start_index).map(|s| s.to_string()).ok_or(SpanSnippetError::IllFormedSpan(sp))
+@@ -679,6 +686,7 @@ pub fn span_to_prev_source(&self, sp: Span) -> Result<String, SpanSnippetError>
+ 
+     /// Extends the given `Span` to just after the previous occurrence of `c`. Return the same span
+     /// if no character could be found or if an error occurred while retrieving the code snippet.
++    #[track_caller]
+     pub fn span_extend_to_prev_char(&self, sp: Span, c: char, accept_newlines: bool) -> Span {
+         if let Ok(prev_source) = self.span_to_prev_source(sp) {
+             let prev_source = prev_source.rsplit(c).next().unwrap_or("");
+@@ -711,6 +719,7 @@ pub fn span_extend_to_prev_char_before(
+     /// Extends the given `Span` to just after the previous occurrence of `pat` when surrounded by
+     /// whitespace. Returns None if the pattern could not be found or if an error occurred while
+     /// retrieving the code snippet.
++    #[track_caller]
+     pub fn span_extend_to_prev_str(
+         &self,
+         sp: Span,
+@@ -747,6 +756,7 @@ pub fn span_extend_to_prev_str(
+     }
+ 
+     /// Returns the source snippet as `String` after the given `Span`.
++    #[track_caller]
+     pub fn span_to_next_source(&self, sp: Span) -> Result<String, SpanSnippetError> {
+         self.span_to_source(sp, |src, _, end_index| {
+             src.get(end_index..).map(|s| s.to_string()).ok_or(SpanSnippetError::IllFormedSpan(sp))
+@@ -754,6 +764,7 @@ pub fn span_to_next_source(&self, sp: Span) -> Result<String, SpanSnippetError>
+     }
+ 
+     /// Extends the given `Span` while the next character matches the predicate
++    #[track_caller]
+     pub fn span_extend_while(
+         &self,
+         span: Span,
+@@ -767,11 +778,13 @@ pub fn span_extend_while(
+ 
+     /// Extends the span to include any trailing whitespace, or returns the original
+     /// span if a `SpanSnippetError` was encountered.
++    #[track_caller]
+     pub fn span_extend_while_whitespace(&self, span: Span) -> Span {
+         self.span_extend_while(span, char::is_whitespace).unwrap_or(span)
+     }
+ 
+     /// Extends the given `Span` to previous character while the previous character matches the predicate
++    #[track_caller]
+     pub fn span_extend_prev_while(
+         &self,
+         span: Span,
+@@ -799,12 +812,14 @@ pub fn span_extend_to_next_char(&self, sp: Span, c: char, accept_newlines: bool)
+     }
+ 
+     /// Extends the given `Span` to contain the entire line it is on.
++    #[track_caller]
+     pub fn span_extend_to_line(&self, sp: Span) -> Span {
+         self.span_extend_to_prev_char(self.span_extend_to_next_char(sp, '\n', true), '\n', true)
+     }
+ 
+     /// Given a `Span`, tries to get a shorter span ending before the first occurrence of `char`
+     /// `c`.
++    #[track_caller]
+     pub fn span_until_char(&self, sp: Span, c: char) -> Span {
+         match self.span_to_snippet(sp) {
+             Ok(snippet) => {
+@@ -882,6 +897,7 @@ pub fn span_wrapped_by_angle_or_parentheses(&self, span: Span) -> bool {
+ 
+     /// Given a `Span`, tries to get a shorter span ending just after the first occurrence of `char`
+     /// `c`.
++    #[track_caller]
+     pub fn span_through_char(&self, sp: Span, c: char) -> Span {
+         if let Ok(snippet) = self.span_to_snippet(sp)
+             && let Some(offset) = snippet.find(c)
+@@ -895,6 +911,7 @@ pub fn span_through_char(&self, sp: Span, c: char) -> Span {
+     /// or the original `Span`.
+     ///
+     /// If `sp` points to `"let mut x"`, then a span pointing at `"let "` will be returned.
++    #[track_caller]
+     pub fn span_until_non_whitespace(&self, sp: Span) -> Span {
+         let mut whitespace_found = false;
+ 
+@@ -911,6 +928,7 @@ pub fn span_until_non_whitespace(&self, sp: Span) -> Span {
+     /// or the original `Span` in case of error.
+     ///
+     /// If `sp` points to `"let mut x"`, then a span pointing at `"let"` will be returned.
++    #[track_caller]
+     pub fn span_until_whitespace(&self, sp: Span) -> Span {
+         self.span_take_while(sp, |c| !c.is_whitespace())
+     }
 diff --git a/compiler/rustc_trait_selection/src/error_reporting/infer/mod.rs b/compiler/rustc_trait_selection/src/error_reporting/infer/mod.rs
 index b2b57e018..9d88ae348 100644
 --- a/compiler/rustc_trait_selection/src/error_reporting/infer/mod.rs
