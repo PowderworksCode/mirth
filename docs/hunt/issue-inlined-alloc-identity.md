@@ -48,14 +48,26 @@ In the rebuild, `f` is green and its optimized MIR is decoded from the increment
 where the allocation was encoded as plain memory; decoding gives it a new `AllocId`, while
 `g`, computed fresh, refers to the shared one. Metadata then encodes both.
 
-The sharing most likely comes from inlining: the constant arrives with the MIR of
+The sharing comes from inlining: the constant arrives with the MIR of
 `<[T]>::get` and its `SliceIndex` impl, inlined from `core`. Allocations decoded from a crate's
 metadata are decoded once per session and shared by every function that inlines that MIR, but
 the incremental cache stores a copy rather than a reference to `core`'s allocation. This fits
 every variation above: no inlining, no difference; a generic local helper (whose MIR is not
 decoded from another crate), no difference; a non-generic function (where the value is a
-scalar), no difference. I
-have not confirmed it in the compiler's code.
+scalar), no difference.
+
+A change to the incremental cache confirms it
+([`upstream-alloc-reference.patch`](upstream-alloc-reference.patch), experimental): when an
+allocation that was decoded from another crate's metadata is written to the cache, it is
+written as that crate's stable id and the allocation's index there, with its contents, and
+decoding it gives the same `AllocId` as decoding that crate's allocation (if the contents
+agree). With it, both reproductions above build the same incrementally as clean.
+
+It does not fix everything the fuzzer found: one of its cases on the test workspace, at
+`-Zmir-opt-level=4`, still has an extra allocation with the change, so there is at least one
+more source (perhaps MIR inlined from a function of the same crate, whose own MIR came from
+the cache). With the change, the reuse check also reports a string constant whose cached and
+fresh encodings differ, which may be the change's own doing. Not investigated further.
 
 The string-literal case ([report](issue-literal-dedup.md)) is the same kind of loss: an
 allocation shared in a clean session is not shared again after a round trip through the cache.
