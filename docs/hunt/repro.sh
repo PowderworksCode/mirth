@@ -30,3 +30,15 @@ cp "$here/p6-literals/after.rs" "$d/lib.rs"
 rc --crate-type lib --emit=metadata,link -Cincremental="$d/i3" --out-dir "$d/o1" "$d/lib.rs"
 rc --crate-type lib --emit=metadata,link -Cincremental="$d/i4" --out-dir "$d/o2" "$d/lib.rs"
 cmp -s "$d/o1/liblib.rmeta" "$d/o2/liblib.rmeta" && echo same || echo DIFFER
+
+echo -n "stale-source, incremental rebuild after a comment at the end vs a clean build: "
+mkdir -p "$d/s1" "$d/s2"
+printf 'pub fn f(a: u32) -> u32 { a }\n' > "$d/dep.rs"
+rc --crate-type lib --crate-name dep --emit=metadata,link -Cincremental="$d/i5" --out-dir "$d/s1" "$d/dep.rs"
+cp "$d/s1/libdep.rmeta" "$d/before.rmeta"
+printf '// a comment at the end\n' >> "$d/dep.rs"
+rc --crate-type lib --crate-name dep --emit=metadata,link -Cincremental="$d/i5" --out-dir "$d/s1" "$d/dep.rs"
+rc --crate-type lib --crate-name dep --emit=metadata,link -Cincremental="$d/i6" --out-dir "$d/s2" "$d/dep.rs"
+if cmp -s "$d/s1/libdep.rmeta" "$d/s2/libdep.rmeta"; then echo same
+elif cmp -s "$d/s1/libdep.rmeta" "$d/before.rmeta"; then echo "DIFFER (the previous session's metadata, republished)"
+else echo DIFFER; fi
