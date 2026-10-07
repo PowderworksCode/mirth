@@ -109,6 +109,25 @@ not a fix). It costs more than the rest: about 40% on that rebuild.
 Replayed diagnostics are not checked yet, and diagnostics LLVM emits while compiling a unit
 are not replayed at all ([finding 7](hunt.md)).
 
+## What it reports in the runs
+
+Over the long fuzz runs and the history replays (thousands of rebuilds), with the three fixes
+applied and finding 6's stopgap, the check has printed two kinds of line. Neither has changed
+any output yet.
+
+- **Constants evaluated in two typing modes.** `eval_to_const_value_raw` in `Codegen` mode
+  only retries in `PostAnalysis` mode, so a fresh computation of both shares one allocation.
+  Once one of them is recomputed and the other reused, they refer to two allocations with
+  the same bytes, and the next sessions keep them apart. Codegen merges equal constants and
+  metadata does not encode `Codegen`-mode results, so nothing differs. This is most of the
+  `verify-reuse` findings.
+- **A function whose closing brace ends the file.** Codegen extends a scope to another file
+  when a location is outside the scope's file, and a position equal to the file's end counts
+  as outside (`adjust_dbg_scope_for_span`). With no newline after the brace, the return's
+  location gets a `DILexicalBlockFile` naming the same file; once text follows the brace a
+  fresh codegen does not, while a reused unit keeps it. The file is the same, so the line
+  table and the object are too.
+
 ## Does it find the known bugs?
 
 Each fix reverted in turn on the patched compiler, with the reproduction from
