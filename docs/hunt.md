@@ -24,76 +24,71 @@ with `-Zthreads=8`. `rustc/check.sh wide` runs the ordinary checks.
 
 | | what | status |
 |---|---|---|
-| 1 | single-threaded incremental rebuilds encode `Generics::param_def_id_to_index` in a different order from clean builds | **looks new**; reduced to 2 lines; a one-line change fixes it |
-| 2 | single-threaded incremental rebuilds of a crate using a proc-macro derive encode hygiene data that clean builds do not | **looks new**; reduced, not root-caused |
+| 1 | incremental rebuilds encode `Generics::param_def_id_to_index` in a different order from clean builds | **looks new**; root cause found; fix and regression test written |
+| 2 | incremental rebuilds encode a string literal twice where clean builds encode it once | **looks new**; root cause found, regression from #116707 (1.90); fix and regression test written |
 | 3 | with `-Zthreads=8`, two traits with `-> impl Trait` methods give different metadata from run to run | known: [#162202](https://github.com/rust-lang/rust/issues/162202) |
 
-All three reproduce with the official `nightly-2026-10-06`, without mirth:
-`docs/hunt/repro.sh` runs them. None of them was searched for; P5 and P6
-reported them on the first run of the new fixture.
+Findings 1 and 2 are single-threaded: an ordinary `cargo build`, an edit, another
+`cargo build`, and the metadata differs from a clean build of the edited source. Both come
+from the same kind of mistake: a value that does not survive a round trip through the
+incremental cache unchanged. All three reproduce with the official `nightly-2026-10-06`,
+without mirth: `docs/hunt/repro.sh` runs them. None was searched for: P5 and P6 reported
+them on the first run of the new fixture.
 
-Everything else held: P1, P2, P4 and P7 on the recorded clean build; the
-touch-only rebuild reused every crate's metadata; and
-`-Zincremental-verify-ich` found no unstable fingerprint in 20 incremental
-rebuilds.
+Draft bug reports for 1 and 2, written to be filed upstream, are
+[`hunt/issue-generics-order.md`](hunt/issue-generics-order.md) and
+[`hunt/issue-literal-dedup.md`](hunt/issue-literal-dedup.md). Each has a candidate fix
+(`hunt/*.patch`) and a regression test in the style of rustc's `tests/run-make`
+(`hunt/tests/`), which fails on the pinned compiler and passes with the fix.
 
-### 1. `param_def_id_to_index` order after an incremental rebuild
+With both fixes applied, P6 holds for all ten edits single-threaded, and these rustc tests
+still pass: `tests/incremental`, the metadata-related UI and run-make tests,
+`tests/ui/{consts,statics,const-generics}` and `tests/codegen-llvm`.
+
+Everything else held: P1, P2, P4 and P7 on the recorded clean build; the touch-only
+rebuild reused every crate's metadata; and `-Zincremental-verify-ich` found no unstable
+fingerprint in 20 incremental rebuilds.
+
+### 1. `param_def_id_to_index` order
 
 ```rust
 pub struct Grid<A, B, C>(A, B, C);
 impl<A, B, C> Grid<A, B, C> { pub const AREA: usize = 1; }
 ```
 
-Build this with `-C incremental`, add a comment line at the top, build
-again, and compare the `.rmeta` with a clean build of the same source: they
-differ. Two clean builds agree, and so do an incremental rebuild with no
-change and a clean build.
+`Generics::param_def_id_to_index` is an `FxHashMap`. `HashMap`'s `Encodable` writes it in
+iteration order, and `Decodable` collects it back in that order. In this example all three
+keys hash to the same home bucket of a 4-bucket table, so iteration order is insertion order
+rotated by one. Each time `generics_of` goes through the incremental cache, the map is
+rotated again, and the metadata encoder writes it in the rotated order. The encoded order
+cycles with period 3 over successive incremental rebuilds, which is exactly what a
+standalone program with `std` `HashMap` and `rustc_hash` 2.1.1 predicts.
 
-Apart from the 16-byte hash in the header, only a few bytes differ, and they
-are the same `(DefIndex, u32)` pairs in a different order:
-`Generics::param_def_id_to_index`, an `FxHashMap<DefId, u32>` that
-`TyEncodable` writes in iteration order. In the incremental session the
-`generics_of` result is loaded from the incremental cache. The likely
-mechanism, not verified: decoding builds the map by inserting in the
-encoded order, and with colliding hashes that gives a different layout,
-and so a different order, from the map rustc built in the first place. That fits
-what the reduction showed: whether it reproduces depends on unrelated items
-in the crate, which change the `DefId`s, and so the hashes.
+Adding a comment to the top of `lib.rs` changes the metadata of an incremental rebuild
+relative to a clean one for `either`, `smallvec`, `memchr` and `arrayvec`, and making the
+field an `FxIndexMap` removes the difference in all four. The same field is the cause given
+in [#163878](https://github.com/rust-lang/rust/issues/163878) under `-Zthreads`.
 
-The same field is the cause given in
-[#163878](https://github.com/rust-lang/rust/issues/163878), which reports
-it under `-Zthreads`. This is the same field with no threads at all, in an
-ordinary `cargo build` after an edit. It matters more than it might look:
-since [#154724](https://github.com/rust-lang/rust/pull/154724) the crate
-hash is computed from the metadata bytes, so an incremental build and a
-clean build of the same source get different crate hashes, and every
-dependent is rebuilt.
+### 2. String literals encoded twice
 
-`docs/hunt/generics-index-map.patch` changes the field to an `FxIndexMap`,
-which keeps insertion order through encoding and decoding. With it, the
-reduced case and nine of the ten edits give identical bytes. The
-single-threaded edit that still fails is finding 2.
+```rust
+#[inline] pub fn a() -> &'static str { "literal" }
+#[inline] pub fn b() -> &'static str { "literal" }   // then edited to `{ let s = "literal"; s }`
+```
 
-### 2. Hygiene data after an incremental rebuild
+String literals get their `AllocId` from `allocate_bytes_dedup`, so both bodies share one,
+and a clean build encodes the allocation once. In the rebuild, `a`'s MIR comes from the
+incremental cache, and decoding a memory allocation always reserves a fresh `AllocId`
+(`reserve_and_set_memory_alloc`). The metadata then encodes two allocations with identical
+bytes. It started with [#116707](https://github.com/rust-lang/rust/pull/116707), which gave
+`ConstValue::Slice` an `AllocId`: `nightly-2025-07-24` is not affected, `nightly-2025-07-26`
+is. No effect on generated code was found.
 
-With finding 1 fixed, adding a variant to an enum in `wide_core` and the
-matching arm in `wide_user` still gives `wide_user` different metadata from
-a clean build. The incremental one is 16 bytes longer.
-`docs/hunt/p6-expansions` has it reduced to two crates and the derive:
-about 60 lines of the library and 17 of the dependent.
-
-What mirth's record shows, comparing the incremental process with the
-clean one: the same tables are written, but only the incremental one, while
-encoding, resolves foreign expansions (`expn_hash_to_expn_id`) and reads
-foreign source files (`imported_source_file`, 150 times). So the
-incremental session's metadata carries expansion and span data that the
-clean session's does not. It needs the derive from the proc-macro crate:
-without `#[derive(Named)]` it goes away. But so does removing the built-in
-derives beside it, and, as with finding 1, removing unrelated items.
-
-Syntax contexts restored from the incremental cache are the place to look,
-near [#161450](https://github.com/rust-lang/rust/pull/161450), which
-changed how syntax contexts are encoded. This was not taken further.
+In the fixture, the two literals were the type name in `#[derive(Debug)]`'s `fmt` (which is
+`#[inline]`, so its MIR is encoded) and the same name in a `const` from the fixture's own
+derive. That is why removing either derive made it disappear. The first write-up of this
+finding blamed hygiene data, because the rebuild resolved foreign expansions while encoding;
+that was a side effect of decoding cached MIR, not the cause.
 
 ### 3. `impl Trait` in traits under `-Zthreads`
 
@@ -111,9 +106,8 @@ traits, so P5 under `-Zthreads=8` fails on `wide` every time, and on
 
 ## Not done
 
-- Neither new finding has been reported upstream. Before filing them,
-  check for duplicates again; #163878 especially is moving.
-- Finding 2 is not root-caused.
-- `fixtures/wide` fails `check.sh` (P5 under `-Zthreads=8`, finding 3) and
-  P6 for most edits (findings 1 and 2) until those are fixed. Its lists are
-  blessed against the unmodified compiler.
+- Neither new finding has been reported upstream. The drafts are ready; check #163878 again
+  before filing the first, since it touches the same field.
+- `fixtures/wide` fails `check.sh` (P5 under `-Zthreads=8`, finding 3) and P6 for most
+  edits (findings 1 and 2) until those are fixed. Its lists are blessed against the
+  unmodified compiler.

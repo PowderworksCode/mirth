@@ -1,0 +1,19 @@
+--- a/compiler/rustc_middle/src/mir/interpret/mod.rs
++++ b/compiler/rustc_middle/src/mir/interpret/mod.rs
+@@ -214,7 +214,15 @@
+                 trace!("creating memory alloc ID");
+                 let alloc = <ConstAllocation<'tcx> as Decodable<_>>::decode(decoder);
+                 trace!("decoded alloc {:?}", alloc);
+-                decoder.interner().reserve_and_set_memory_alloc(alloc)
++                // Immutable memory is deduplicated when it is created (string literals, for
++                // instance), so deduplicate it here too. Otherwise one allocation decoded
++                // from the incremental cache and the same one created afresh get two
++                // `AllocId`s, and metadata depends on which results came from the cache.
++                if alloc.inner().mutability.is_not() {
++                    decoder.interner().reserve_and_set_memory_dedup(alloc, CTFE_ALLOC_SALT)
++                } else {
++                    decoder.interner().reserve_and_set_memory_alloc(alloc)
++                }
+             }
+             AllocDiscriminant::Fn => {
+                 trace!("creating fn alloc ID");
