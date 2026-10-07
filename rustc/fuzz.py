@@ -58,6 +58,8 @@ p.add_argument("--toolchain", default="nightly-2026-10-06")
 p.add_argument("--rustflags", default="-Zincremental-verify-ich")
 p.add_argument("--seed", type=int, default=0)
 p.add_argument("--timeout", type=int, default=180, help="seconds before a build counts as hung")
+p.add_argument("--p5-builds", type=int, default=1,
+               help="clean builds made again when anything differs, to tell nondeterminism from P6")
 p.add_argument("--check", action="store_true",
                help="cargo check instead of cargo build: metadata only, no code or binaries")
 p.add_argument("--no-verify-reuse", action="store_true",
@@ -472,12 +474,16 @@ def worker(k):
             if differ or others:
                 # Build clean once more: if two clean builds differ, the difference is
                 # nondeterminism (P5), not incremental reuse.
-                shutil.rmtree(target)
-                again = build(src, target)
-                c = again["rmetas"]
-                p5 = sorted(r for r in set(b) | set(c) if b.get(r) != c.get(r))
-                p5 += [f"{k}: {v[0]}" for k, v in artifacts.compare(clean["art"], again["art"]).items()
-                       if k != "rmeta"]
+                p5 = []
+                for _ in range(args.p5_builds):
+                    shutil.rmtree(target)
+                    again = build(src, target)
+                    c = again["rmetas"]
+                    p5 = sorted(r for r in set(b) | set(c) if b.get(r) != c.get(r))
+                    p5 += [f"{k}: {v[0]}" for k, v in artifacts.compare(clean["art"], again["art"]).items()
+                           if k != "rmeta"]
+                    if p5 or not again["ok"]:
+                        break
                 if again["ok"] and p5:
                     report("P5", p5[:10], clean, again)
                     differ, others = [], {}
