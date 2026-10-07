@@ -77,6 +77,9 @@ frame lookup_deprecation_entry(dep)  decode tables.lookup_deprecation x1
 | P6 | an incremental rebuild after an edit to a fixture gives the same `.rmeta` bytes as a clean build | incremental bugs |
 | P7 | nothing is left in the target directory beyond the expected outputs | dangling files |
 
+[`motivating.md`](motivating.md) lists the real rustc bugs that violated each of these,
+each reproduced on a toolchain from before its fix.
+
 ## Edits that break it
 
 Each is a small patch to rustc's metadata code, of the kind a contributor

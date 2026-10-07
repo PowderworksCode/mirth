@@ -1,0 +1,13 @@
+$ toolchain nightly-2025-05-07
+compile-error.rs 2018 exit=101
+compile-error.rs 2024 exit=101
+run-error.rs 2018 exit=101
+run-error.rs 2024 exit=101
+rustdoctest9b2TYz
+rustdoctestdZtosn
+rustdoctesteK4t1v
+rustdoctesttT11Mx
+
+--- stderr ---
+
+exit 0

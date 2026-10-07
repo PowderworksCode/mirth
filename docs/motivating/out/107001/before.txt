@@ -1,0 +1,22 @@
+$ toolchain nightly-2023-04-21
+exit=1
+code.4fkn3jumrthh88oi.rcgu.o
+code.code.49928fca7798b8c0-cgu.0.rcgu.o
+code.code.49928fca7798b8c0-cgu.1.rcgu.o
+code.code.49928fca7798b8c0-cgu.2.rcgu.o
+code.code.49928fca7798b8c0-cgu.3.rcgu.o
+code.code.49928fca7798b8c0-cgu.4.rcgu.o
+
+--- stderr ---
+error: this operation will panic at runtime
+ --> code.rs:3:14
+  |
+3 |     let _x = a[9];
+  |              ^^^^ index out of bounds: the length is 5 but the index is 9
+  |
+  = note: `#[deny(unconditional_panic)]` on by default
+
+error: aborting due to previous error
+
+
+exit 0

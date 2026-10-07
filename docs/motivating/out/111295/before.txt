@@ -1,0 +1,6 @@
+$ toolchain nightly-2023-05-18
+print('hello!')
+
+--- stderr ---
+
+exit 0

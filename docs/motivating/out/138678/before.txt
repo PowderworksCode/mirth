@@ -1,0 +1,13 @@
+$ toolchain nightly-2025-03-28
+      1 5222c28142da99a8
+      1 5717d08526356af8
+      1 675e29a6aba0e847
+      1 7bbc9ca532eb4f24
+      1 8382fc8319ec3359
+      1 b0f39be99129acc7
+      1 cbaa0f7373d94da1
+      1 e52b42802cf07a85
+
+--- stderr ---
+
+exit 0

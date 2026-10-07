@@ -1,0 +1,7 @@
+$ toolchain nightly-2023-05-21
+foo.py in dep-info
+Natvis v2
+
+--- stderr ---
+
+exit 0

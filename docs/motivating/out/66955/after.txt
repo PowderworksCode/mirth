@@ -1,0 +1,9 @@
+$ toolchain nightly-2021-05-01
+after remap to /AAAA_first, rlib contains:
+      3 /AAAA_first
+after remap to /BBBB_second, rlib contains:
+      3 /BBBB_second
+
+--- stderr ---
+
+exit 0

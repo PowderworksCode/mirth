@@ -34,6 +34,7 @@ fixture, the third from fuzzing edits and replaying ten crates' git histories.
 - [`docs/hunt.md`](docs/hunt.md): bugs found in the unmodified compiler
 - [`docs/scale.md`](docs/scale.md): replaying crates' histories and fuzzing edits at scale
 - [`docs/properties.md`](docs/properties.md): checkable properties surveyed from 1,000 rustc bugs
+- [`docs/motivating.md`](docs/motivating.md): the real rustc bugs behind each property, each reproduced before and after its fix
 - [`docs/plan.md`](docs/plan.md): the plan the work followed, with the properties
 
 ## An instrumented compiler

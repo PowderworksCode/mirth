@@ -1,0 +1,7 @@
+$ toolchain nightly-2026-10-01
+non-incremental: 1 E0277 errors
+incremental:     4 E0277 errors
+
+--- stderr ---
+
+exit 0

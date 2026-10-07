@@ -1,0 +1,6 @@
+$ toolchain nightly-2026-07-20
+client1.rmeta client2.rmeta differ: byte 1256, line 7
+
+--- stderr ---
+
+exit 1

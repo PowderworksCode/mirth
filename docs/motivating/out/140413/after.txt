@@ -1,0 +1,6 @@
+$ toolchain nightly-2025-12-10
+     15 89679f9d1e5abdffc5e8140137da3a64  -
+
+--- stderr ---
+
+exit 0

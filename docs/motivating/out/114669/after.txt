@@ -1,0 +1,7 @@
+$ toolchain nightly-2025-07-06
+run1 inode=68412 links=2
+run2 inode=68412 links=2
+
+--- stderr ---
+
+exit 0
