@@ -80,3 +80,13 @@ RS
 r1=$("$rustc" --crate-type lib -Cincremental="$d/i11" --out-dir "$d/nl" "$d/nl/lib.rs" > /dev/null 2>&1; echo $?)
 r2=$("$rustc" --crate-type lib -Cincremental="$d/i12" --out-dir "$d/nl" "$d/nl/lib.rs" > /dev/null 2>&1; echo $?)
 if [ "$r1" = "$r2" ]; then echo same; else echo "DIFFER (the rebuild exits $r1, a clean build $r2)"; fi
+
+echo -n "inlined-alloc, -Zmir-opt-level=3 with debuginfo, a duplicated generic fn, incremental vs clean: "
+mkdir -p "$d/ia"
+printf 'pub fn first_n<const N: usize>(v: &[u8]) -> Option<[u8; N]> {\n    v.get(..N)?.try_into().ok()\n}\n' > "$d/ia/lib.rs"
+iaf="--edition 2021 --crate-type lib --crate-name x --emit=metadata,link -Zmir-opt-level=3 -Cdebuginfo=2"
+"$rustc" $iaf -Cincremental="$d/i13" --out-dir "$d/ia/o1" "$d/ia/lib.rs" 2> /dev/null
+printf 'pub fn first_m<const N: usize>(v: &[u8]) -> Option<[u8; N]> {\n    v.get(..N)?.try_into().ok()\n}\n' >> "$d/ia/lib.rs"
+"$rustc" $iaf -Cincremental="$d/i13" --out-dir "$d/ia/o1" "$d/ia/lib.rs" 2> /dev/null
+"$rustc" $iaf -Cincremental="$d/i14" --out-dir "$d/ia/o2" "$d/ia/lib.rs" 2> /dev/null
+cmp -s "$d/ia/o1/libx.rmeta" "$d/ia/o2/libx.rmeta" && echo same || echo DIFFER

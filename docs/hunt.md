@@ -31,6 +31,7 @@ with `-Zthreads=8`. `rustc/check.sh wide` runs the ordinary checks.
 | 5 | six untracked options change results incremental compilation reuses; with `-Zno-leak-check`, a rebuild accepts a program a clean build rejects | **looks new**; the first three found by a query written from a closed bug and an option audit ([`ur-queries.md`](ur-queries.md)), `-Zno-leak-check`, `-C extra-filename` and `-Zfuture-incompat-test` by reporting untracked reads ([`untracked-reads.md`](untracked-reads.md)); report drafted |
 | 6 | reused object code keeps the previous checksum of an edited source file in its debuginfo, and with `-Zembed-source` the previous file; with optimizations, ThinLTO symbol names then differ from a clean build | **looks new**; found by the fuzzer at `-Copt-level=2`; root cause found, since 1.44 (#69718); report drafted and a regression test (`hunt/tests/incr-debuginfo-embedded-source`, failing: no fix) |
 | 7 | warnings from inline assembly are not shown again when an incremental rebuild reuses the codegen unit | **looks new**; found while checking reused codegen units ([`shadow-mode.md`](shadow-mode.md)); on 1.60.0 through the nightly; report drafted ([draft](hunt/issue-asm-warnings-reused-cgu.md)) and a regression test (`hunt/tests/incr-asm-warning-reused`, failing: no fix) |
+| 8 | with `-Zmir-opt-level=3` and debuginfo, an incremental rebuild encodes an allocation twice where a clean build encodes it once | **looks new**; found by the fuzzer at `-Zmir-opt-level=4` and named by the reuse check, reduced to three lines; on 1.60.0 through the nightly; report drafted ([draft](hunt/issue-inlined-alloc-identity.md)), no fix |
 
 Findings 1 and 2 are single-threaded: an ordinary `cargo build`, an edit, another
 `cargo build`, and the metadata differs from a clean build of the edited source. Both come
@@ -39,7 +40,7 @@ incremental cache unchanged. All three reproduce with the official `nightly-2026
 without mirth: `docs/hunt/repro.sh` runs them. None was searched for: P5 and P6 reported
 them on the first run of the new fixture.
 
-Draft bug reports for 1, 2, 4, 5, 6 and 7, written to be filed upstream, are
+Draft bug reports for 1, 2, 4, 5, 6, 7 and 8, written to be filed upstream, are
 [`hunt/issue-generics-order.md`](hunt/issue-generics-order.md),
 [`hunt/issue-literal-dedup.md`](hunt/issue-literal-dedup.md) and
 [`hunt/issue-stale-metadata-reuse.md`](hunt/issue-stale-metadata-reuse.md) and
