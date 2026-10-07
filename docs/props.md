@@ -38,7 +38,8 @@ miscompilation.
 
 2,239 tests, none differing; `fixtures/sink`'s 60 runtime checks pass at both levels with
 identical output. (Doctests fail at both levels alike: Cargo runs the toolchain's `rustdoc`,
-which cannot read the instrumented compiler's libraries.)
+which cannot find the crates the instrumented compiler built, `error[E0463]`. So do the
+`trybuild` compile-fail suites, which compare diagnostics with recorded text.)
 
 ## The old and new trait solvers
 
