@@ -1,0 +1,46 @@
+# 130201-by-move-body
+
+== clean build
+mirth: cargo failed (exit status: 101); see /home/exedev/mirth-work/rust/build/mirth-work/chain/a.record/stderr
+warning: use of deprecated function `base::old_clamp`: use `clamp`
+  --> src/main.rs:28:25
+   |
+28 |     let clamped = base::old_clamp(250);
+   |                         ^^^^^^^^^
+   |
+   = note: `#[warn(deprecated)]` on by default
+
+
+thread 'rustc' (392895) panicked at compiler/rustc_metadata/src/rmeta/decoder/cstore_impl.rs:230:1:
+DefId(20:17 ~ base[f922]::greeter::{closure#0}::{closure#0}) does not have a "coroutine_by_move_body_def_id"
+stack backtrace:
+   0:     0x7f8015617611 - <<std[f097bc1422754316]::sys::backtrace::BacktraceLock>::print::DisplayBacktrace as core[fd4243e10de856d2]::fmt::Display>::fmt
+   1:     0x7f801565f86a - core[fd4243e10de856d2]::fmt::write
+   2:     0x7f801562a84c - <std[f097bc1422754316]::sys::stdio::unix::Stderr as core[fd4243e10de856d2]::io::write::Write>::write_fmt
+   3:     0x7f80155df626 - std[f097bc1422754316]::panicking::default_hook::{closure#0}
+   4:     0x7f8015607991 - std[f097bc1422754316]::panicking::default_hook
+   5:     0x7f80114a9af4 - <alloc[9a3cc8629af471e6]::boxed::Box<rustc_driver_impl[a621a4c5befe0437]::install_ice_hook::{closure#1}> as core[fd4243e10de856d2]::ops::function::Fn<(&dyn for<'a, 'b> core[fd4243e10de856d2]::ops::function::Fn<(&'a std[f097bc1422754316]::panic::PanicHookInfo<'b>,), Output = ()> + core[fd4243e10de856d2]::marker::Sync + core[fd4243e10de856d2]::marker::Send, &std[f097bc1422754316]::panic::PanicHookInfo)>>::call
+   6:     0x7f8015607cf2 - std[f097bc1422754316]::panicking::panic_with_hook
+   7:     0x7f80155df6d2 - std[f097bc1422754316]::panicking::panic_handler::{closure#0}
+   8:     0x7f80155d78a9 - std[f097bc1422754316]::sys::backtrace::__rust_end_short_backtrace::<std[f097bc1422754316]::panicking::panic_handler::{closure#0}, !>
+   9:     0x7f80155e11bd - __rustc[e66452c6972d9e87]::rust_begin_unwind
+  10:     0x7f80156602fc - core[fd4243e10de856d2]::panicking::panic_fmt
+  11:     0x7f8014617d36 - rustc_metadata[8a0c1f1c6fb8292e]::rmeta::decoder::cstore_impl::provide_extern::coroutine_by_move_body_def_id::{closure#1}
+  12:     0x7f801463041c - rustc_metadata[8a0c1f1c6fb8292e]::rmeta::decoder::cstore_impl::provide_extern::coroutine_by_move_body_def_id
+  13:     0x7f8013992a1d - rustc_query_impl[96a446c2991a686e]::query_vtables::coroutine_by_move_body_def_id::invoke_provider_fn::__rust_begin_short_backtrace
+  14:     0x7f80137ba556 - <std[f097bc1422754316]::thread::local::LocalKey<core[fd4243e10de856d2]::cell::Cell<*const ()>>>::with::<rustc_middle[88b9f6a3502ffb4d]::ty::context::tls::enter_context<rustc_query_impl[96a446c2991a686e]::execution::execute_job_incr<rustc_middle[88b9f6a3502ffb4d]::query::caches::DefIdCache<rustc_middle[88b9f6a3502ffb4d]::query::erase::ErasedData<[u8; 8usize]>>>::{closure#1}, (rustc_middle[88b9f6a3502ffb4d]::query::erase::ErasedData<[u8; 8usize]>, rustc_middle[88b9f6a3502ffb4d]::dep_graph::graph::DepNodeIndex)>::{closure#0}, (rustc_middle[88b9f6a3502ffb4d]::query::erase::ErasedData<[u8; 8usize]>, rustc_middle[88b9f6a3502ffb4d]::dep_graph::graph::DepNodeIndex)>
+  15:     0x7f80137177a3 - rustc_query_impl[96a446c2991a686e]::execution::try_execute_query::<rustc_middle[88b9f6a3502ffb4d]::query::caches::DefIdCache<rustc_middle[88b9f6a3502ffb4d]::query::erase::ErasedData<[u8; 8usize]>>, true>
+  16:     0x7f8013aa25bc - rustc_query_impl[96a446c2991a686e]::query_vtables::coroutine_by_move_body_def_id::execute_query_incr::__rust_end_short_backtrace
+  17:     0x7f8014c48f0f - <rustc_middle[88b9f6a3502ffb4d]::ty::context::TyCtxt>::coroutine_layout
+  18:     0x7f8011a0582c - rustc_ty_utils[1f4b2f2f7b3dc994]::layout::layout_of
+  19:     0x7f8013a0eab3 - rustc_query_impl[96a446c2991a686e]::query_vtables::layout_of::invoke_provider_fn::__rust_begin_short_backtrace
+  20:     0x7f80137bfae0 - <std[f097bc1422754316]::thread::local::LocalKey<core[fd4243e10de856d2]::cell::Cell<*const ()>>>::with::<rustc_middle[88b9f6a3502ffb4d]::ty::context::tls::enter_context<rustc_query_impl[96a446c2991a686e]::execution::execute_job_incr<rustc_middle[88b9f6a3502ffb4d]::query::caches::DefaultCache<rustc_middle[88b9f6a3502ffb4d]::ty::PseudoCanonicalInput<rustc_middle[88b9f6a3502ffb4d]::ty::Ty>, rustc_middle[88b9f6a3502ffb4d]::query::erase::ErasedData<[u8; 16usize]>>>::{closure#1}, (rustc_middle[88b9f6a3502ffb4d]::query::erase::ErasedData<[u8; 16usize]>, rustc_middle[88b9f6a3502ffb4d]::dep_graph::graph::DepNodeIndex)>::{closure#0}, (rustc_middle[88b9f6a3502ffb4d]::query::erase::ErasedData<[u8; 16usize]>, rustc_middle[88b9f6a3502ffb4d]::dep_graph::graph::DepNodeIndex)>
+  21:     0x7f801372a206 - rustc_query_impl[96a446c2991a686e]::execution::try_execute_query::<rustc_middle[88b9f6a3502ffb4d]::query::caches::DefaultCache<rustc_middle[88b9f6a3502ffb4d]::ty::PseudoCanonicalInput<rustc_middle[88b9f6a3502ffb4d]::ty::Ty>, rustc_middle[88b9f6a3502ffb4d]::query::erase::ErasedData<[u8; 16usize]>>, true>
+  22:     0x7f8013aa3c20 - rustc_query_impl[96a446c2991a686e]::query_vtables::layout_of::execute_query_incr::__rust_end_short_backtrace
+  23:     0x7f80119b6ce7 - <rustc_middle[88b9f6a3502ffb4d]::ty::layout::LayoutCx as rustc_middle[88b9f6a3502ffb4d]::ty::layout::LayoutOf>::spanned_layout_of
+  24:     0x7f8011a3cbf9 - <alloc[9a3cc8629af471e6]::vec::Vec<rustc_abi[8681daa010dc675e]::layout::ty::TyAndLayout<rustc_middle[88b9f6a3502ffb4d]::ty::Ty>> as alloc[9a3cc8629af471e6]::vec::spec_from_iter::SpecFromIter<rustc_abi[8681daa010dc675e]::layout::ty::TyAndLayout<rustc_middle[88b9f6a3502ffb4d]::ty::Ty>, core[fd4243e10de856d2]::iter::adapters::GenericShunt<core[fd4243e10de856d2]::iter::adapters::by_ref_sized::ByRefSized<core[fd4243e10de856d2]::iter::adapters::map::Map<core[fd4243e10de856d2]::slice::iter::Iter<rustc_middle[88b9f6a3502ffb4d]::ty::FieldDef>, rustc_ty_utils[1f4b2f2f7b3dc994]::layout::layout_of_uncached::{closure#20}::{closure#0}>>, core[fd4243e10de856d2]::result::Result<!, &rustc_middle[88b9f6a3502ffb4d]::ty::layout::LayoutError>>>>::from_iter
+  25:     0x7f8011a3c4f6 - <alloc[9a3cc8629af471e6]::vec::Vec<rustc_index[5fcbab7e3c37918]::vec::IndexVec<rustc_abi[8681daa010dc675e]::layout::FieldIdx, rustc_abi[8681daa010dc675e]::layout::ty::TyAndLayout<rustc_middle[88b9f6a3502ffb4d]::ty::Ty>>> as alloc[9a3cc8629af471e6]::vec::spec_from_iter::SpecFromIter<rustc_index[5fcbab7e3c37918]::vec::IndexVec<rustc_abi[8681daa010dc675e]::layout::FieldIdx, rustc_abi[8681daa010dc675e]::layout::ty::TyAndLayout<rustc_middle[88b9f6a3502ffb4d]::ty::Ty>>, core[fd4243e10de856d2]::iter::adapters::GenericShunt<core[fd4243e10de856d2]::iter::adapters::by_ref_sized::ByRefSized<core[fd4243e10de856d2]::iter::adapters::map::Map<core[fd4243e10de856d2]::slice::iter::Iter<rustc_middle[88b9f6a3502ffb4d]::ty::VariantDef>, rustc_ty_utils[1f4b2f2f7b3dc994]::layout::layout_of_uncached::{closure#20}>>, core[fd4243e10de856d2]::result::Result<!, &rustc_middle[88b9f6a3502ffb4d]::ty::layout::LayoutError>>>>::from_iter
+  26:     0x7f8011a1c625 - core[fd4243e10de856d2]::iter::adapters::try_process::<core[fd4243e10de856d2]::iter::adapters::by_ref_sized::ByRefSized<core[fd4243e10de856d2]::iter::adapters::map::Map<core[fd4243e10de856d2]::slice::iter::Iter<rustc_middle[88b9f6a3502ffb4d]::ty::VariantDef>, rustc_ty_utils[1f4b2f2f7b3dc994]::layout::layout_of_uncached::{closure#20}>>, rustc_index[5fcbab7e3c37918]::vec::IndexVec<rustc_abi[8681daa010dc675e]::layout::FieldIdx, rustc_abi[8681daa010dc675e]::layout::ty::TyAndLayout<rustc_middle[88b9f6a3502ffb4d]::ty::Ty>>, core[fd4243e10de856d2]::result::Result<!, &rustc_middle[88b9f6a3502ffb4d]::ty::layout::LayoutError>, <core[fd4243e10de856d2]::iter::adapters::map::Map<core[fd4243e10de856d2]::slice::iter::Iter<rustc_middle[88b9f6a3502ffb4d]::ty::VariantDef>, rustc_ty_utils[1f4b2f2f7b3dc994]::layout::layout_of_uncached::{closure#20}> as core[fd4243e10de856d2]::iter::traits::iterator::Iterator>::try_collect<rustc_index[5fcbab7e3c37918]::vec::IndexVec<rustc_abi[8681daa010dc675e]::layout::VariantIdx, rustc_index[5fcbab7e3c37918]::vec::IndexVec<rustc_abi[8681daa010dc675e]::layout::FieldIdx, rustc_abi[8681daa010dc675e]::layout::ty::TyAndLayout<rustc_middle[88b9f6a3502ffb4d]::ty::Ty>>>>::{closure#0}, rustc_index[5fcbab7e3c37918]::vec::IndexVec<rustc_abi[8681daa010dc675e]::layout::VariantIdx, rustc_index[5fcbab7e3c37918]::vec::IndexVec<rustc_abi[8681daa010dc675e]::layout::FieldIdx, rustc_abi[8681daa010dc675e]::layout::ty::TyAndLayout<rustc_middle[88b9f6a3502ffb4d]::ty::Ty>>>>
+  27:     0x7f8011a052f8 - rustc_ty_utils[1f4b2f2f7b3dc994]::layout::layout_of
+check.sh exit 1
+

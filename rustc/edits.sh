@@ -6,7 +6,8 @@
 #
 #   rustc/edits.sh [fixture] [edit…]
 #
-# SUITES=0 skips rustc's own tests.
+# SUITES=0 skips rustc's own tests. EDITS=regressions takes the patches from
+# rustc/regressions instead, and writes to docs/regressions.
 set -uo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/.." && pwd)
@@ -14,22 +15,23 @@ repo=$(cd "$here/.." && pwd)
 fixture=${1:-chain}
 shift || true
 edits=("$@")
+kind=${EDITS:-edits}
 if [ ${#edits[@]} -eq 0 ]; then
   edits=(none)
-  for patch in "$here"/edits/*.patch; do edits+=("$(basename "$patch" .patch)"); done
+  for patch in "$here/$kind"/*.patch; do edits+=("$(basename "$patch" .patch)"); done
 fi
-mkdir -p "$repo/docs/edits"
+mkdir -p "$repo/docs/$kind"
 
 restore() {
-  git -C "$MIRTH_RUST" checkout -q -- compiler library
+  git -C "$MIRTH_RUST" checkout -q -- compiler library Cargo.lock
 }
 trap restore EXIT
 
 for edit in "${edits[@]}"; do
   echo "== $edit"
   restore
-  [ "$edit" = none ] || git -C "$MIRTH_RUST" apply "$here/edits/$edit.patch"
-  out=$repo/docs/edits/$edit.txt
+  [ "$edit" = none ] || git -C "$MIRTH_RUST" apply "$here/$kind/$edit.patch"
+  out=$repo/docs/$kind/$edit.txt
   {
     echo "# $edit"
     echo

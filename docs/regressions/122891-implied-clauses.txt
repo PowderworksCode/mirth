@@ -1,0 +1,141 @@
+# 122891-implied-clauses
+
+== clean build
+--- /home/exedev/mirth/tests/rmeta/chain.txt
++++ this build
+@@
+       35    19 items    19 tracked               <sysroot>          defined_lang_items
+        7     7 items     7 tracked               <sysroot>          diagnostic_items
+      372   160 items   160 tracked               <sysroot>          explicit_clauses_of
+-      67    37 items    37 tracked               <sysroot>          explicit_implied_clauses_of
++     103    37 items    37 tracked               <sysroot>          explicit_implied_clauses_of
+        6     5 items     5 tracked               <sysroot>          explicit_implied_const_bounds
+        4     2 items     2 tracked               <sysroot>          explicit_item_bounds
+        4     2 items     2 tracked               <sysroot>          explicit_item_self_bounds
+-      20    11 items    11 tracked               <sysroot>          explicit_super_clauses_of
++      71    39 items    39 tracked               <sysroot>          explicit_super_clauses_of
+       28    14 items    14 tracked               <sysroot>          expn_that_defined
+        3     3 items     3 tracked               <sysroot>          exportable_items
+       21    19 items    19 tracked               <sysroot>          exported_generic_symbols
+@@
+        1     1 items     1 tracked               base               defined_lang_items
+        1     1 items     1 tracked               base               diagnostic_items
+       36    18 items    18 tracked   18 written  base               explicit_clauses_of
+-       4     2 items     2 tracked    2 written  base               explicit_implied_clauses_of
++       6     2 items     2 tracked               base               explicit_implied_clauses_of
+        4     2 items     2 tracked    2 written  base               explicit_item_bounds
+       22     2 items     2 tracked    2 written  base               explicit_item_self_bounds
++       4     2 items     2 tracked    2 written  base               explicit_super_clauses_of
+        4     2 items     2 tracked    2 written  base               expn_that_defined
+        1     1 items     1 tracked               base               exportable_items
+        1     1 items     1 tracked               base               exported_generic_symbols
+@@
+       10     5 items     5 tracked    5 written  mid                visibility
+ read outside a query
+       87  CrateMetadata::def_kind                            in -
+-   88547  CrateMetadata::def_path_hash                       in -
++   88537  CrateMetadata::def_path_hash                       in -
+      144  CrateMetadata::get_expn_that_defined               in -
+        6  CrateMetadata::get_item_attrs                      in -
+        9  CrateMetadata::get_macro                           in -
+@@
+        2     2 items  record_array!(self.tables.module_children_non_reexports[def_id] <- module_children.iter().map(|child| child.res.def_id().index))
+       19    19 items  record_array!(self.tables.variances_of[def_id] <- v)
+        2     1 items  record_defaulted_array!(self.tables.ambig_module_children[def_id] <- ambig_module_children)
+-       2     2 items  record_defaulted_array!(self.tables.explicit_implied_clauses_of[def_id] <- self.tcx.explicit_implied_clauses_of(def_id).skip_binder())
+        4     4 items  record_defaulted_array!(self.tables.explicit_item_bounds[def_id] <- bounds)
+        4     4 items  record_defaulted_array!(self.tables.explicit_item_self_bounds[def_id] <- bounds)
+        2     2 items  record_defaulted_array!(self.tables.explicit_super_clauses_of[def_id] <- self.tcx.explicit_super_clauses_of(def_id).skip_binder())
+@@
+       35    19 items    19 tracked               <sysroot>          defined_lang_items
+        7     7 items     7 tracked               <sysroot>          diagnostic_items
+      426   198 items   198 tracked               <sysroot>          explicit_clauses_of
+-      63    34 items    34 tracked               <sysroot>          explicit_implied_clauses_of
++      88    34 items    34 tracked               <sysroot>          explicit_implied_clauses_of
+        9     6 items     6 tracked               <sysroot>          explicit_implied_const_bounds
+        2     1 items     1 tracked               <sysroot>          explicit_item_bounds
+        2     1 items     1 tracked               <sysroot>          explicit_item_self_bounds
+-      19    11 items    11 tracked               <sysroot>          explicit_super_clauses_of
++      63    34 items    34 tracked               <sysroot>          explicit_super_clauses_of
+       28    12 items    12 tracked               <sysroot>          expn_that_defined
+        2     2 items     2 tracked               <sysroot>          exportable_items
+       20    18 items    18 tracked               <sysroot>          exported_generic_symbols
+@@
+        5     0 items     0 tracked               ?                  crate_incoherent_impls
+ read outside a query
+      148  CrateMetadata::def_kind                            in -
+-   43229  CrateMetadata::def_path_hash                       in -
++   43223  CrateMetadata::def_path_hash                       in -
+      144  CrateMetadata::get_expn_that_defined               in -
+       14  CrateMetadata::get_item_attrs                      in -
+       21  CrateMetadata::get_macro                           in -
+@@
+       37  MetadataBlob::get_root                             in CStore::register_crate
+       38  MetadataBlob::get_root_unhashed                    in CStore::register_crate
+       43  new::{closure#1}                                   in CStore::register_crate
+-    5749  CrateMetadata::def_path_hash                       in encoder::encode_metadata
++    5744  CrateMetadata::def_path_hash                       in encoder::encode_metadata
+      128  def_key::{closure#0}                               in encoder::encode_metadata
+ 
+ == mid (lib) emit dep-info,metadata,link ==
+@@
+       35    19 items    19 tracked               <sysroot>          defined_lang_items
+        7     7 items     7 tracked               <sysroot>          diagnostic_items
+       58    26 items    26 tracked               <sysroot>          explicit_clauses_of
+-      27    13 items    13 tracked               <sysroot>          explicit_implied_clauses_of
++      39    13 items    13 tracked               <sysroot>          explicit_implied_clauses_of
+        2     2 items     2 tracked               <sysroot>          explicit_implied_const_bounds
++      27    13 items    13 tracked               <sysroot>          explicit_super_clauses_of
+       10     3 items     3 tracked               <sysroot>          expn_that_defined
+        1     1 items     1 tracked               <sysroot>          exportable_items
+        1     1 items     1 tracked               <sysroot>          exported_non_generic_symbols
+@@
+        1     1 items     1 tracked               base               defined_lang_items
+        1     1 items     1 tracked               base               diagnostic_items
+        8     4 items     4 tracked    4 written  base               explicit_clauses_of
+-       2     1 items     1 tracked    1 written  base               explicit_implied_clauses_of
++       3     1 items     1 tracked               base               explicit_implied_clauses_of
++       2     1 items     1 tracked    1 written  base               explicit_super_clauses_of
+        1     1 items     1 tracked               base               exportable_items
+        1     1 items     1 tracked               base               exported_non_generic_symbols
+        1     1 items     1 tracked               base               externally_implementable_items
+mirth: the record differs from /home/exedev/mirth/tests/rmeta/chain.txt; rerun with --bless to accept it
+P1 P2 P4 P7 hold
+== P5: a second clean build
+P5 holds: 2 .rmeta files identical
+== P5 under the parallel front end (-Zthreads=8)
+P5 holds with -Zthreads=8: 2 .rmeta files identical
+== an incremental rebuild after touching every source file
+--- /home/exedev/mirth/tests/rmeta/chain.touch.txt
++++ this build
+@@
+       19    19 items    19 tracked               <sysroot>          defined_lang_items
+        7     7 items     7 tracked               <sysroot>          diagnostic_items
+        6     2 items     2 tracked               <sysroot>          explicit_clauses_of
+-       7     3 items     3 tracked               <sysroot>          explicit_implied_clauses_of
++       8     3 items     3 tracked               <sysroot>          explicit_implied_clauses_of
++       7     3 items     3 tracked               <sysroot>          explicit_super_clauses_of
+        1     1 items     1 tracked               <sysroot>          exportable_items
+       21    19 items    19 tracked               <sysroot>          exported_generic_symbols
+       19    19 items    19 tracked               <sysroot>          exported_non_generic_symbols
+@@
+       19    19 items    19 tracked               <sysroot>          defined_lang_items
+        7     7 items     7 tracked               <sysroot>          diagnostic_items
+        6     3 items     3 tracked               <sysroot>          explicit_clauses_of
+-       5     3 items     3 tracked               <sysroot>          explicit_implied_clauses_of
++       9     3 items     3 tracked               <sysroot>          explicit_implied_clauses_of
++       5     3 items     3 tracked               <sysroot>          explicit_super_clauses_of
+       28    14 items    14 tracked               <sysroot>          generics_of
+        8     4 items     4 tracked               <sysroot>          impl_trait_header
+       15    15 items    15 tracked               <sysroot>          implementations_of_trait
+mirth: the record differs from /home/exedev/mirth/tests/rmeta/chain.touch.txt; rerun with --bless to accept it
+== P6: an incremental rebuild after an edit
+P6 holds: incremental and clean .rmeta files identical
+check.sh exit 1
+
+existing tests (tests/incremental; tests/ui/{deprecation,crate-loading,rmeta,extern,cross-crate};
+43 metadata-related tests/run-make):
+  test result: ok. 180 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+  test result: ok. 532 passed; 0 failed; 6 ignored; 0 measured; 21985 filtered out
+  test result: ok. 46 passed; 0 failed; 0 ignored; 0 measured; 497 filtered out
+suites.sh exit 0

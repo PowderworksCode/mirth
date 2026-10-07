@@ -1,0 +1,20 @@
+--- a/compiler/rustc_attr_ir/src/encode_cross_crate.rs
++++ b/compiler/rustc_attr_ir/src/encode_cross_crate.rs
+@@ -56,7 +56,7 @@
+             Link(..) => No,
+             LinkName { .. } => Yes, // Needed for rustdoc
+             LinkOrdinal { .. } => No,
+-            LinkSection { .. } => Yes, // Needed for rustdoc
++            LinkSection { .. } => No,
+             Linkage(..) => No,
+             LoopMatch(..) => No,
+             MacroEscape => No,
+@@ -75,7 +75,7 @@
+             NoImplicitPrelude => No,
+             NoLink => No,
+             NoMain => No,
+-            NoMangle(..) => Yes, // Needed for rustdoc
++            NoMangle(..) => No,
+             NoStd => No,
+             NonExhaustive(..) => Yes, // Needed for rustdoc
+             OnConst { .. } => Yes,

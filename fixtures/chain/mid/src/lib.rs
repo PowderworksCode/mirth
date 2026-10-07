@@ -18,6 +18,17 @@ impl Shape for Rectangle {
 /// that constant does.
 pub type Buffer = [u8; base::LIMIT as usize];
 
+/// Sums the areas. See [`Shape`].
+///
+/// The reference definitions below are not used by any link: rustc resolves
+/// them anyway, and their order once reached the metadata (#138678).
+///
+/// [a]: base::clamp
+/// [b]: base::largest
+/// [c]: base::LIMIT
+/// [d]: base::Square
+/// [e]: crate::Rectangle
+/// [f]: crate::Buffer
 pub fn total<T: Shape>(shapes: &[T]) -> u32 {
     shapes.iter().map(Shape::area).sum()
 }

@@ -19,8 +19,13 @@ Seven plausible edits to rustc's metadata code were each built into the
 instrumented compiler and checked. mirth catches all seven; rustc's own
 metadata-related tests catch three.
 
+Seven real bugs from rustc's history were then replayed by reverting their
+fixes. mirth catches five; three of those needed a fixture addition or a
+new step, made knowing the bug.
+
 - [`docs/report.md`](docs/report.md): the experiment, for readers new to it
 - [`docs/results.md`](docs/results.md): each edit and the output that caught it
+- [`docs/regressions.md`](docs/regressions.md): the replayed bugs, caught and missed
 - [`docs/plan.md`](docs/plan.md): the plan the work followed, with the properties
 
 ## An instrumented compiler
@@ -33,6 +38,7 @@ rustc/setup.sh                        # fetch the pinned commit, configure boots
 rustc/build.sh                        # build stage 1 through mirth-watch, then its std
 rustc/check.sh chain                  # check fixtures/chain
 rustc/edits.sh chain                  # apply, check and revert each edit in rustc/edits
+EDITS=regressions rustc/edits.sh chain  # the same for the past bugs in rustc/regressions
 ```
 
 The build takes about an hour on 16 cores. `rustc/rmeta.toml` says what is
@@ -49,6 +55,10 @@ then:
   list in `tests/rmeta/<fixture>.txt`; `--bless` accepts a changed list;
 - runs `mirth check` for P1, P2, P4 and P7;
 - builds again and compares every published `.rmeta` byte for byte (P5);
+- does the same for two builds with `-Zthreads=8`;
+- rebuilds incrementally after touching every source file, and compares
+  what each process did with `tests/rmeta/<fixture>.touch.txt`: metadata
+  should be reused from the incremental cache, not encoded again;
 - applies `fixtures/<fixture>/edit`, rebuilds incrementally, and compares
   with a clean build of the edited source (P6).
 

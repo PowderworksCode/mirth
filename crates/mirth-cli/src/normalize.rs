@@ -8,6 +8,7 @@ pub struct Normalize {
     hash: Regex,
     hash_directory: Regex,
     random: Regex,
+    session: Regex,
 }
 
 impl Normalize {
@@ -22,6 +23,8 @@ impl Normalize {
             hash: Regex::new(r"-[0-9a-f]{16}\b").expect("a pattern"),
             hash_directory: Regex::new(r"/[0-9a-f]{16}/").expect("a pattern"),
             random: Regex::new(r"(^|/)(rmeta|rustc|\.tmp)[A-Za-z0-9]{6}").expect("a pattern"),
+            session: Regex::new(r"/incremental/([A-Za-z0-9_]+)-[a-z0-9]{8,20}/s-[A-Za-z0-9]+-[A-Za-z0-9]+-[A-Za-z0-9]+(-working)?/")
+                .expect("a pattern"),
         }
     }
 
@@ -35,6 +38,7 @@ impl Normalize {
             }
         }
         let text = self.hash.replace_all(&text, "-#");
+        let text = self.session.replace_all(&text, "/incremental/$1-#/s-*$2/");
         let text = self.hash_directory.replace_all(&text, "/#/");
         self.random.replace_all(&text, "$1$2*").into_owned()
     }
@@ -63,6 +67,12 @@ mod tests {
                 "/work/p/target/debug/build/base/e2ac2a45747a0cc6/out/.tmphvI0ZT.temp-archive"
             ),
             "target/debug/build/base/#/out/.tmp*.temp-archive"
+        );
+        assert_eq!(
+            normalize.path(
+                "/work/p/target/debug/incremental/base-3se3me7pu8ess/s-hmyrlhsifz-1yrw8tl-5gd9hf5lcjwc08vpf55f0lni9/metadata.rmeta"
+            ),
+            "target/debug/incremental/base-#/s-*/metadata.rmeta"
         );
         assert_eq!(normalize.path("/elsewhere/x"), "/elsewhere/x");
     }

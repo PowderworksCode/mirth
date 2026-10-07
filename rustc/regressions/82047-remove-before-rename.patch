@@ -1,0 +1,10 @@
+--- a/compiler/rustc_metadata/src/fs.rs
++++ b/compiler/rustc_metadata/src/fs.rs
+@@ -131,7 +131,6 @@
+ /// The cost of an extra syscall is much lower than getting descheduled for the sync IO.
+ #[cfg(target_os = "linux")]
+ pub fn non_durable_rename(src: &Path, dst: &Path) -> std::io::Result<()> {
+-    let _ = std::fs::remove_file(dst);
+     std::fs::rename(src, dst)
+ }
+ 

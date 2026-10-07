@@ -1,0 +1,304 @@
+== app (bin) emit dep-info,link ==
+files
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd-#.rmeta in -
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd_detect-#.rmeta in -
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libcore-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/liballoc-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libcompiler_builtins-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/liblibc-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/librustc_std_workspace_core-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libunwind-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libminiz_oxide-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libadler2-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libhashbrown-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/librustc_std_workspace_alloc-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd_detect-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/librustc_demangle-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libcfg_if-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libaddr2line-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libgimli-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libobject-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libmemchr-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libpanic_unwind-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd-#.rmeta in -
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd_detect-#.rmeta in -
+  open           target/debug/build/base/#/out/libbase-#.rmeta in -
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd-#.rmeta in -
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd_detect-#.rmeta in -
+  open           target/debug/build/base/#/out/libbase-#.rmeta in -
+  open           target/debug/build/mid/#/out/libmid-#.rmeta in -
+  create         target/debug/build/app/#/out/rmeta*      in fs::encode_and_write_metadata
+  create         target/debug/build/app/#/out/rmeta*/full.rmeta in fs::encode_and_write_metadata
+  open           target/debug/build/app/#/out/rmeta*/full.rmeta in fs::encode_and_write_metadata
+  remove_dir_all target/debug/build/app/#/out/rmeta*      in fs::encode_and_write_metadata
+  create         target/debug/build/app/#/out/rustc*      in -
+  remove_dir_all target/debug/build/app/#/out/rustc*      in -
+read through queries: reads, items, items whose query recorded a dependency on the crate, entries the writer wrote
+       6     2 items     2 tracked               <sysroot>          attrs_for_def
+      19    19 items    19 tracked               <sysroot>          canonical_symbols
+     128    64 items    64 tracked               <sysroot>          codegen_fn_attrs
+      45    45 items    45 tracked               <sysroot>          cross_crate_inlinable
+      19    19 items    19 tracked               <sysroot>          debugger_visualizers
+     132   132 items   132 tracked               <sysroot>          def_kind
+       1     1 items     1 tracked               <sysroot>          defaultness
+      19    19 items    19 tracked               <sysroot>          defined_lang_items
+       7     7 items     7 tracked               <sysroot>          diagnostic_items
+       6     2 items     2 tracked               <sysroot>          explicit_clauses_of
+       7     3 items     3 tracked               <sysroot>          explicit_implied_clauses_of
+       1     1 items     1 tracked               <sysroot>          exportable_items
+      21    19 items    19 tracked               <sysroot>          exported_generic_symbols
+      19    19 items    19 tracked               <sysroot>          exported_non_generic_symbols
+      46    22 items    22 tracked               <sysroot>          generics_of
+      20    10 items    10 tracked               <sysroot>          impl_trait_header
+       1     1 items     1 tracked               <sysroot>          implementations_of_trait
+       2     2 items     2 tracked               <sysroot>          inferred_outlives_of
+       1     1 items     1 tracked               <sysroot>          intrinsic_raw
+      19    19 items    19 tracked               <sysroot>          missing_lang_items
+    3402    43 items    43 tracked               <sysroot>          module_children
+      23    19 items    19 tracked               <sysroot>          native_libraries
+       2     1 items     1 tracked               <sysroot>          trait_def
+      36    18 items    18 tracked               <sysroot>          type_of
+     136    68 items    68 tracked               <sysroot>          visibility
+      11     5 items     5 tracked               base               attrs_for_def
+       1     1 items     1 tracked               base               canonical_symbols
+      12     6 items     6 tracked               base               codegen_fn_attrs
+       5     5 items     5 tracked               base               cross_crate_inlinable
+       1     1 items     1 tracked               base               debugger_visualizers
+      11    11 items    11 tracked               base               def_kind
+       1     1 items     1 tracked               base               defined_lang_items
+       1     1 items     1 tracked               base               diagnostic_items
+       1     1 items     1 tracked               base               exported_generic_symbols
+       1     1 items     1 tracked               base               exported_non_generic_symbols
+       2     1 items     1 tracked               base               fn_sig
+       2     1 items     1 tracked               base               generics_of
+       1     1 items     1 tracked               base               missing_lang_items
+     107     3 items     3 tracked               base               module_children
+       1     1 items     1 tracked               base               native_libraries
+       2     1 items     1 tracked               base               type_of
+       6     3 items     3 tracked               base               visibility
+       2     1 items     1 tracked               mid                attrs_for_def
+       1     1 items     1 tracked               mid                canonical_symbols
+       2     1 items     1 tracked               mid                codegen_fn_attrs
+       1     1 items     1 tracked               mid                cross_crate_inlinable
+       1     1 items     1 tracked               mid                debugger_visualizers
+       1     1 items     1 tracked               mid                def_kind
+       1     1 items     1 tracked               mid                defined_lang_items
+       1     1 items     1 tracked               mid                diagnostic_items
+       1     1 items     1 tracked               mid                exported_generic_symbols
+       1     1 items     1 tracked               mid                exported_non_generic_symbols
+       4     2 items     2 tracked               mid                generics_of
+       1     1 items     1 tracked               mid                missing_lang_items
+      31     1 items     1 tracked               mid                module_children
+       1     1 items     1 tracked               mid                native_libraries
+       2     1 items     1 tracked               mid                visibility
+read outside a query
+      87  CrateMetadata::def_kind                            in -
+    8609  CrateMetadata::def_path_hash                       in -
+      27  CrateMetadata::expn_hash_to_expn_id                in -
+     144  CrateMetadata::get_expn_that_defined               in -
+       6  CrateMetadata::get_item_attrs                      in -
+       9  CrateMetadata::get_macro                           in -
+    1886  CrateMetadata::get_span                            in -
+       6  CrateMetadata::opt_item_ident                      in -
+      21  CrateRoot>::decode_denied_partial_mitigations      in -
+      21  CrateRoot>::decode_target_modifiers                in -
+      21  MetadataBlob::check_compatibility                  in -
+      36  MetadataBlob::get_header                           in -
+       6  MetadataBlob::get_root                             in -
+      44  decode_expn_id::{closure#0}                        in -
+       8  decode_syntax_context::{closure#0}                 in -
+     294  def_key::{closure#0}                               in -
+       9  expn_hash_to_expn_id::{closure#0}                  in -
+      47  get_ambig_module_children::{closure#0}             in -
+    1474  imported_source_file::{closure#2}                  in -
+      84  CrateMetadata::new                                 in CStore::register_crate
+      21  CrateRoot>::decode_crate_deps                      in CStore::register_crate
+      36  MetadataBlob::check_compatibility                  in CStore::register_crate
+      72  MetadataBlob::get_header                           in CStore::register_crate
+      39  MetadataBlob::get_root                             in CStore::register_crate
+      42  MetadataBlob::get_root_unhashed                    in CStore::register_crate
+      43  new::{closure#1}                                   in CStore::register_crate
+
+== base (lib) emit dep-info,metadata,link ==
+files
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd-#.rmeta in -
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd_detect-#.rmeta in -
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libcore-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/liballoc-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libcompiler_builtins-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/liblibc-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/librustc_std_workspace_core-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libunwind-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libminiz_oxide-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libadler2-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libhashbrown-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/librustc_std_workspace_alloc-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd_detect-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/librustc_demangle-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libcfg_if-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libaddr2line-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libgimli-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libobject-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libmemchr-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libpanic_unwind-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd-#.rmeta in -
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd_detect-#.rmeta in -
+  create         target/debug/build/base/#/out/rmeta*     in fs::encode_and_write_metadata
+  open           target/debug/incremental/base-#/s-*/metadata.rmeta in encoder::encode_metadata
+  encode-to      target/debug/build/base/#/out/rmeta*/stub.rmeta in encoder::encode_metadata
+  finished                                                in encoder::encode_metadata
+  remove_file    target/debug/build/base/#/out/libbase-#.rmeta in fs::encode_and_write_metadata
+  rename         target/debug/build/base/#/out/rmeta*/full.rmeta -> target/debug/build/base/#/out/libbase-#.rmeta in fs::encode_and_write_metadata
+  open           target/debug/build/base/#/out/libbase-#.rmeta in fs::encode_and_write_metadata
+  create         target/debug/build/base/#/out/rustc*     in -
+  write          target/debug/build/base/#/out/rustc*/lib.rmeta-link in -
+  write          target/debug/build/base/#/out/rustc*/lib.rmeta in -
+  create         target/debug/build/base/#/out/.tmp*.temp-archive in -
+  remove_dir_all target/debug/build/base/#/out/.tmp*.temp-archive in -
+  remove_dir_all target/debug/build/base/#/out/rustc*     in -
+  remove_dir_all target/debug/build/base/#/out/rmeta*     in -
+read through queries: reads, items, items whose query recorded a dependency on the crate, entries the writer wrote
+       7     1 items     1 tracked               <sysroot>          associated_item
+       6     2 items     2 tracked               <sysroot>          attrs_for_def
+      19    19 items    19 tracked               <sysroot>          canonical_symbols
+      36    18 items    18 tracked               <sysroot>          codegen_fn_attrs
+       2     1 items     1 tracked               <sysroot>          const_conditions
+       1     1 items     1 tracked               <sysroot>          constness
+      18    18 items    18 tracked               <sysroot>          cross_crate_inlinable
+      63    63 items    63 tracked               <sysroot>          def_kind
+       2     1 items     1 tracked               <sysroot>          def_span
+       1     1 items     1 tracked               <sysroot>          defaultness
+      19    19 items    19 tracked               <sysroot>          defined_lang_items
+       7     7 items     7 tracked               <sysroot>          diagnostic_items
+       6     3 items     3 tracked               <sysroot>          explicit_clauses_of
+       5     3 items     3 tracked               <sysroot>          explicit_implied_clauses_of
+      28    14 items    14 tracked               <sysroot>          generics_of
+       8     4 items     4 tracked               <sysroot>          impl_trait_header
+      15    15 items    15 tracked               <sysroot>          implementations_of_trait
+       3     3 items     3 tracked               <sysroot>          inferred_outlives_of
+       1     1 items     1 tracked               <sysroot>          intrinsic_raw
+      19    19 items    19 tracked               <sysroot>          missing_lang_items
+    4145    47 items    47 tracked               <sysroot>          module_children
+      23    19 items    19 tracked               <sysroot>          native_libraries
+       4     2 items     2 tracked               <sysroot>          trait_def
+      18     9 items     9 tracked               <sysroot>          type_of
+     150    75 items    75 tracked               <sysroot>          visibility
+read outside a query
+     148  CrateMetadata::def_kind                            in -
+    8717  CrateMetadata::def_path_hash                       in -
+     144  CrateMetadata::get_expn_that_defined               in -
+      14  CrateMetadata::get_item_attrs                      in -
+      21  CrateMetadata::get_macro                           in -
+    2034  CrateMetadata::get_span                            in -
+      14  CrateMetadata::opt_item_ident                      in -
+      19  CrateRoot>::decode_denied_partial_mitigations      in -
+      19  CrateRoot>::decode_target_modifiers                in -
+       6  MetadataBlob::check_compatibility                  in -
+       8  MetadataBlob::get_header                           in -
+       2  MetadataBlob::get_root                             in -
+      40  decode_expn_id::{closure#0}                        in -
+     116  def_key::{closure#0}                               in -
+      47  get_ambig_module_children::{closure#0}             in -
+      54  imported_source_file::{closure#2}                  in -
+      76  CrateMetadata::new                                 in CStore::register_crate
+      19  CrateRoot>::decode_crate_deps                      in CStore::register_crate
+      18  MetadataBlob::check_compatibility                  in CStore::register_crate
+      36  MetadataBlob::get_header                           in CStore::register_crate
+      37  MetadataBlob::get_root                             in CStore::register_crate
+      38  MetadataBlob::get_root_unhashed                    in CStore::register_crate
+      43  new::{closure#1}                                   in CStore::register_crate
+     258  CrateMetadata::def_path_hash                       in encoder::encode_metadata
+      15  CrateMetadata::expn_hash_to_expn_id                in encoder::encode_metadata
+       4  decode_expn_id::{closure#0}                        in encoder::encode_metadata
+       2  decode_syntax_context::{closure#0}                 in encoder::encode_metadata
+      62  def_key::{closure#0}                               in encoder::encode_metadata
+       5  expn_hash_to_expn_id::{closure#0}                  in encoder::encode_metadata
+     934  imported_source_file::{closure#2}                  in encoder::encode_metadata
+
+== mid (lib) emit dep-info,metadata,link ==
+files
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd-#.rmeta in -
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd_detect-#.rmeta in -
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libcore-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/liballoc-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libcompiler_builtins-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/liblibc-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/librustc_std_workspace_core-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libunwind-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libminiz_oxide-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libadler2-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libhashbrown-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/librustc_std_workspace_alloc-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd_detect-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/librustc_demangle-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libcfg_if-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libaddr2line-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libgimli-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libobject-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libmemchr-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libpanic_unwind-#.rmeta in CStore::register_crate
+  open           target/debug/build/base/#/out/libbase-#.rmeta in -
+  open           target/debug/build/base/#/out/libbase-#.rmeta in -
+  create         target/debug/build/mid/#/out/rmeta*      in fs::encode_and_write_metadata
+  open           target/debug/incremental/mid-#/s-*/metadata.rmeta in encoder::encode_metadata
+  encode-to      target/debug/build/mid/#/out/rmeta*/stub.rmeta in encoder::encode_metadata
+  finished                                                in encoder::encode_metadata
+  remove_file    target/debug/build/mid/#/out/libmid-#.rmeta in fs::encode_and_write_metadata
+  rename         target/debug/build/mid/#/out/rmeta*/full.rmeta -> target/debug/build/mid/#/out/libmid-#.rmeta in fs::encode_and_write_metadata
+  open           target/debug/build/mid/#/out/libmid-#.rmeta in fs::encode_and_write_metadata
+  create         target/debug/build/mid/#/out/rustc*      in -
+  write          target/debug/build/mid/#/out/rustc*/lib.rmeta-link in -
+  write          target/debug/build/mid/#/out/rustc*/lib.rmeta in -
+  create         target/debug/build/mid/#/out/.tmp*.temp-archive in -
+  remove_dir_all target/debug/build/mid/#/out/.tmp*.temp-archive in -
+  remove_dir_all target/debug/build/mid/#/out/rustc*      in -
+  remove_dir_all target/debug/build/mid/#/out/rmeta*      in -
+read through queries: reads, items, items whose query recorded a dependency on the crate, entries the writer wrote
+      19    19 items    19 tracked               <sysroot>          canonical_symbols
+       2     1 items     1 tracked               <sysroot>          codegen_fn_attrs
+       1     1 items     1 tracked               <sysroot>          cross_crate_inlinable
+       4     4 items     4 tracked               <sysroot>          def_kind
+      19    19 items    19 tracked               <sysroot>          defined_lang_items
+       7     7 items     7 tracked               <sysroot>          diagnostic_items
+       2     1 items     1 tracked               <sysroot>          impl_trait_header
+      19    19 items    19 tracked               <sysroot>          missing_lang_items
+    2076    37 items    37 tracked               <sysroot>          module_children
+      23    19 items    19 tracked               <sysroot>          native_libraries
+       2     1 items     1 tracked               <sysroot>          type_of
+     118    59 items    59 tracked               <sysroot>          visibility
+       2     1 items     1 tracked               base               attrs_for_def
+       1     1 items     1 tracked               base               canonical_symbols
+       2     1 items     1 tracked               base               codegen_fn_attrs
+       1     1 items     1 tracked               base               cross_crate_inlinable
+       1     1 items     1 tracked               base               def_kind
+       1     1 items     1 tracked               base               defined_lang_items
+       1     1 items     1 tracked               base               diagnostic_items
+       2     1 items     1 tracked               base               generics_of
+       1     1 items     1 tracked               base               missing_lang_items
+      97     2 items     2 tracked               base               module_children
+       1     1 items     1 tracked               base               native_libraries
+       6     3 items     3 tracked               base               visibility
+read outside a query
+      61  CrateMetadata::def_kind                            in -
+    3325  CrateMetadata::def_path_hash                       in -
+     122  CrateMetadata::get_expn_that_defined               in -
+    1136  CrateMetadata::get_span                            in -
+      20  CrateRoot>::decode_denied_partial_mitigations      in -
+      20  CrateRoot>::decode_target_modifiers                in -
+       5  MetadataBlob::check_compatibility                  in -
+       8  MetadataBlob::get_header                           in -
+       3  MetadataBlob::get_root                             in -
+      28  decode_expn_id::{closure#0}                        in -
+     116  def_key::{closure#0}                               in -
+      39  get_ambig_module_children::{closure#0}             in -
+     844  imported_source_file::{closure#2}                  in -
+      80  CrateMetadata::new                                 in CStore::register_crate
+      20  CrateRoot>::decode_crate_deps                      in CStore::register_crate
+      18  MetadataBlob::check_compatibility                  in CStore::register_crate
+      36  MetadataBlob::get_header                           in CStore::register_crate
+      38  MetadataBlob::get_root                             in CStore::register_crate
+      40  MetadataBlob::get_root_unhashed                    in CStore::register_crate
+      43  new::{closure#1}                                   in CStore::register_crate
+      24  CrateMetadata::def_path_hash                       in encoder::encode_metadata
+       6  def_key::{closure#0}                               in encoder::encode_metadata
+

@@ -1,0 +1,19 @@
+--- a/compiler/rustc_resolve/src/rustdoc.rs
++++ b/compiler/rustc_resolve/src/rustdoc.rs
+@@ -1,7 +1,6 @@
+ use std::mem;
+ use std::ops::Range;
+ 
+-use itertools::Itertools;
+ /// Re-export the markdown parser used by rustdoc.
+ pub use pulldown_cmark;
+ use pulldown_cmark::{
+@@ -478,7 +477,7 @@
+         }
+     }
+ 
+-    for (label, refdef) in event_iter.reference_definitions().iter().sorted_by_key(|x| x.0) {
++    for (label, refdef) in event_iter.reference_definitions().iter() {
+         if !refids.contains(label) {
+             links.push(preprocess_link(&refdef.dest));
+         }
