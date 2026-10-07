@@ -1,0 +1,7 @@
+$ toolchain nightly-2021-04-19
+rc1=0
+rc2=0
+
+--- stderr ---
+
+exit 0

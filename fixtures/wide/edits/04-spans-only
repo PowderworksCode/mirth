@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Every span in core moves down two lines; nothing else changes.
+set -euo pipefail
+sed -i '1i // moved\n//' core/src/lib.rs

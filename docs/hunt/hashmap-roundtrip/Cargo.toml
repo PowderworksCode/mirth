@@ -1,0 +1,8 @@
+[workspace]
+
+[package]
+name = "hashmap-roundtrip"
+version = "0.0.0"
+edition = "2024"
+[dependencies]
+rustc-hash = "=2.1.1"

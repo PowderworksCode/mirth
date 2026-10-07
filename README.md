@@ -19,8 +19,25 @@ Seven plausible edits to rustc's metadata code were each built into the
 instrumented compiler and checked. mirth catches all seven; rustc's own
 metadata-related tests catch three.
 
+Seven real bugs from rustc's history were then replayed by reverting their
+fixes. mirth catches five; three of those needed a fixture addition or a
+new step, made knowing the bug.
+
+Pointed at the unmodified compiler, it found three incremental bugs that
+look new, where a rebuild after an edit publishes different metadata from a
+clean build, and one known parallel-front-end bug. Two came from a wider
+fixture, the third from fuzzing edits and replaying ten crates' git histories.
+
 - [`docs/report.md`](docs/report.md): the experiment, for readers new to it
 - [`docs/results.md`](docs/results.md): each edit and the output that caught it
+- [`docs/regressions.md`](docs/regressions.md): the replayed bugs, caught and missed
+- [`docs/hunt.md`](docs/hunt.md): bugs found in the unmodified compiler
+- [`docs/scale.md`](docs/scale.md): replaying crates' histories and fuzzing edits at scale
+- [`docs/properties.md`](docs/properties.md): checkable properties surveyed from 1,000 rustc bugs
+- [`docs/motivating.md`](docs/motivating.md): the real rustc bugs behind each property, each reproduced before and after its fix
+- [`docs/ur-queries.md`](docs/ur-queries.md): the bugs' patterns, and closed bugs' patterns, as Ur queries over rustc's source
+- [`docs/shadow-mode.md`](docs/shadow-mode.md): checking reuse inside rustc, and what exists today
+- [`docs/untracked-reads.md`](docs/untracked-reads.md): reporting reads of untracked state inside rustc
 - [`docs/plan.md`](docs/plan.md): the plan the work followed, with the properties
 
 ## An instrumented compiler
@@ -33,6 +50,11 @@ rustc/setup.sh                        # fetch the pinned commit, configure boots
 rustc/build.sh                        # build stage 1 through mirth-watch, then its std
 rustc/check.sh chain                  # check fixtures/chain
 rustc/edits.sh chain                  # apply, check and revert each edit in rustc/edits
+EDITS=regressions rustc/edits.sh chain  # the same for the past bugs in rustc/regressions
+rustc/hunt.sh wide                    # repeated threaded builds, and P6 for each of fixtures/wide/edits
+rustc/fuzz.py --rustc <rustc> --fixture fixtures/sink --work <dir>       # random edits, P6 on each
+rustc/replay.py --rustc <rustc> --repo <git checkout> --work <dir>      # a crate's history, P6 per commit
+rustc/audit-options.py --rustc <rustc> --source <rust checkout> --crate fixtures/audit/lib.rs  # untracked options
 ```
 
 The build takes about an hour on 16 cores. `rustc/rmeta.toml` says what is
@@ -49,6 +71,10 @@ then:
   list in `tests/rmeta/<fixture>.txt`; `--bless` accepts a changed list;
 - runs `mirth check` for P1, P2, P4 and P7;
 - builds again and compares every published `.rmeta` byte for byte (P5);
+- does the same for two builds with `-Zthreads=8`;
+- rebuilds incrementally after touching every source file, and compares
+  what each process did with `tests/rmeta/<fixture>.touch.txt`: metadata
+  should be reused from the incremental cache, not encoded again;
 - applies `fixtures/<fixture>/edit`, rebuilds incrementally, and compares
   with a clean build of the edited source (P6).
 

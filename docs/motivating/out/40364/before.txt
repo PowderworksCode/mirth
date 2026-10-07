@@ -1,0 +1,8 @@
+$ toolchain 1.45.0
+one
+one
+no env-dep in dep-info
+
+--- stderr ---
+
+exit 0

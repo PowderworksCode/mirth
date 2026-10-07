@@ -1,0 +1,2091 @@
+diff --git a/compiler/rustc_attr_parsing/src/attributes/rustc_internal.rs b/compiler/rustc_attr_parsing/src/attributes/rustc_internal.rs
+index b9c03883d..d51e6b650 100644
+--- a/compiler/rustc_attr_parsing/src/attributes/rustc_internal.rs
++++ b/compiler/rustc_attr_parsing/src/attributes/rustc_internal.rs
+@@ -784,7 +784,7 @@ fn extend(
+         cx: &mut AcceptContext<'_, '_>,
+         args: &ArgParser,
+     ) -> impl IntoIterator<Item = Self::Item> {
+-        if !cx.cx.sess.opts.unstable_opts.query_dep_graph {
++        if !(*cx.cx.sess.opts.unstable_opts.read_query_dep_graph()) {
+             cx.emit_err(AttributeRequiresOpt { span: cx.attr_span, opt: "-Z query-dep-graph" });
+         }
+         let list = cx.expect_list(args, cx.attr_span)?;
+@@ -877,7 +877,7 @@ impl SingleAttributeParser for RustcIfThisChangedParser {
+     const STABILITY: AttributeStability = unstable!(rustc_attrs);
+ 
+     fn convert(cx: &mut AcceptContext<'_, '_>, args: &ArgParser) -> Option<AttributeKind> {
+-        if !cx.cx.sess.opts.unstable_opts.query_dep_graph {
++        if !(*cx.cx.sess.opts.unstable_opts.read_query_dep_graph()) {
+             cx.emit_err(AttributeRequiresOpt { span: cx.attr_span, opt: "-Z query-dep-graph" });
+         }
+         match args {
+@@ -942,7 +942,7 @@ fn extend(
+         cx: &mut AcceptContext<'_, '_>,
+         args: &ArgParser,
+     ) -> impl IntoIterator<Item = Self::Item> {
+-        if !cx.cx.sess.opts.unstable_opts.query_dep_graph {
++        if !(*cx.cx.sess.opts.unstable_opts.read_query_dep_graph()) {
+             cx.emit_err(AttributeRequiresOpt { span: cx.attr_span, opt: "-Z query-dep-graph" });
+         }
+         let item = cx.expect_single_element_list(args, cx.attr_span)?;
+diff --git a/compiler/rustc_attr_parsing/src/check_cfg.rs b/compiler/rustc_attr_parsing/src/check_cfg.rs
+index fe8a6b91c..11cd97590 100644
+--- a/compiler/rustc_attr_parsing/src/check_cfg.rs
++++ b/compiler/rustc_attr_parsing/src/check_cfg.rs
+@@ -20,7 +20,7 @@ fn sort_and_truncate_possibilities(
+ ) -> (Vec<Symbol>, usize) {
+     let possibilities_len = possibilities.len();
+ 
+-    let n_possibilities = if sess.opts.unstable_opts.check_cfg_all_expected {
++    let n_possibilities = if (*sess.opts.unstable_opts.read_check_cfg_all_expected()) {
+         possibilities.len()
+     } else {
+         match filter_well_known_names {
+@@ -396,7 +396,7 @@ pub(crate) fn unexpected_cfg_value(
+         // basic heuristic, we use the "cheat" unstable feature enable method and the
+         // non-ui-testing enabled option.
+         || (matches!(sess.unstable_features, rustc_feature::UnstableFeatures::Cheat)
+-            && !sess.opts.unstable_opts.ui_testing);
++            && !(*sess.opts.unstable_opts.read_ui_testing()));
+ 
+     let inst = |escape_quotes| {
+         to_check_cfg_arg(Ident::new(name, name_span), value.map(|(v, _s)| v), escape_quotes)
+diff --git a/compiler/rustc_borrowck/src/nll.rs b/compiler/rustc_borrowck/src/nll.rs
+index 62319ce5e..818307d64 100644
+--- a/compiler/rustc_borrowck/src/nll.rs
++++ b/compiler/rustc_borrowck/src/nll.rs
+@@ -164,10 +164,10 @@ pub(crate) fn compute_regions<'tcx>(
+ 
+     // If requested: dump NLL facts, and run legacy polonius analysis.
+     let polonius_output = polonius_facts.as_ref().and_then(|polonius_facts| {
+-        if infcx.tcx.sess.opts.unstable_opts.nll_facts {
++        if (*infcx.tcx.sess.opts.unstable_opts.read_nll_facts()) {
+             let def_id = body.source.def_id();
+             let def_path = infcx.tcx.def_path(def_id);
+-            let dir_path = PathBuf::from(&infcx.tcx.sess.opts.unstable_opts.nll_facts_dir)
++            let dir_path = PathBuf::from(&(*infcx.tcx.sess.opts.unstable_opts.read_nll_facts_dir()))
+                 .join(def_path.to_filename_friendly_no_crate());
+             polonius_facts.write_to_dir(dir_path, location_table).unwrap();
+         }
+@@ -227,7 +227,7 @@ pub(super) fn dump_nll_mir<'tcx>(
+     // they're always disabled in mir-opt tests to make working with blessed dumps easier.
+     let options = PrettyPrintMirOptions {
+         include_extra_comments: matches!(
+-            infcx.tcx.sess.opts.unstable_opts.mir_include_spans,
++            (*infcx.tcx.sess.opts.unstable_opts.read_mir_include_spans()),
+             MirIncludeSpans::On | MirIncludeSpans::Nll
+         ),
+     };
+diff --git a/compiler/rustc_borrowck/src/polonius/dump.rs b/compiler/rustc_borrowck/src/polonius/dump.rs
+index c32b118a9..a4e125446 100644
+--- a/compiler/rustc_borrowck/src/polonius/dump.rs
++++ b/compiler/rustc_borrowck/src/polonius/dump.rs
+@@ -90,7 +90,7 @@ pub(crate) fn dump_polonius_mir<'tcx>(
+     // mir-include-spans` on the CLI still has priority.
+     let options = PrettyPrintMirOptions {
+         include_extra_comments: matches!(
+-            tcx.sess.opts.unstable_opts.mir_include_spans,
++            (*tcx.sess.opts.unstable_opts.read_mir_include_spans()),
+             MirIncludeSpans::On | MirIncludeSpans::Nll
+         ),
+     };
+diff --git a/compiler/rustc_borrowck/src/polonius/legacy/facts.rs b/compiler/rustc_borrowck/src/polonius/legacy/facts.rs
+index 1f8177477..3b51986d6 100644
+--- a/compiler/rustc_borrowck/src/polonius/legacy/facts.rs
++++ b/compiler/rustc_borrowck/src/polonius/legacy/facts.rs
+@@ -56,7 +56,7 @@ impl PoloniusFacts {
+     /// Returns `true` if there is a need to gather `PoloniusFacts` given the
+     /// current `-Z` flags.
+     fn enabled(tcx: TyCtxt<'_>) -> bool {
+-        tcx.sess.opts.unstable_opts.nll_facts
++        (*tcx.sess.opts.unstable_opts.read_nll_facts())
+             || tcx.sess.opts.unstable_opts.polonius.is_legacy_enabled()
+     }
+ 
+diff --git a/compiler/rustc_codegen_llvm/src/back/llvm_backend.rs b/compiler/rustc_codegen_llvm/src/back/llvm_backend.rs
+index 374c78070..95628cdcd 100644
+--- a/compiler/rustc_codegen_llvm/src/back/llvm_backend.rs
++++ b/compiler/rustc_codegen_llvm/src/back/llvm_backend.rs
+@@ -403,7 +403,7 @@ fn join_codegen(
+             .expect("Expected LlvmCodegenBackend's OngoingCodegen, found Box<Any>")
+             .join(sess, incr_comp_session, crate_info);
+ 
+-        if sess.opts.unstable_opts.llvm_time_trace {
++        if (*sess.opts.unstable_opts.read_llvm_time_trace()) {
+             sess.time("llvm_dump_timing_file", || {
+                 let file_name = outputs.with_extension("llvm_timings.json");
+                 llvm_util::time_trace_profiler_finish(&file_name);
+diff --git a/compiler/rustc_codegen_llvm/src/back/write.rs b/compiler/rustc_codegen_llvm/src/back/write.rs
+index a95f25954..746cfd95c 100644
+--- a/compiler/rustc_codegen_llvm/src/back/write.rs
++++ b/compiler/rustc_codegen_llvm/src/back/write.rs
+@@ -204,7 +204,7 @@ pub(crate) fn target_machine_factory(
+     let abi = SmallCStr::new(sess.target.llvm_abiname.desc());
+     let trap_unreachable =
+         sess.opts.unstable_opts.trap_unreachable.unwrap_or(sess.target.trap_unreachable);
+-    let emit_stack_size_section = sess.opts.unstable_opts.emit_stack_sizes;
++    let emit_stack_size_section = (*sess.opts.unstable_opts.read_emit_stack_sizes());
+ 
+     let verbose_asm = sess.opts.unstable_opts.verbose_asm;
+     let relax_elf_relocations =
+diff --git a/compiler/rustc_codegen_llvm/src/debuginfo/metadata.rs b/compiler/rustc_codegen_llvm/src/debuginfo/metadata.rs
+index a3bcce345..33eec74df 100644
+--- a/compiler/rustc_codegen_llvm/src/debuginfo/metadata.rs
++++ b/compiler/rustc_codegen_llvm/src/debuginfo/metadata.rs
+@@ -617,11 +617,13 @@ fn alloc_new_file_metadata<'ll>(
+             rustc_span::SourceFileHashAlgorithm::Sha256 => llvm::ChecksumKind::SHA256,
+             rustc_span::SourceFileHashAlgorithm::Blake3 => llvm::ChecksumKind::None,
+         };
++        rustc_data_structures::untracked::untracked_read("source file contents");
+         let hash_value = hex_encode(source_file.src_hash.hash_bytes());
+ 
+         let mut source = None;
+         let external_src;
+         if cx.sess().opts.unstable_opts.embed_source {
++            rustc_data_structures::untracked::untracked_read("source file contents");
+             source = source_file.src.as_deref().map(String::as_str);
+             if source.is_none() {
+                 cx.tcx.sess.source_map().ensure_source_file_source_present(source_file);
+diff --git a/compiler/rustc_codegen_llvm/src/llvm_util.rs b/compiler/rustc_codegen_llvm/src/llvm_util.rs
+index a582e897e..859a2e5c4 100644
+--- a/compiler/rustc_codegen_llvm/src/llvm_util.rs
++++ b/compiler/rustc_codegen_llvm/src/llvm_util.rs
+@@ -108,10 +108,10 @@ fn llvm_arg_to_arg_name(full_arg: &str) -> &str {
+         };
+         // Set the llvm "program name" to make usage and invalid argument messages more clear.
+         add("rustc -Cllvm-args=\"...\" with", true);
+-        if sess.opts.unstable_opts.time_llvm_passes {
++        if (*sess.opts.unstable_opts.read_time_llvm_passes()) {
+             add("-time-passes", false);
+         }
+-        if sess.opts.unstable_opts.print_llvm_passes {
++        if (*sess.opts.unstable_opts.read_print_llvm_passes()) {
+             add("-debug-pass=Structure", false);
+         }
+         if sess.target.generate_arange_section
+@@ -159,7 +159,7 @@ fn llvm_arg_to_arg_name(full_arg: &str) -> &str {
+         };
+     }
+ 
+-    if sess.opts.unstable_opts.llvm_time_trace {
++    if (*sess.opts.unstable_opts.read_llvm_time_trace()) {
+         unsafe { llvm::LLVMRustTimeTraceProfilerInitialize() };
+     }
+ 
+diff --git a/compiler/rustc_codegen_ssa/src/assert_module_sources.rs b/compiler/rustc_codegen_ssa/src/assert_module_sources.rs
+index 431783552..8013ec2bd 100644
+--- a/compiler/rustc_codegen_ssa/src/assert_module_sources.rs
++++ b/compiler/rustc_codegen_ssa/src/assert_module_sources.rs
+@@ -55,7 +55,7 @@ pub fn assert_module_sources(tcx: TyCtxt<'_>, set_reuse: &dyn Fn(&mut CguReuseTr
+         let mut ams = AssertModuleSource {
+             tcx,
+             available_cgus,
+-            cgu_reuse_tracker: if tcx.sess.opts.unstable_opts.query_dep_graph {
++            cgu_reuse_tracker: if (*tcx.sess.opts.unstable_opts.read_query_dep_graph()) {
+                 CguReuseTracker::new()
+             } else {
+                 CguReuseTracker::new_disabled()
+@@ -66,7 +66,7 @@ pub fn assert_module_sources(tcx: TyCtxt<'_>, set_reuse: &dyn Fn(&mut CguReuseTr
+ 
+         set_reuse(&mut ams.cgu_reuse_tracker);
+ 
+-        if tcx.sess.opts.unstable_opts.print_mono_items
++        if (*tcx.sess.opts.unstable_opts.read_print_mono_items())
+             && let Some(data) = &ams.cgu_reuse_tracker.data
+         {
+             data.actual_reuse.items().all(|(cgu, reuse)| {
+@@ -105,7 +105,7 @@ fn check_attrs(&mut self, attrs: &[rustc_attr_ir::Attribute]) {
+             | CguFields::PartitionCodegened { cfg, module }
+             | CguFields::PartitionReused { cfg, module }) = cgu_fields;
+ 
+-            if !self.tcx.sess.opts.unstable_opts.query_dep_graph {
++            if !(*self.tcx.sess.opts.unstable_opts.read_query_dep_graph()) {
+                 self.tcx.dcx().emit_fatal(diagnostics::MissingQueryDepGraph { span });
+             }
+ 
+diff --git a/compiler/rustc_codegen_ssa/src/back/archive.rs b/compiler/rustc_codegen_ssa/src/back/archive.rs
+index 18b5c001f..46e2ccde7 100644
+--- a/compiler/rustc_codegen_ssa/src/back/archive.rs
++++ b/compiler/rustc_codegen_ssa/src/back/archive.rs
+@@ -276,7 +276,7 @@ fn create_mingw_dll_import_lib(
+ 
+ fn find_binutils_dlltool(sess: &Session) -> OsString {
+     assert!(sess.target.options.is_like_windows && !sess.target.options.is_like_msvc);
+-    if let Some(dlltool_path) = &sess.opts.cg.dlltool {
++    if let Some(dlltool_path) = &(*sess.opts.cg.read_dlltool()) {
+         return dlltool_path.clone().into_os_string();
+     }
+ 
+diff --git a/compiler/rustc_codegen_ssa/src/back/link.rs b/compiler/rustc_codegen_ssa/src/back/link.rs
+index 45ab9b8bc..6aaa60461 100644
+--- a/compiler/rustc_codegen_ssa/src/back/link.rs
++++ b/compiler/rustc_codegen_ssa/src/back/link.rs
+@@ -353,7 +353,7 @@ pub fn link_binary(
+                 .unwrap_or_else(|error| {
+                     sess.dcx().emit_fatal(diagnostics::CreateTempDir { error })
+                 });
+-            let path = MaybeTempDir::new(tmpdir, sess.opts.cg.save_temps);
++            let path = MaybeTempDir::new(tmpdir, (*sess.opts.cg.read_save_temps()));
+ 
+             let crate_name = format!("{}", crate_info.local_crate_name);
+             let out_filename = output.file_for_writing(outputs, OutputType::Exe, &crate_name);
+@@ -442,7 +442,7 @@ pub fn link_binary(
+     // Remove the temporary object file and metadata if we aren't saving temps.
+     sess.time("link_binary_remove_temps", || {
+         // If the user requests that temporaries are saved, don't delete any.
+-        if sess.opts.cg.save_temps {
++        if (*sess.opts.cg.read_save_temps()) {
+             return;
+         }
+ 
+@@ -1535,7 +1535,7 @@ fn link_natively(
+         }
+     }
+ 
+-    let strip = sess.opts.cg.strip;
++    let strip = (*sess.opts.cg.read_strip());
+ 
+     if sess.target.is_like_darwin {
+         let stripcmd = "rust-objcopy";
+@@ -1722,7 +1722,7 @@ fn add_sanitizer_libraries(
+         return;
+     }
+ 
+-    if sess.opts.unstable_opts.external_clangrt {
++    if (*sess.opts.unstable_opts.read_external_clangrt()) {
+         // Linking against in-tree sanitizer runtimes is disabled via
+         // `-Z external-clangrt`
+         return;
+@@ -1924,11 +1924,11 @@ fn adjust_flavor_to_features(
+         }
+     }
+ 
+-    let features = sess.opts.cg.linker_features;
++    let features = (*sess.opts.cg.read_linker_features());
+ 
+     // linker and linker flavor specified via command line have precedence over what the target
+     // specification specifies
+-    let linker_flavor = match sess.opts.cg.linker_flavor {
++    let linker_flavor = match (*sess.opts.cg.read_linker_flavor()) {
+         // The linker flavors that are non-target specific can be directly translated to LinkerFlavor
+         Some(LinkerFlavorCli::Llbc) => Some(LinkerFlavor::Llbc),
+         // The linker flavors that corresponds to targets needs logic that keeps the base LinkerFlavor
+@@ -1936,7 +1936,7 @@ fn adjust_flavor_to_features(
+             linker_flavor.map(|flavor| sess.target.linker_flavor.with_cli_hints(flavor))
+         }
+     };
+-    if let Some(ret) = infer_from(sess, sess.opts.cg.linker.clone(), linker_flavor, features) {
++    if let Some(ret) = infer_from(sess, (*sess.opts.cg.read_linker()).clone(), linker_flavor, features) {
+         return ret;
+     }
+ 
+@@ -2317,7 +2317,7 @@ fn self_contained_components(
+     // Turn the backwards compatible bool values for `self_contained` into fully inferred
+     // `LinkSelfContainedComponents`.
+     let self_contained =
+-        if let Some(self_contained) = sess.opts.cg.link_self_contained.explicitly_set {
++        if let Some(self_contained) = (*sess.opts.cg.read_link_self_contained()).explicitly_set {
+             // Emit an error if the user requested self-contained mode on the CLI but the target
+             // explicitly refuses it.
+             if sess.target.link_self_contained.is_disabled() {
+@@ -2401,7 +2401,7 @@ fn add_pre_link_args(cmd: &mut dyn Linker, sess: &Session, flavor: LinkerFlavor)
+         cmd.verbatim_args(args.iter().map(Deref::deref));
+     }
+ 
+-    cmd.verbatim_args(&sess.opts.unstable_opts.pre_link_args);
++    cmd.verbatim_args(&(*sess.opts.unstable_opts.read_pre_link_args()));
+ }
+ 
+ /// Add a link script embedded in the target, if applicable.
+@@ -2428,7 +2428,7 @@ fn add_link_script(cmd: &mut dyn Linker, sess: &Session, tmpdir: &Path, crate_ty
+ /// Add arbitrary "user defined" args defined from command line.
+ /// FIXME: Determine where exactly these args need to be inserted.
+ fn add_user_defined_link_args(cmd: &mut dyn Linker, sess: &Session) {
+-    cmd.verbatim_args(&sess.opts.cg.link_args);
++    cmd.verbatim_args(&(*sess.opts.cg.read_link_args()));
+ }
+ 
+ /// Add arbitrary "late link" args defined by the target spec.
+@@ -2703,7 +2703,7 @@ fn add_library_search_dirs(
+     self_contained_components: LinkSelfContainedComponents,
+     apple_sdk_root: Option<&Path>,
+ ) {
+-    if !sess.opts.unstable_opts.link_native_libraries {
++    if !(*sess.opts.unstable_opts.read_link_native_libraries()) {
+         return;
+     }
+ 
+@@ -2743,7 +2743,7 @@ fn add_rpath_args(
+     // FIXME (#2397): At some point we want to rpath our guesses as to
+     // where extern libraries might live, based on the
+     // add_lib_search_paths
+-    if sess.opts.cg.rpath {
++    if (*sess.opts.cg.read_rpath()) {
+         let libs = crate_info
+             .used_crates
+             .iter()
+@@ -3341,11 +3341,11 @@ fn add_order_independent_options(
+     );
+ 
+     // Pass debuginfo, NatVis debugger visualizers and strip flags down to the linker.
+-    cmd.debuginfo(sess.opts.cg.strip, &natvis_visualizers);
++    cmd.debuginfo((*sess.opts.cg.read_strip()), &natvis_visualizers);
+ 
+     // We want to prevent the compiler from accidentally leaking in any system libraries,
+     // so by default we tell linkers not to link to any default libraries.
+-    if !sess.opts.cg.default_linker_libraries && sess.target.no_default_libraries {
++    if !(*sess.opts.cg.read_default_linker_libraries()) && sess.target.no_default_libraries {
+         cmd.no_default_libraries();
+     }
+ 
+@@ -3409,7 +3409,7 @@ fn add_native_libs_from_crate(
+     link_dynamic: bool,
+     link_output_kind: LinkOutputKind,
+ ) {
+-    if !sess.opts.unstable_opts.link_native_libraries {
++    if !(*sess.opts.unstable_opts.read_link_native_libraries()) {
+         // If `-Zlink-native-libraries=false` is set, then the assumption is that an
+         // external build system already has the native dependencies defined, and it
+         // will provide them to the linker itself.
+@@ -4126,11 +4126,11 @@ fn add_lld_args(
+     // the CLI, and what the target spec enables (as it can't disable components):
+     // - if the self-contained linker is enabled on the CLI or by the target spec,
+     // - and if the self-contained linker is not disabled on the CLI.
+-    let self_contained_cli = sess.opts.cg.link_self_contained.is_linker_enabled();
++    let self_contained_cli = (*sess.opts.cg.read_link_self_contained()).is_linker_enabled();
+     let self_contained_target = self_contained_components.is_linker_enabled();
+ 
+     let self_contained_linker = self_contained_cli || self_contained_target;
+-    if self_contained_linker && !sess.opts.cg.link_self_contained.is_linker_disabled() {
++    if self_contained_linker && !(*sess.opts.cg.read_link_self_contained()).is_linker_disabled() {
+         let mut linker_path_exists = false;
+         for path in sess.get_tools_search_paths(false) {
+             let linker_path = path.join("gcc-ld");
+diff --git a/compiler/rustc_codegen_ssa/src/back/linker.rs b/compiler/rustc_codegen_ssa/src/back/linker.rs
+index ffb9130ed..9e37a7cb7 100644
+--- a/compiler/rustc_codegen_ssa/src/back/linker.rs
++++ b/compiler/rustc_codegen_ssa/src/back/linker.rs
+@@ -73,7 +73,7 @@ pub(crate) fn get_linker<'a>(
+             | LinkerFlavor::WasmLld(Cc::No)
+             | LinkerFlavor::Msvc(Lld::Yes) => Command::lld(linker, flavor.lld_flavor()),
+             LinkerFlavor::Msvc(Lld::No)
+-                if sess.opts.cg.linker.is_none() && sess.target.linker.is_none() =>
++                if (*sess.opts.cg.read_linker()).is_none() && sess.target.linker.is_none() =>
+             {
+                 Command::new(msvc_tool.as_ref().map_or(linker, |t| t.path()))
+             }
+@@ -444,7 +444,7 @@ fn build_dylib(&mut self, crate_type: CrateType, out_filename: &Path) {
+             // purely to support bootstrap right now, we should get a more
+             // principled solution at some point to force the compiler to pass
+             // the right `-Wl,-install_name` with an `@rpath` in it.
+-            if self.sess.opts.cg.rpath || self.sess.opts.unstable_opts.osx_rpath_install_name {
++            if (*self.sess.opts.cg.read_rpath()) || self.sess.opts.unstable_opts.osx_rpath_install_name {
+                 let mut rpath = OsString::from("@rpath/");
+                 rpath.push(out_filename.file_name().unwrap());
+                 self.link_arg("-install_name").link_arg(rpath);
+diff --git a/compiler/rustc_codegen_ssa/src/back/write.rs b/compiler/rustc_codegen_ssa/src/back/write.rs
+index 04be7956e..3d6cdf857 100644
+--- a/compiler/rustc_codegen_ssa/src/back/write.rs
++++ b/compiler/rustc_codegen_ssa/src/back/write.rs
+@@ -126,7 +126,7 @@ macro_rules! if_regular {
+         let sess = tcx.sess;
+         let opt_level_and_size = if_regular!(Some(sess.opts.optimize), None);
+ 
+-        let save_temps = sess.opts.cg.save_temps;
++        let save_temps = (*sess.opts.cg.read_save_temps());
+ 
+         let should_emit_obj = sess.opts.output_types.contains_key(&OutputType::Exe)
+             || match kind {
+@@ -536,7 +536,7 @@ pub fn produce_final_output_artifacts(
+             } else {
+                 copy_gracefully(&path, &output);
+             }
+-            if !sess.opts.cg.save_temps && !keep_numbered {
++            if !(*sess.opts.cg.read_save_temps()) && !keep_numbered {
+                 // The user just wants `foo.x`, not `foo.#module-name#.x`.
+                 ensure_removed(sess.dcx(), &path);
+             }
+@@ -599,7 +599,7 @@ pub fn produce_final_output_artifacts(
+     // We may create additional files if requested by the user (through
+     // `-C save-temps` or `--emit=` flags).
+ 
+-    if !sess.opts.cg.save_temps {
++    if !(*sess.opts.cg.read_save_temps()) {
+         // Remove the temporary .#module-name#.rcgu.o objects. If the user didn't
+         // explicitly request bitcode (with --emit=bc), and the bitcode is not
+         // needed for building an rlib, then we must remove .#module-name#.bc as
+@@ -1242,7 +1242,7 @@ fn start_executing_work<B: WriteBackendMethods>(
+     let opt_level = tcx.backend_optimization_level(());
+     let tm_factory = backend.target_machine_factory(tcx.sess, opt_level);
+ 
+-    let remark_dir = if let Some(ref dir) = sess.opts.unstable_opts.remark_dir {
++    let remark_dir = if let Some(ref dir) = (*sess.opts.unstable_opts.read_remark_dir()) {
+         let result = fs::create_dir_all(dir).and_then(|_| dir.canonicalize());
+         match result {
+             Ok(dir) => Some(dir),
+@@ -1258,12 +1258,12 @@ fn start_executing_work<B: WriteBackendMethods>(
+         crate_types: tcx.crate_types().to_vec(),
+         lto: sess.lto(),
+         use_linker_plugin_lto: sess.opts.cg.linker_plugin_lto.enabled(),
+-        dylib_lto: sess.opts.unstable_opts.dylib_lto,
++        dylib_lto: (*sess.opts.unstable_opts.read_dylib_lto()),
+         prefer_dynamic: sess.opts.cg.prefer_dynamic,
+         fewer_names: sess.fewer_names(),
+-        save_temps: sess.opts.cg.save_temps,
+-        time_trace: sess.opts.unstable_opts.llvm_time_trace,
+-        remark: sess.opts.cg.remark.clone(),
++        save_temps: (*sess.opts.cg.read_save_temps()),
++        time_trace: (*sess.opts.unstable_opts.read_llvm_time_trace()),
++        remark: (*sess.opts.cg.read_remark()).clone(),
+         remark_dir,
+         old_incr_comp_session_dir: tcx
+             .incr_comp_session
+diff --git a/compiler/rustc_codegen_ssa/src/base.rs b/compiler/rustc_codegen_ssa/src/base.rs
+index fea558316..703270e78 100644
+--- a/compiler/rustc_codegen_ssa/src/base.rs
++++ b/compiler/rustc_codegen_ssa/src/base.rs
+@@ -809,7 +809,7 @@ pub fn codegen_crate<
+     });
+ 
+     let mut total_codegen_time = Duration::new(0, 0);
+-    let start_rss = tcx.sess.opts.unstable_opts.time_passes.then(|| get_resident_set_size());
++    let start_rss = (*tcx.sess.opts.unstable_opts.read_time_passes()).then(|| get_resident_set_size());
+ 
+     // The non-parallel compiler can only translate codegen units to LLVM IR
+     // on a single thread, leading to a staircase effect where the N LLVM
+@@ -911,7 +911,7 @@ pub fn codegen_crate<
+ 
+     // Since the main thread is sometimes blocked during codegen, we keep track
+     // -Ztime-passes output manually.
+-    if tcx.sess.opts.unstable_opts.time_passes {
++    if (*tcx.sess.opts.unstable_opts.read_time_passes()) {
+         let end_rss = get_resident_set_size();
+ 
+         print_time_passes_entry(
+@@ -919,7 +919,7 @@ pub fn codegen_crate<
+             total_codegen_time,
+             start_rss.unwrap(),
+             end_rss,
+-            tcx.sess.opts.unstable_opts.time_passes_format,
++            (*tcx.sess.opts.unstable_opts.read_time_passes_format()),
+         );
+     }
+ 
+diff --git a/compiler/rustc_data_structures/src/lib.rs b/compiler/rustc_data_structures/src/lib.rs
+index aae378939..dc71d2ae3 100644
+--- a/compiler/rustc_data_structures/src/lib.rs
++++ b/compiler/rustc_data_structures/src/lib.rs
+@@ -84,6 +84,7 @@
+ pub mod unhash;
+ pub mod union_find;
+ pub mod unord;
++pub mod untracked;
+ pub mod vec_cache;
+ 
+ mod atomic_ref;
+diff --git a/compiler/rustc_data_structures/src/untracked.rs b/compiler/rustc_data_structures/src/untracked.rs
+new file mode 100644
+index 000000000..1ee27a720
+--- /dev/null
++++ b/compiler/rustc_data_structures/src/untracked.rs
+@@ -0,0 +1,23 @@
++//! For testing incremental compilation: reports of reads of state that the dependency graph
++//! does not track, such as the contents of source files.
++//!
++//! Code that reads such state calls [`untracked_read`] with what it reads. When enabled
++//! (`RUSTC_REPORT_UNTRACKED`, by `rustc_middle`), a read inside a computation whose result
++//! incremental compilation may reuse, and which has not declared that state as an input it
++//! tracks another way, is reported: the result may be reused after the state changed.
++
++use std::panic::Location;
++use std::sync::OnceLock;
++
++/// The function called on each read, set once when reporting is enabled.
++pub static UNTRACKED_READ_HOOK: OnceLock<fn(&'static str, &'static Location<'static>)> =
++    OnceLock::new();
++
++/// Notes a read of `what`, state the dependency graph does not track.
++#[inline]
++#[track_caller]
++pub fn untracked_read(what: &'static str) {
++    if let Some(hook) = UNTRACKED_READ_HOOK.get() {
++        hook(what, Location::caller());
++    }
++}
+diff --git a/compiler/rustc_driver_impl/src/lib.rs b/compiler/rustc_driver_impl/src/lib.rs
+index 1ba7ce953..3bd2fdb0f 100644
+--- a/compiler/rustc_driver_impl/src/lib.rs
++++ b/compiler/rustc_driver_impl/src/lib.rs
+@@ -162,8 +162,8 @@ fn config(&mut self, config: &mut interface::Config) {
+         // If a --print=... option has been given, we don't print the "total"
+         // time because it will mess up the --print output. See #64339.
+         //
+-        self.time_passes = (config.opts.prints.is_empty() && config.opts.unstable_opts.time_passes)
+-            .then_some(config.opts.unstable_opts.time_passes_format);
++        self.time_passes = (config.opts.prints.is_empty() && (*config.opts.unstable_opts.read_time_passes()))
++            .then_some((*config.opts.unstable_opts.read_time_passes_format()));
+         config.opts.trimmed_def_paths = true;
+     }
+ }
+@@ -263,7 +263,7 @@ pub fn compiler_entrypoint(at_args: &[String], callbacks: &mut (dyn Callbacks +
+             sess.dcx().fatal("no input filename given"); // this is fatal
+         }
+ 
+-        if !sess.opts.unstable_opts.ls.is_empty() {
++        if !(*sess.opts.unstable_opts.read_ls()).is_empty() {
+             list_metadata(sess, &*codegen_backend.metadata_loader());
+             return;
+         }
+@@ -296,7 +296,7 @@ pub fn compiler_entrypoint(at_args: &[String], callbacks: &mut (dyn Callbacks +
+             return;
+         }
+ 
+-        if sess.opts.unstable_opts.parse_crate_root_only {
++        if (*sess.opts.unstable_opts.read_parse_crate_root_only()) {
+             return;
+         }
+ 
+@@ -318,7 +318,7 @@ pub fn compiler_entrypoint(at_args: &[String], callbacks: &mut (dyn Callbacks +
+                 return None;
+             }
+ 
+-            if sess.opts.unstable_opts.no_analysis {
++            if (*sess.opts.unstable_opts.read_no_analysis()) {
+                 return None;
+             }
+ 
+@@ -336,7 +336,7 @@ pub fn compiler_entrypoint(at_args: &[String], callbacks: &mut (dyn Callbacks +
+ 
+             let linker = Linker::codegen_and_build_linker(tcx, codegen_backend);
+ 
+-            if let Some(metrics_dir) = &sess.opts.unstable_opts.metrics_dir {
++            if let Some(metrics_dir) = &(*sess.opts.unstable_opts.read_metrics_dir()) {
+                 dump_feature_usage_metrics(tcx, metrics_dir);
+             }
+ 
+@@ -602,7 +602,7 @@ fn list_metadata(sess: &Session, metadata_loader: &dyn MetadataLoader) {
+                 path,
+                 metadata_loader,
+                 &mut v,
+-                &sess.opts.unstable_opts.ls,
++                &(*sess.opts.unstable_opts.read_ls()),
+                 sess.cfg_version,
+             ) {
+                 if path.extension().is_some_and(|extension| extension == "rs") {
+diff --git a/compiler/rustc_expand/src/base.rs b/compiler/rustc_expand/src/base.rs
+index 01e8cef49..b72b27d7d 100644
+--- a/compiler/rustc_expand/src/base.rs
++++ b/compiler/rustc_expand/src/base.rs
+@@ -896,7 +896,7 @@ pub fn new(
+             None => (None, helper_attrs),
+         };
+         let diagnostic_opaque = builtin_name.is_some()
+-            || (!sess.opts.unstable_opts.macro_backtrace && find_attr!(attrs, Opaque));
++            || (!(*sess.opts.unstable_opts.read_macro_backtrace()) && find_attr!(attrs, Opaque));
+ 
+         let stability = find_attr!(attrs, Stability { stability, .. } => *stability);
+ 
+diff --git a/compiler/rustc_expand/src/expand.rs b/compiler/rustc_expand/src/expand.rs
+index 5a2442fbc..3ec74c962 100644
+--- a/compiler/rustc_expand/src/expand.rs
++++ b/compiler/rustc_expand/src/expand.rs
+@@ -719,7 +719,7 @@ fn expand_invoc(
+             return ExpandResult::Ready(invoc.fragment_kind.dummy(invoc.span(), guar));
+         }
+ 
+-        let macro_stats = self.cx.sess.opts.unstable_opts.macro_stats;
++        let macro_stats = (*self.cx.sess.opts.unstable_opts.read_macro_stats());
+ 
+         let (fragment_kind, span) = (invoc.fragment_kind, invoc.span());
+         ExpandResult::Ready(match invoc.kind {
+diff --git a/compiler/rustc_hir_typeck/src/upvar.rs b/compiler/rustc_hir_typeck/src/upvar.rs
+index 98155d9a8..e729e0537 100644
+--- a/compiler/rustc_hir_typeck/src/upvar.rs
++++ b/compiler/rustc_hir_typeck/src/upvar.rs
+@@ -629,7 +629,7 @@ fn analyze_closure(
+ 
+         self.typeck_results.borrow_mut().closure_fake_reads.insert(closure_def_id, fake_reads);
+ 
+-        if self.tcx.sess.opts.unstable_opts.profile_closures {
++        if (*self.tcx.sess.opts.unstable_opts.read_profile_closures()) {
+             self.typeck_results.borrow_mut().closure_size_eval.insert(
+                 closure_def_id,
+                 ClosureSizeProfileData {
+diff --git a/compiler/rustc_incremental/src/assert_dep_graph.rs b/compiler/rustc_incremental/src/assert_dep_graph.rs
+index 8147e3c3a..12e13a0b4 100644
+--- a/compiler/rustc_incremental/src/assert_dep_graph.rs
++++ b/compiler/rustc_incremental/src/assert_dep_graph.rs
+@@ -59,13 +59,13 @@ pub(crate) fn assert_dep_graph(tcx: TyCtxt<'_>) {
+         // checks below, rather than locking and cloning it separately for each.
+         let retained_dep_graph = tcx.dep_graph.retained_dep_graph();
+ 
+-        if tcx.sess.opts.unstable_opts.dump_dep_graph {
++        if (*tcx.sess.opts.unstable_opts.read_dump_dep_graph()) {
+             if let Some(graph) = &retained_dep_graph {
+                 dump_graph(graph);
+             }
+         }
+ 
+-        if !tcx.sess.opts.unstable_opts.query_dep_graph {
++        if !(*tcx.sess.opts.unstable_opts.read_query_dep_graph()) {
+             return;
+         }
+ 
+@@ -87,7 +87,7 @@ pub(crate) fn assert_dep_graph(tcx: TyCtxt<'_>) {
+ 
+         if !if_this_changed.is_empty() || !then_this_would_need.is_empty() {
+             assert!(
+-                tcx.sess.opts.unstable_opts.query_dep_graph,
++                (*tcx.sess.opts.unstable_opts.read_query_dep_graph()),
+                 "cannot use the `#[{}]` or `#[{}]` annotations \
+                     without supplying `-Z query-dep-graph`",
+                 sym::rustc_if_this_changed,
+diff --git a/compiler/rustc_incremental/src/persist/clean.rs b/compiler/rustc_incremental/src/persist/clean.rs
+index b6402181f..ed1ca5be1 100644
+--- a/compiler/rustc_incremental/src/persist/clean.rs
++++ b/compiler/rustc_incremental/src/persist/clean.rs
+@@ -125,7 +125,7 @@ struct Assertion {
+ }
+ 
+ pub(crate) fn check_clean_annotations(tcx: TyCtxt<'_>) {
+-    if !tcx.sess.opts.unstable_opts.query_dep_graph {
++    if !(*tcx.sess.opts.unstable_opts.read_query_dep_graph()) {
+         return;
+     }
+ 
+diff --git a/compiler/rustc_incremental/src/persist/file_format.rs b/compiler/rustc_incremental/src/persist/file_format.rs
+index 853a5c9ba..c6d38410f 100644
+--- a/compiler/rustc_incremental/src/persist/file_format.rs
++++ b/compiler/rustc_incremental/src/persist/file_format.rs
+@@ -175,7 +175,7 @@ pub(crate) fn open_incremental_file(
+ fn report_format_mismatch(sess: &Session, file: &Path, message: &str) {
+     debug!("read_file: {}", message);
+ 
+-    if sess.opts.unstable_opts.incremental_info {
++    if (*sess.opts.unstable_opts.read_incremental_info()) {
+         eprintln!(
+             "[incremental] ignoring cache artifact `{}`: {}",
+             file.file_name().unwrap().to_string_lossy(),
+diff --git a/compiler/rustc_incremental/src/persist/load.rs b/compiler/rustc_incremental/src/persist/load.rs
+index 76e0bf92c..0caeb2789 100644
+--- a/compiler/rustc_incremental/src/persist/load.rs
++++ b/compiler/rustc_incremental/src/persist/load.rs
+@@ -64,7 +64,7 @@ fn load_dep_graph(sess: &Session, incr_comp_session: &IncrCompSession) -> LoadRe
+         for swp in work_products {
+             let all_files_exist = swp.work_product.saved_files.items().all(|(_, path)| {
+                 let exists = in_old_incr_comp_dir_sess(incr_comp_session, path).unwrap().exists();
+-                if !exists && sess.opts.unstable_opts.incremental_info {
++                if !exists && (*sess.opts.unstable_opts.read_incremental_info()) {
+                     eprintln!("incremental: could not find file for work product: {path}",);
+                 }
+                 exists
+@@ -93,7 +93,7 @@ fn load_dep_graph(sess: &Session, incr_comp_session: &IncrCompSession) -> LoadRe
+             let prev_commandline_args_hash = Hash64::decode(&mut decoder);
+ 
+             if prev_commandline_args_hash != expected_hash {
+-                if sess.opts.unstable_opts.incremental_info {
++                if (*sess.opts.unstable_opts.read_incremental_info()) {
+                     eprintln!(
+                         "[incremental] completely ignoring cache because of \
+                                     differing commandline arguments"
+@@ -150,7 +150,7 @@ pub fn load_query_result_cache(
+ /// the outcome of trying to load previous-session state.
+ fn maybe_assert_incr_state(sess: &Session, load_result: &LoadResult) {
+     // Return immediately if there's nothing to assert.
+-    let Some(assertion) = sess.opts.unstable_opts.assert_incr_state else { return };
++    let Some(assertion) = (*sess.opts.unstable_opts.read_assert_incr_state()) else { return };
+ 
+     // Match exhaustively to make sure we don't miss any cases.
+     let loaded = match load_result {
+diff --git a/compiler/rustc_infer/src/infer/relate/higher_ranked.rs b/compiler/rustc_infer/src/infer/relate/higher_ranked.rs
+index 324725a07..baa0f2b04 100644
+--- a/compiler/rustc_infer/src/infer/relate/higher_ranked.rs
++++ b/compiler/rustc_infer/src/infer/relate/higher_ranked.rs
+@@ -92,7 +92,7 @@ pub fn leak_check(
+         // subtyping errors that it would have caught will now be
+         // caught later on, during region checking. However, we
+         // continue to use it for a transition period.
+-        if self.tcx.sess.opts.unstable_opts.no_leak_check || self.skip_leak_check {
++        if (*self.tcx.sess.opts.unstable_opts.read_no_leak_check()) || self.skip_leak_check {
+             return Ok(());
+         }
+ 
+diff --git a/compiler/rustc_interface/src/interface.rs b/compiler/rustc_interface/src/interface.rs
+index 7a6a49f37..3df272fa9 100644
+--- a/compiler/rustc_interface/src/interface.rs
++++ b/compiler/rustc_interface/src/interface.rs
+@@ -398,7 +398,7 @@ pub fn run_compiler<R: Send>(config: Config, f: impl FnOnce(&Compiler) -> R + Se
+         &early_dcx,
+         &config.opts.target_triple,
+         config.opts.sysroot.path(),
+-        config.opts.unstable_opts.unstable_options,
++        (*config.opts.unstable_opts.read_unstable_options()),
+     );
+     let file_loader = config.file_loader.unwrap_or_else(|| Box::new(RealFileLoader));
+     let path_mapping = config.opts.file_path_mapping();
+@@ -416,7 +416,7 @@ pub fn run_compiler<R: Send>(config: Config, f: impl FnOnce(&Compiler) -> R + Se
+             // impl `Send`. Creating a new one is fine.
+             let early_dcx = EarlyDiagCtxt::new(config.opts.error_format);
+ 
+-            let temps_dir = config.opts.unstable_opts.temps_dir.as_deref().map(PathBuf::from);
++            let temps_dir = (*config.opts.unstable_opts.read_temps_dir()).as_deref().map(PathBuf::from);
+ 
+             let early_sess =
+                 rustc_session::build_early_session(config.opts, target, config.ice_file);
+diff --git a/compiler/rustc_interface/src/passes.rs b/compiler/rustc_interface/src/passes.rs
+index 8975f01de..9245d5d45 100644
+--- a/compiler/rustc_interface/src/passes.rs
++++ b/compiler/rustc_interface/src/passes.rs
+@@ -204,10 +204,10 @@ fn configure_and_expand(
+             crate_name,
+             features,
+             recursion_limit,
+-            trace_mac: sess.opts.unstable_opts.trace_macros,
++            trace_mac: (*sess.opts.unstable_opts.read_trace_macros()),
+             should_test: sess.is_test_crate(),
+-            span_debug: sess.opts.unstable_opts.span_debug,
+-            proc_macro_backtrace: sess.opts.unstable_opts.proc_macro_backtrace,
++            span_debug: (*sess.opts.unstable_opts.read_span_debug()),
++            proc_macro_backtrace: (*sess.opts.unstable_opts.read_proc_macro_backtrace()),
+         };
+ 
+         let lint_store = LintStoreExpandImpl(lint_store);
+@@ -243,7 +243,7 @@ fn configure_and_expand(
+             }
+         }
+ 
+-        if ecx.sess.opts.unstable_opts.macro_stats {
++        if (*ecx.sess.opts.unstable_opts.read_macro_stats()) {
+             print_macro_stats(&ecx);
+         }
+ 
+@@ -413,7 +413,7 @@ fn early_lint_checks(tcx: TyCtxt<'_>, (): ()) {
+     let krate = &*krate.borrow();
+     let mut lint_buffer = resolver.lint_buffer.steal();
+ 
+-    if sess.opts.unstable_opts.input_stats {
++    if (*sess.opts.unstable_opts.read_input_stats()) {
+         input_stats::print_ast_stats(tcx, krate);
+     }
+ 
+@@ -933,6 +933,7 @@ pub fn create_and_enter_global_ctxt<T, F: for<'tcx> FnOnce(TyCtxt<'tcx>) -> T>(
+     f: F,
+ ) -> (T, Option<IncrCompSession>) {
+     let sess = &compiler.sess;
++    rustc_middle::dep_graph::enable_untracked_read_reports();
+ 
+     let pre_configured_attrs = rustc_expand::config::pre_configure_attrs(sess, &krate.attrs);
+ 
+@@ -1091,7 +1092,7 @@ pub fn emit_delayed_lints(tcx: TyCtxt<'_>) {
+ /// Runs all analyses that we guarantee to run, even if errors were reported in earlier analyses.
+ /// This function never fails.
+ fn run_required_analyses(tcx: TyCtxt<'_>) {
+-    if tcx.sess.opts.unstable_opts.input_stats {
++    if (*tcx.sess.opts.unstable_opts.read_input_stats()) {
+         rustc_passes::input_stats::print_hir_stats(tcx);
+     }
+     // When using rustdoc's "jump to def" feature, it enters this code and `check_crate`
+@@ -1272,7 +1273,7 @@ fn analysis(tcx: TyCtxt<'_>, (): ()) {
+     // that requires the optimized/ctfe MIR, coroutine bodies, or evaluating consts.
+     // Nevertheless, wait after type checking is finished, as optimizing code that does not
+     // type-check is very prone to ICEs.
+-    if tcx.sess.opts.unstable_opts.validate_mir {
++    if (*tcx.sess.opts.unstable_opts.read_validate_mir()) {
+         sess.time("ensuring_final_MIR_is_computable", || {
+             tcx.par_hir_body_owners(|def_id| {
+                 if !tcx.is_trivial_const(def_id) {
+@@ -1348,7 +1349,7 @@ pub(crate) fn start_codegen<'tcx>(
+ 
+     // This must run after monomorphization so that all generic types
+     // have been instantiated.
+-    if tcx.sess.opts.unstable_opts.print_type_sizes {
++    if (*tcx.sess.opts.unstable_opts.read_print_type_sizes()) {
+         tcx.sess.code_stats.print_type_sizes();
+     }
+ 
+@@ -1447,7 +1448,7 @@ pub fn collect_crate_types(
+     }
+ 
+     // Shadow `sdylib` crate type in interface build.
+-    if session.opts.unstable_opts.build_sdylib_interface {
++    if (*session.opts.unstable_opts.read_build_sdylib_interface()) {
+         return vec![CrateType::Rlib];
+     }
+ 
+diff --git a/compiler/rustc_interface/src/queries.rs b/compiler/rustc_interface/src/queries.rs
+index 759297bc6..60516087d 100644
+--- a/compiler/rustc_interface/src/queries.rs
++++ b/compiler/rustc_interface/src/queries.rs
+@@ -67,7 +67,7 @@ pub fn link(
+             }
+         });
+ 
+-        if sess.codegen_units().as_usize() == 1 && sess.opts.unstable_opts.time_llvm_passes {
++        if sess.codegen_units().as_usize() == 1 && (*sess.opts.unstable_opts.read_time_llvm_passes()) {
+             codegen_backend.print_pass_timings()
+         }
+ 
+diff --git a/compiler/rustc_interface/src/tests.rs b/compiler/rustc_interface/src/tests.rs
+index 34ac92fae..f0a43672b 100644
+--- a/compiler/rustc_interface/src/tests.rs
++++ b/compiler/rustc_interface/src/tests.rs
+@@ -47,7 +47,7 @@ fn sess_and_cfg<F>(args: &[&'static str], f: F)
+         &early_dcx,
+         &sessopts.target_triple,
+         sessopts.sysroot.path(),
+-        sessopts.unstable_opts.unstable_options,
++        (*sessopts.unstable_opts.read_unstable_options()),
+     );
+     let hash_kind = sessopts.unstable_opts.src_hash_algorithm(&target);
+     let checksum_hash_kind = sessopts.unstable_opts.checksum_hash_algorithm();
+@@ -59,7 +59,7 @@ fn sess_and_cfg<F>(args: &[&'static str], f: F)
+     });
+ 
+     rustc_span::create_session_globals_then(DEFAULT_EDITION, &[], sm_inputs, || {
+-        let temps_dir = sessopts.unstable_opts.temps_dir.as_deref().map(PathBuf::from);
++        let temps_dir = (*sessopts.unstable_opts.read_temps_dir()).as_deref().map(PathBuf::from);
+         let io = CompilerIO {
+             input: Input::Str { name: FileName::Custom(String::new()), input: String::new() },
+             output_dir: None,
+diff --git a/compiler/rustc_interface/src/util.rs b/compiler/rustc_interface/src/util.rs
+index d58b7bfdd..6e8f6570c 100644
+--- a/compiler/rustc_interface/src/util.rs
++++ b/compiler/rustc_interface/src/util.rs
+@@ -675,7 +675,7 @@ pub fn build_output_filenames(attrs: &[ast::Attribute], sess: &Session) -> Outpu
+                 sess.io.temps_dir.clone(),
+                 invocation_temp,
+                 sess.opts.unstable_opts.split_dwarf_out_dir.clone(),
+-                sess.opts.cg.extra_filename.clone(),
++                (*sess.opts.cg.read_extra_filename()).clone(),
+                 sess.opts.output_types.clone(),
+             )
+         }
+@@ -687,7 +687,7 @@ pub fn build_output_filenames(attrs: &[ast::Attribute], sess: &Session) -> Outpu
+                 sess.dcx().emit_warn(diagnostics::MultipleOutputTypesAdaption);
+                 None
+             } else {
+-                if !sess.opts.cg.extra_filename.is_empty() {
++                if !(*sess.opts.cg.read_extra_filename()).is_empty() {
+                     sess.dcx().emit_warn(diagnostics::IgnoringExtraFilename);
+                 }
+                 Some(out_file.clone())
+@@ -706,7 +706,7 @@ pub fn build_output_filenames(attrs: &[ast::Attribute], sess: &Session) -> Outpu
+                 sess.io.temps_dir.clone(),
+                 invocation_temp,
+                 sess.opts.unstable_opts.split_dwarf_out_dir.clone(),
+-                sess.opts.cg.extra_filename.clone(),
++                (*sess.opts.cg.read_extra_filename()).clone(),
+                 sess.opts.output_types.clone(),
+             )
+         }
+diff --git a/compiler/rustc_metadata/src/creader.rs b/compiler/rustc_metadata/src/creader.rs
+index 10693448e..70fa9ba41 100644
+--- a/compiler/rustc_metadata/src/creader.rs
++++ b/compiler/rustc_metadata/src/creader.rs
+@@ -299,23 +299,33 @@ pub(crate) fn crate_dependencies_in_postorder(&self, cnum: CrateNum) -> IndexSet
+         deps
+     }
+ 
++    #[track_caller]
+     pub(crate) fn injected_panic_runtime(&self) -> Option<CrateNum> {
++        rustc_data_structures::untracked::untracked_read("crate store");
+         self.injected_panic_runtime
+     }
+ 
++    #[track_caller]
+     pub(crate) fn allocator_kind(&self) -> Option<AllocatorKind> {
++        rustc_data_structures::untracked::untracked_read("crate store");
+         self.allocator_kind
+     }
+ 
++    #[track_caller]
+     pub(crate) fn alloc_error_handler_kind(&self) -> Option<AllocatorKind> {
++        rustc_data_structures::untracked::untracked_read("crate store");
+         self.alloc_error_handler_kind
+     }
+ 
++    #[track_caller]
+     pub(crate) fn has_global_allocator(&self) -> bool {
++        rustc_data_structures::untracked::untracked_read("crate store");
+         self.has_global_allocator
+     }
+ 
++    #[track_caller]
+     pub(crate) fn has_alloc_error_handler(&self) -> bool {
++        rustc_data_structures::untracked::untracked_read("crate store");
+         self.has_alloc_error_handler
+     }
+ 
+@@ -348,7 +358,7 @@ fn report_target_modifiers_extended(
+         dep_mods: &TargetModifiers,
+         data: &CrateMetadata,
+     ) {
+-        let allowed_flag_mismatches = &tcx.sess.opts.cg.unsafe_allow_abi_mismatch;
++        let allowed_flag_mismatches = &(*tcx.sess.opts.cg.read_unsafe_allow_abi_mismatch());
+         let local_crate = tcx.crate_name(LOCAL_CRATE);
+         let tmod_extender = |tmod: &TargetModifier| (tmod.extend(), tmod.clone());
+         let report_diff = |prefix: &String,
+@@ -454,7 +464,7 @@ pub fn report_session_incompatibilities(&self, tcx: TyCtxt<'_>, krate: &Crate) {
+     }
+ 
+     pub fn report_incompatible_target_modifiers(&self, tcx: TyCtxt<'_>) {
+-        for flag_name in &tcx.sess.opts.cg.unsafe_allow_abi_mismatch {
++        for flag_name in &(*tcx.sess.opts.cg.read_unsafe_allow_abi_mismatch()) {
+             if !OptionsTargetModifiers::is_target_modifier(flag_name) {
+                 tcx.dcx().emit_err(diagnostics::UnknownTargetModifierUnsafeAllowed {
+                     flag_name: flag_name.clone(),
+diff --git a/compiler/rustc_metadata/src/dependency_format.rs b/compiler/rustc_metadata/src/dependency_format.rs
+index 4a6c23a10..7ab211e3a 100644
+--- a/compiler/rustc_metadata/src/dependency_format.rs
++++ b/compiler/rustc_metadata/src/dependency_format.rs
+@@ -254,6 +254,9 @@ fn calculate_type(tcx: TyCtxt<'_>, ty: CrateType) -> DependencyList {
+     // form.
+     //
+     // Things like panic runtimes may not have been activated quite yet, so do so here.
++    // Which panic runtime was injected is decided by the crate graph (`crates`, which is
++    // `eval_always`), each crate's dependency kind (a query) and `-C panic` (tracked).
++    rustc_middle::dep_graph::declare_untracked_input("crate store");
+     activate_injected_dep(CStore::from_tcx(tcx).injected_panic_runtime(), &mut ret, &|cnum| {
+         tcx.is_panic_runtime(cnum)
+     });
+@@ -363,6 +366,9 @@ fn attempt_static(tcx: TyCtxt<'_>, unavailable: &mut Vec<CrateNum>) -> Option<De
+     // Our panic runtime may not have been linked above if it wasn't explicitly
+     // linked, which is the case for any injected dependency. Handle that here
+     // and activate it.
++    // Which panic runtime was injected is decided by the crate graph (`crates`, which is
++    // `eval_always`), each crate's dependency kind (a query) and `-C panic` (tracked).
++    rustc_middle::dep_graph::declare_untracked_input("crate store");
+     activate_injected_dep(CStore::from_tcx(tcx).injected_panic_runtime(), &mut ret, &|cnum| {
+         tcx.is_panic_runtime(cnum)
+     });
+diff --git a/compiler/rustc_metadata/src/fs.rs b/compiler/rustc_metadata/src/fs.rs
+index ed177708f..fb8b0e57c 100644
+--- a/compiler/rustc_metadata/src/fs.rs
++++ b/compiler/rustc_metadata/src/fs.rs
+@@ -46,7 +46,7 @@ pub fn encode_and_write_metadata(tcx: TyCtxt<'_>) -> Result<EncodedMetadata, Err
+         .prefix("rmeta")
+         .tempdir_in(out_filename.parent().unwrap_or_else(|| Path::new("")))
+         .unwrap_or_else(|err| tcx.dcx().emit_fatal(FailedCreateTempdir { err }));
+-    let metadata_tmpdir = MaybeTempDir::new(metadata_tmpdir, tcx.sess.opts.cg.save_temps);
++    let metadata_tmpdir = MaybeTempDir::new(metadata_tmpdir, (*tcx.sess.opts.cg.read_save_temps()));
+     let metadata_filename = metadata_tmpdir.as_ref().join("full.rmeta");
+     let metadata_stub_filename = if !tcx.sess.opts.unstable_opts.embed_metadata
+         && !tcx.crate_types().contains(&CrateType::ProcMacro)
+diff --git a/compiler/rustc_metadata/src/locator.rs b/compiler/rustc_metadata/src/locator.rs
+index 38da6561e..aed700c2d 100644
+--- a/compiler/rustc_metadata/src/locator.rs
++++ b/compiler/rustc_metadata/src/locator.rs
+@@ -1245,7 +1245,7 @@ pub(crate) fn report(self, sess: &Session, span: Span, missing_core: bool) {
+                         is_nightly_build: sess.is_nightly_build(),
+                         profiler_runtime: Symbol::intern(&sess.opts.unstable_opts.profiler_runtime),
+                         locator_triple: locator.triple,
+-                        is_ui_testing: sess.opts.unstable_opts.ui_testing,
++                        is_ui_testing: (*sess.opts.unstable_opts.read_ui_testing()),
+                         is_tier_3: sess.target.metadata.tier == Some(3),
+                     };
+                     // The diagnostic for missing core is very good, but it is followed by a lot of
+@@ -1271,7 +1271,7 @@ pub(crate) fn report(self, sess: &Session, span: Span, missing_core: bool) {
+                     is_nightly_build: sess.is_nightly_build(),
+                     profiler_runtime: Symbol::intern(&sess.opts.unstable_opts.profiler_runtime),
+                     locator_triple: sess.opts.target_triple.clone(),
+-                    is_ui_testing: sess.opts.unstable_opts.ui_testing,
++                    is_ui_testing: (*sess.opts.unstable_opts.read_ui_testing()),
+                     is_tier_3: sess.target.metadata.tier == Some(3),
+                 };
+                 // The diagnostic for missing core is very good, but it is followed by a lot of
+diff --git a/compiler/rustc_metadata/src/native_libs.rs b/compiler/rustc_metadata/src/native_libs.rs
+index 6cb6ad001..8586b036d 100644
+--- a/compiler/rustc_metadata/src/native_libs.rs
++++ b/compiler/rustc_metadata/src/native_libs.rs
+@@ -31,7 +31,7 @@ pub(crate) fn collect(tcx: TyCtxt<'_>, LocalCrate: LocalCrate) -> Vec<NativeLib>
+         // and enforce pointer authentication constraints.
+         if tcx.sess.target.cfg_abi == CfgAbi::Pauthtest {
+             if let NativeLibKind::Static { .. } = lib.kind {
+-                if !tcx.sess.opts.unstable_opts.ui_testing {
++                if !(*tcx.sess.opts.unstable_opts.read_ui_testing()) {
+                     let diag = if lib.foreign_module.is_none() {
+                         diagnostics::StaticLinkingNotSupported::UserRequested {
+                             lib_name: lib.name,
+diff --git a/compiler/rustc_metadata/src/rmeta/encoder.rs b/compiler/rustc_metadata/src/rmeta/encoder.rs
+index 989ca8361..0bba24a5c 100644
+--- a/compiler/rustc_metadata/src/rmeta/encoder.rs
++++ b/compiler/rustc_metadata/src/rmeta/encoder.rs
+@@ -589,6 +589,8 @@ fn encode_source_map(
+             //
+             // At this point we also erase the actual on-disk path and only keep
+             // the remapped version -- as is necessary for reproducible builds.
++            // Its length, line table and content hash are read from the session.
++            rustc_data_structures::untracked::untracked_read("source file contents");
+             let mut adapted_source_file = (**source_file).clone();
+ 
+             match source_file.name {
+@@ -839,7 +841,7 @@ macro_rules! stat {
+             }
+ 
+             self.lazy(CrateRootUnhashed {
+-                extra_filename: self.tcx.sess.opts.cg.extra_filename.clone(),
++                extra_filename: (*self.tcx.sess.opts.cg.read_extra_filename()).clone(),
+                 dep_extra_filenames,
+             })
+         });
+@@ -849,7 +851,7 @@ macro_rules! stat {
+         let computed_total_bytes: usize = stats.iter().map(|(_, size)| size).sum();
+         assert_eq!(total_bytes, computed_total_bytes);
+ 
+-        if tcx.sess.opts.unstable_opts.meta_stats {
++        if (*tcx.sess.opts.unstable_opts.read_meta_stats()) {
+             use std::fmt::Write;
+ 
+             self.opaque.flush();
+@@ -2612,6 +2614,8 @@ pub fn encode_metadata(tcx: TyCtxt<'_>, path: &Path, ref_path: Option<&Path>) {
+         || {
+             // Make the metadata depend on the source files it describes.
+             let _ = tcx.local_source_files_fingerprint(());
++            rustc_middle::dep_graph::declare_untracked_input("source file contents");
++            rustc_middle::dep_graph::declare_untracked_input("source text");
+             with_encode_metadata_header(tcx, path, |ecx| {
+                 // Encode all the entries and extra information in the crate,
+                 // culminating in the `CrateRoot` which points to all of it.
+diff --git a/compiler/rustc_middle/src/dep_graph/graph.rs b/compiler/rustc_middle/src/dep_graph/graph.rs
+index dcb5775f2..211d1d6f5 100644
+--- a/compiler/rustc_middle/src/dep_graph/graph.rs
++++ b/compiler/rustc_middle/src/dep_graph/graph.rs
+@@ -390,7 +390,11 @@ pub fn with_task<'tcx, OP, R>(
+             let task_deps = Lock::new(TaskDeps::new(
+                 #[cfg(debug_assertions)]
+                 Some(dep_node),
++                Some(dep_node.kind),
+             ));
++            if rustc_data_structures::untracked::UNTRACKED_READ_HOOK.get().is_some() {
++                task_deps.lock().inherited_print_modes = crate::ty::print::non_default_print_modes();
++            }
+             (with_deps(TaskDepsRef::Allow(&task_deps), op), Some(task_deps.into_inner()))
+         };
+ 
+@@ -428,6 +432,7 @@ fn with_anon_task_inner<'tcx, OP, R>(
+         let task_deps = Lock::new(TaskDeps::new(
+             #[cfg(debug_assertions)]
+             None,
++            Some(dep_kind),
+         ));
+         let result = with_deps(TaskDepsRef::Allow(&task_deps), op);
+         let task_deps = task_deps.into_inner();
+@@ -1311,15 +1316,25 @@ pub struct TaskDeps {
+     node: Option<DepNode>,
+ 
+     reads: TaskReads,
++
++    /// For reports of untracked reads (`rustc_data_structures::untracked`): the kind of the
++    /// task, and the untracked state it has declared as an input it tracks another way.
++    pub(super) kind: Option<DepKind>,
++    pub(super) declared: Vec<&'static str>,
++    /// Printing modes that were set when the task started, by whatever forced it.
++    pub(super) inherited_print_modes: Vec<&'static str>,
+ }
+ 
+ impl TaskDeps {
+     #[inline]
+-    fn new(#[cfg(debug_assertions)] node: Option<DepNode>) -> Self {
++    fn new(#[cfg(debug_assertions)] node: Option<DepNode>, kind: Option<DepKind>) -> Self {
+         TaskDeps {
+             #[cfg(debug_assertions)]
+             node,
+             reads: TaskReads::new(),
++            kind,
++            declared: Vec::new(),
++            inherited_print_modes: Vec::new(),
+         }
+     }
+ 
+diff --git a/compiler/rustc_middle/src/dep_graph/mod.rs b/compiler/rustc_middle/src/dep_graph/mod.rs
+index e63a28100..7f303ae7d 100644
+--- a/compiler/rustc_middle/src/dep_graph/mod.rs
++++ b/compiler/rustc_middle/src/dep_graph/mod.rs
+@@ -77,6 +77,107 @@ fn read_deps<OP>(op: OP)
+     })
+ }
+ 
++/// Declares that the current task tracks `what` another way (through a query that fingerprints
++/// it, say), where `what` is state that [`rustc_data_structures::untracked::untracked_read`]
++/// reports reading. Reads of it in this task are then not reported.
++pub fn declare_untracked_input(what: &'static str) {
++    read_deps(|task_deps| {
++        if let TaskDepsRef::Allow(deps) = task_deps {
++            deps.lock().declared.push(what);
++        }
++    })
++}
++
++/// For testing incremental compilation: under `RUSTC_REPORT_UNTRACKED`, report each read of
++/// untracked state inside a task whose result may be reused, unless the task declared it.
++/// With `RUSTC_REPORT_UNTRACKED=all`, declared reads are reported too, marked as declared.
++pub fn enable_untracked_read_reports() {
++    if std::env::var_os("RUSTC_REPORT_UNTRACKED").is_some() {
++        let _ = rustc_data_structures::untracked::UNTRACKED_READ_HOOK.set(report_untracked_read);
++    }
++}
++
++/// Untracked options whose reads are not reported (except with `RUSTC_REPORT_UNTRACKED=all`):
++/// they only make the compiler write debugging output, print statistics, check more, or keep
++/// data around longer, so a result reused without them is still correct.
++const DEBUGGING_OPTIONS: &[&str] = &[
++    "dump_mir",            // MIR dumps
++    "dump_mir_dataflow",   // dataflow dumps
++    "mir_include_spans",   // in MIR dumps
++    "nll_facts",           // borrowck fact dumps
++    "input_stats",         // statistics
++    "meta_stats",          // statistics
++    "print_type_sizes",    // printing
++    "profile_closures",    // printing
++    "validate_mir",        // checks only
++    "lint_mir",            // checks only
++    "no_steal_thir",       // keeps THIR in memory
++];
++
++/// Notes that printing read `mode`, a printing mode that is set. If the current task inherited
++/// it from whatever forced the task, the task's result may depend on who asked first.
++pub fn note_print_mode_read(mode: &'static str) {
++    if rustc_data_structures::untracked::UNTRACKED_READ_HOOK.get().is_none() {
++        return;
++    }
++    let mut found = None;
++    read_deps(|task_deps| {
++        if let TaskDepsRef::Allow(deps) = task_deps {
++            let deps = deps.lock();
++            if deps.inherited_print_modes.contains(&mode) {
++                found = deps.kind;
++            }
++        }
++    });
++    if let Some(kind) = found {
++        report_once(format!(
++            "rustc-untracked-read: printing mode `{mode}`, inherited from the caller and read, while computing `{kind:?}`, whose result incremental compilation may reuse"
++        ));
++    }
++}
++
++fn report_once(line: String) {
++    static SEEN: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
++    let mut seen = SEEN.lock().unwrap();
++    if !seen.contains(&line) {
++        eprintln!("{line}");
++        seen.push(line);
++    }
++}
++
++fn report_untracked_read(what: &'static str, at: &'static panic::Location<'static>) {
++    static SEEN: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
++    static ALL: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| {
++        std::env::var_os("RUSTC_REPORT_UNTRACKED").is_some_and(|v| v == "all")
++    });
++    let mut found = None;
++    read_deps(|task_deps| {
++        if let TaskDepsRef::Allow(deps) = task_deps {
++            let deps = deps.lock();
++            let declared = deps.declared.contains(&what);
++            if !declared || *ALL {
++                found = deps.kind.map(|kind| (kind, declared));
++            }
++        }
++    });
++    let Some((kind, declared)) = found else { return };
++    if !*ALL && DEBUGGING_OPTIONS.iter().any(|o| what.strip_prefix("the untracked option ") == Some(o)) {
++        return;
++    }
++    let line = if declared {
++        format!("rustc-untracked-read-declared: {what}, read at {at}, while computing `{kind:?}`")
++    } else {
++        format!(
++            "rustc-untracked-read: {what}, read at {at}, while computing `{kind:?}`, whose result incremental compilation may reuse"
++        )
++    };
++    let mut seen = SEEN.lock().unwrap();
++    if !seen.contains(&line) {
++        eprintln!("{line}");
++        seen.push(line);
++    }
++}
++
+ impl<'tcx> TyCtxt<'tcx> {
+     #[inline]
+     pub fn dep_kind_vtable(self, dk: DepKind) -> &'tcx DepKindVTable<'tcx> {
+diff --git a/compiler/rustc_middle/src/dep_graph/serialized.rs b/compiler/rustc_middle/src/dep_graph/serialized.rs
+index 1c476fc91..4a76764f4 100644
+--- a/compiler/rustc_middle/src/dep_graph/serialized.rs
++++ b/compiler/rustc_middle/src/dep_graph/serialized.rs
+@@ -911,7 +911,7 @@ pub(crate) fn new(
+             .unstable_opts
+             .query_dep_graph
+             .then(|| Lock::new(RetainedDepGraph::new(prev_index_space_len)));
+-        let status = EncoderState::new(encoder, sess.opts.unstable_opts.incremental_info, previous);
++        let status = EncoderState::new(encoder, (*sess.opts.unstable_opts.read_incremental_info()), previous);
+         GraphEncoder { status, retained_graph, profiler: sess.prof.clone() }
+     }
+ 
+diff --git a/compiler/rustc_middle/src/lint.rs b/compiler/rustc_middle/src/lint.rs
+index 8822ffee6..2cccc2a36 100644
+--- a/compiler/rustc_middle/src/lint.rs
++++ b/compiler/rustc_middle/src/lint.rs
+@@ -408,7 +408,7 @@ fn emit_lint_base_impl<'a>(
+ 
+         let has_future_breakage = future_incompatible.map_or(
+             // Default allow lints trigger too often for testing.
+-            sess.opts.unstable_opts.future_incompat_test && lint.default_level != Level::Allow,
++            (*sess.opts.unstable_opts.read_future_incompat_test()) && lint.default_level != Level::Allow,
+             |incompat| incompat.report_in_deps,
+         );
+ 
+diff --git a/compiler/rustc_middle/src/mir/generic_graph.rs b/compiler/rustc_middle/src/mir/generic_graph.rs
+index 3fd73712b..d7012b88f 100644
+--- a/compiler/rustc_middle/src/mir/generic_graph.rs
++++ b/compiler/rustc_middle/src/mir/generic_graph.rs
+@@ -7,7 +7,7 @@ pub(crate) fn mir_fn_to_generic_graph<'tcx>(tcx: TyCtxt<'tcx>, body: &Body<'_>)
+     let def_id = body.source.def_id();
+     let def_name = graphviz_safe_def_name(def_id);
+     let graph_name = format!("Mir_{def_name}");
+-    let dark_mode = tcx.sess.opts.unstable_opts.graphviz_dark_mode;
++    let dark_mode = (*tcx.sess.opts.unstable_opts.read_graphviz_dark_mode());
+ 
+     // Nodes
+     let nodes: Vec<Node> = body
+diff --git a/compiler/rustc_middle/src/mir/generic_graphviz.rs b/compiler/rustc_middle/src/mir/generic_graphviz.rs
+index bce7beb52..684df020d 100644
+--- a/compiler/rustc_middle/src/mir/generic_graphviz.rs
++++ b/compiler/rustc_middle/src/mir/generic_graphviz.rs
+@@ -58,11 +58,11 @@ pub fn write_graphviz<'tcx, W>(&self, tcx: TyCtxt<'tcx>, w: &mut W) -> io::Resul
+         writeln!(w, "{} {}{} {{", kind, cluster, self.graphviz_name)?;
+ 
+         // Global graph properties
+-        let font = format!(r#"fontname="{}""#, tcx.sess.opts.unstable_opts.graphviz_font);
++        let font = format!(r#"fontname="{}""#, (*tcx.sess.opts.unstable_opts.read_graphviz_font()));
+         let mut graph_attrs = vec![&font[..]];
+         let mut content_attrs = vec![&font[..]];
+ 
+-        let dark_mode = tcx.sess.opts.unstable_opts.graphviz_dark_mode;
++        let dark_mode = (*tcx.sess.opts.unstable_opts.read_graphviz_dark_mode());
+         if dark_mode {
+             graph_attrs.push(r#"bgcolor="black""#);
+             graph_attrs.push(r#"fontcolor="white""#);
+diff --git a/compiler/rustc_middle/src/mir/graphviz.rs b/compiler/rustc_middle/src/mir/graphviz.rs
+index 1cd34c35b..05d476384 100644
+--- a/compiler/rustc_middle/src/mir/graphviz.rs
++++ b/compiler/rustc_middle/src/mir/graphviz.rs
+@@ -51,11 +51,11 @@ pub fn write_mir_fn_graphviz<'tcx, W>(
+     W: Write,
+ {
+     // Global graph properties
+-    let font = format!(r#"fontname="{}""#, tcx.sess.opts.unstable_opts.graphviz_font);
++    let font = format!(r#"fontname="{}""#, (*tcx.sess.opts.unstable_opts.read_graphviz_font()));
+     let mut graph_attrs = vec![&font[..]];
+     let mut content_attrs = vec![&font[..]];
+ 
+-    let dark_mode = tcx.sess.opts.unstable_opts.graphviz_dark_mode;
++    let dark_mode = (*tcx.sess.opts.unstable_opts.read_graphviz_dark_mode());
+     if dark_mode {
+         graph_attrs.push(r#"bgcolor="black""#);
+         graph_attrs.push(r#"fontcolor="white""#);
+diff --git a/compiler/rustc_middle/src/mir/pretty.rs b/compiler/rustc_middle/src/mir/pretty.rs
+index ae30093b1..5ceeb0c88 100644
+--- a/compiler/rustc_middle/src/mir/pretty.rs
++++ b/compiler/rustc_middle/src/mir/pretty.rs
+@@ -58,7 +58,7 @@ pub struct PrettyPrintMirOptions {
+ impl PrettyPrintMirOptions {
+     /// Create the default set of MIR pretty-printing options from the CLI flags.
+     pub fn from_cli(tcx: TyCtxt<'_>) -> Self {
+-        Self { include_extra_comments: tcx.sess.opts.unstable_opts.mir_include_spans.is_enabled() }
++        Self { include_extra_comments: (*tcx.sess.opts.unstable_opts.read_mir_include_spans()).is_enabled() }
+     }
+ }
+ 
+@@ -80,7 +80,7 @@ impl<'a, 'tcx> MirDumper<'a, 'tcx> {
+     // - `writer.extra_data`: a no-op
+     // - `writer.options`: default options derived from CLI flags
+     pub fn new(tcx: TyCtxt<'tcx>, pass_name: &'static str, body: &Body<'tcx>) -> Option<Self> {
+-        let dump_enabled = if let Some(ref filters) = tcx.sess.opts.unstable_opts.dump_mir {
++        let dump_enabled = if let Some(ref filters) = (*tcx.sess.opts.unstable_opts.read_dump_mir()) {
+             // see notes on #41697 below
+             let node_path = ty::print::with_no_trimmed_paths!(
+                 ty::print::with_forced_impl_filename_line!(tcx.def_path_str(body.source.def_id()))
+@@ -166,7 +166,7 @@ pub fn dump_mir(&self, body: &Body<'tcx>) {
+             self.dump_mir_to_writer(body, &mut file)?;
+         };
+ 
+-        if self.tcx().sess.opts.unstable_opts.dump_mir_graphviz {
++        if (*self.tcx().sess.opts.unstable_opts.read_dump_mir_graphviz()) {
+             let _ = try {
+                 let mut file = self.create_dump_file("dot", body)?;
+                 write_mir_fn_graphviz(self.tcx(), body, false, &mut file)?;
+@@ -207,7 +207,7 @@ fn dump_path(&self, extension: &str, body: &Body<'tcx>) -> PathBuf {
+             None => String::new(),
+         };
+ 
+-        let pass_num = if tcx.sess.opts.unstable_opts.dump_mir_exclude_pass_number {
++        let pass_num = if (*tcx.sess.opts.unstable_opts.read_dump_mir_exclude_pass_number()) {
+             String::new()
+         } else if self.show_pass_num {
+             let (dialect_index, phase_index) = body.phase.index();
+@@ -273,7 +273,7 @@ fn dump_path(&self, extension: &str, body: &Body<'tcx>) -> PathBuf {
+         };
+ 
+         let mut file_path = PathBuf::new();
+-        file_path.push(Path::new(&tcx.sess.opts.unstable_opts.dump_mir_dir));
++        file_path.push(Path::new(&(*tcx.sess.opts.unstable_opts.read_dump_mir_dir())));
+ 
+         let pass_name = self.pass_name;
+         let disambiguator = self.disambiguator;
+@@ -1179,7 +1179,7 @@ fn fmt(&self, fmt: &mut Formatter<'_>) -> fmt::Result {
+ 
+                 // When printing regions, add trailing space if necessary.
+                 let print_region = ty::tls::with(|tcx| {
+-                    tcx.sess.verbose_internals() || tcx.sess.opts.unstable_opts.identify_regions
++                    tcx.sess.verbose_internals() || (*tcx.sess.opts.unstable_opts.read_identify_regions())
+                 });
+                 let region = if print_region {
+                     let mut region = region.to_string();
+@@ -1252,7 +1252,7 @@ fn fmt(&self, fmt: &mut Formatter<'_>) -> fmt::Result {
+ 
+                     AggregateKind::Closure(def_id, args)
+                     | AggregateKind::CoroutineClosure(def_id, args) => ty::tls::with(|tcx| {
+-                        let name = if tcx.sess.opts.unstable_opts.span_free_formats {
++                        let name = if (*tcx.sess.opts.unstable_opts.read_span_free_formats()) {
+                             let args = tcx.lift(args);
+                             format!("{{closure@{}}}", tcx.def_path_str_with_args(def_id, args),)
+                         } else {
+@@ -1724,7 +1724,7 @@ fn fmt(&self, w: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+             // We are done.
+             return write!(w, " {{}}");
+         }
+-        if tcx.sess.opts.unstable_opts.dump_mir_exclude_alloc_bytes {
++        if (*tcx.sess.opts.unstable_opts.read_dump_mir_exclude_alloc_bytes()) {
+             return write!(w, " {{ .. }}");
+         }
+         // Write allocation bytes.
+diff --git a/compiler/rustc_middle/src/mono.rs b/compiler/rustc_middle/src/mono.rs
+index cf567fa1c..82b2c8ef3 100644
+--- a/compiler/rustc_middle/src/mono.rs
++++ b/compiler/rustc_middle/src/mono.rs
+@@ -568,7 +568,7 @@ fn item_sort_key<'tcx>(tcx: TyCtxt<'tcx>, item: MonoItem<'tcx>) -> ItemSortKey<'
+         }
+ 
+         let mut items: Vec<_> = self.items().iter().map(|(&i, &data)| (i, data)).collect();
+-        if !tcx.sess.opts.unstable_opts.codegen_source_order {
++        if !(*tcx.sess.opts.unstable_opts.read_codegen_source_order()) {
+             // In this case, we do not need to keep the items in any specific order, as the input
+             // is already deterministic.
+             //
+diff --git a/compiler/rustc_middle/src/ty/context.rs b/compiler/rustc_middle/src/ty/context.rs
+index aa7fe0872..e56a7d587 100644
+--- a/compiler/rustc_middle/src/ty/context.rs
++++ b/compiler/rustc_middle/src/ty/context.rs
+@@ -1155,7 +1155,7 @@ pub fn needs_hir_hash(self) -> bool {
+             || self.sess.opts.incremental.is_some()
+             || self.needs_metadata()
+             || self.sess.instrument_coverage()
+-            || self.sess.opts.unstable_opts.metrics_dir.is_some()
++            || (*self.sess.opts.unstable_opts.read_metrics_dir()).is_some()
+     }
+ 
+     /// Whether the combined per-owner HIR hash (`OwnerInfo::opt_hash`, which folds `parenting`,
+@@ -2805,7 +2805,7 @@ pub fn is_const_trait_impl(self, def_id: DefId) -> bool {
+     }
+ 
+     pub fn is_sdylib_interface_build(self) -> bool {
+-        self.sess.opts.unstable_opts.build_sdylib_interface
++        (*self.sess.opts.unstable_opts.read_build_sdylib_interface())
+     }
+ 
+     pub fn intrinsic(self, def_id: impl IntoQueryKey<DefId>) -> Option<ty::IntrinsicDef> {
+diff --git a/compiler/rustc_middle/src/ty/error.rs b/compiler/rustc_middle/src/ty/error.rs
+index fb4e30b16..c6a883286 100644
+--- a/compiler/rustc_middle/src/ty/error.rs
++++ b/compiler/rustc_middle/src/ty/error.rs
+@@ -286,7 +286,7 @@ pub fn short_string_namespace<T>(
+         let regular = FmtPrinter::print_string(self, namespace, |p| t.print(p))
+             .expect("could not write to `String`");
+ 
+-        if !self.sess.opts.unstable_opts.write_long_types_to_disk || self.sess.opts.verbose {
++        if !(*self.sess.opts.unstable_opts.read_write_long_types_to_disk()) || self.sess.opts.verbose {
+             return regular;
+         }
+ 
+diff --git a/compiler/rustc_middle/src/ty/print/pretty.rs b/compiler/rustc_middle/src/ty/print/pretty.rs
+index cafe93c59..c2bc8681b 100644
+--- a/compiler/rustc_middle/src/ty/print/pretty.rs
++++ b/compiler/rustc_middle/src/ty/print/pretty.rs
+@@ -53,6 +53,32 @@ pub enum RtnMode {
+     ForSuggestion,
+ }
+ 
++/// For testing incremental compilation (`rustc_data_structures::untracked`): the printing
++/// modes that are not at their defaults. Each is thread-local state set by the caller, so a
++/// query that starts with one set may compute a result that depends on who asked first.
++pub fn non_default_print_modes() -> Vec<&'static str> {
++    let mut out = Vec::new();
++    let flags: [(&'static str, &'static std::thread::LocalKey<Cell<bool>>); 8] = [
++        ("with_forced_impl_filename_line", &FORCE_IMPL_FILENAME_LINE),
++        ("with_crate_prefix", &SHOULD_PREFIX_WITH_CRATE),
++        ("with_resolve_crate_name", &SHOULD_PREFIX_WITH_CRATE_NAME),
++        ("with_no_trimmed_paths", &NO_TRIMMED_PATH),
++        ("with_forced_trimmed_paths", &FORCE_TRIMMED_PATH),
++        ("with_reduced_queries", &REDUCED_QUERIES),
++        ("with_no_visible_paths", &NO_VISIBLE_PATH),
++        ("with_no_visible_paths_if_doc_hidden", &NO_VISIBLE_PATH_IF_DOC_HIDDEN),
++    ];
++    for (name, flag) in flags {
++        if flag.get() {
++            out.push(name);
++        }
++    }
++    if !matches!(RTN_MODE.get(), RtnMode::ForDiagnostic) {
++        out.push("with_types_for_signature");
++    }
++    out
++}
++
+ macro_rules! define_helper {
+     ($($(#[$a:meta])* fn $name:ident($helper:ident, $tl:ident);)+) => {
+         $(
+@@ -80,7 +106,11 @@ fn drop(&mut self) {
+             }
+ 
+             pub fn $name() -> bool {
+-                $tl.get()
++                let set = $tl.get();
++                if set {
++                    crate::dep_graph::note_print_mode_read(stringify!($name));
++                }
++                set
+             }
+         )+
+     }
+@@ -453,7 +483,7 @@ fn try_print_trimmed_def_path(&mut self, def_id: DefId) -> Result<bool, PrintErr
+         if with_forced_trimmed_paths() && self.force_print_trimmed_def_path(def_id)? {
+             return Ok(true);
+         }
+-        if self.tcx().sess.opts.unstable_opts.trim_diagnostic_paths
++        if (*self.tcx().sess.opts.unstable_opts.read_trim_diagnostic_paths())
+             && self.tcx().sess.opts.trimmed_def_paths
+             && !with_no_trimmed_paths()
+             && !with_crate_prefix()
+@@ -721,7 +751,7 @@ fn pretty_print_closure_inner(
+     ) -> Result<(), PrintError> {
+         if self.should_truncate() {
+             write!(self, "@...")
+-        } else if self.tcx().sess.opts.unstable_opts.span_free_formats {
++        } else if (*self.tcx().sess.opts.unstable_opts.read_span_free_formats()) {
+             write!(self, "@")?;
+             self.print_def_path(did, args)
+         } else if let Some(did) = did.as_local() {
+@@ -2585,7 +2615,7 @@ fn should_print_optional_region(&self, region: ty::Region<'tcx>) -> bool {
+             return false;
+         }
+ 
+-        let identify_regions = self.tcx.sess.opts.unstable_opts.identify_regions;
++        let identify_regions = (*self.tcx.sess.opts.unstable_opts.read_identify_regions());
+ 
+         match region.kind() {
+             ty::ReEarlyParam(ref data) => data.is_named(),
+@@ -2648,7 +2678,7 @@ pub fn pretty_print_region(&mut self, region: ty::Region<'tcx>) -> Result<(), fm
+             return Ok(());
+         }
+ 
+-        let identify_regions = self.tcx.sess.opts.unstable_opts.identify_regions;
++        let identify_regions = (*self.tcx.sess.opts.unstable_opts.read_identify_regions());
+ 
+         // These printouts are concise. They do not contain all the information
+         // the user might want to diagnose an error, but there is basically no way
+diff --git a/compiler/rustc_mir_build/src/check_unsafety.rs b/compiler/rustc_mir_build/src/check_unsafety.rs
+index e83c3560a..134b4f41d 100644
+--- a/compiler/rustc_mir_build/src/check_unsafety.rs
++++ b/compiler/rustc_mir_build/src/check_unsafety.rs
+@@ -182,7 +182,7 @@ fn visit_inner_body(&mut self, def: LocalDefId) {
+         if let Ok((inner_thir, expr)) = self.tcx.thir_body(def) {
+             // Run all other queries that depend on THIR.
+             self.tcx.ensure_done().mir_built(def);
+-            let inner_thir = if self.tcx.sess.opts.unstable_opts.no_steal_thir {
++            let inner_thir = if (*self.tcx.sess.opts.unstable_opts.read_no_steal_thir()) {
+                 &inner_thir.borrow()
+             } else {
+                 // We don't have other use for the THIR. Steal it to reduce memory usage.
+@@ -1061,7 +1061,7 @@ pub(crate) fn check_unsafety(tcx: TyCtxt<'_>, def: LocalDefId) {
+     let Ok((thir, expr)) = tcx.thir_body(def) else { return };
+     // Runs all other queries that depend on THIR.
+     tcx.ensure_done().mir_built(def);
+-    let thir = if tcx.sess.opts.unstable_opts.no_steal_thir {
++    let thir = if (*tcx.sess.opts.unstable_opts.read_no_steal_thir()) {
+         &thir.borrow()
+     } else {
+         // We don't have other use for the THIR. Steal it to reduce memory usage.
+diff --git a/compiler/rustc_mir_dataflow/src/framework/graphviz.rs b/compiler/rustc_mir_dataflow/src/framework/graphviz.rs
+index b1e4bbe98..dc7407ce0 100644
+--- a/compiler/rustc_mir_dataflow/src/framework/graphviz.rs
++++ b/compiler/rustc_mir_dataflow/src/framework/graphviz.rs
+@@ -64,8 +64,8 @@ pub(super) fn write_graphviz_results<'tcx, A>(
+ 
+     let graphviz = Formatter::new(body, results, style);
+     let mut render_opts =
+-        vec![dot::RenderOption::Fontname(tcx.sess.opts.unstable_opts.graphviz_font.clone())];
+-    if tcx.sess.opts.unstable_opts.graphviz_dark_mode {
++        vec![dot::RenderOption::Fontname((*tcx.sess.opts.unstable_opts.read_graphviz_font()).clone())];
++    if (*tcx.sess.opts.unstable_opts.read_graphviz_dark_mode()) {
+         render_opts.push(dot::RenderOption::DarkTheme);
+     }
+     with_no_trimmed_paths!(dot::render_opts(&graphviz, &mut buf, &render_opts))?;
+diff --git a/compiler/rustc_mir_dataflow/src/framework/mod.rs b/compiler/rustc_mir_dataflow/src/framework/mod.rs
+index 8bb5e7458..a795ee8cb 100644
+--- a/compiler/rustc_mir_dataflow/src/framework/mod.rs
++++ b/compiler/rustc_mir_dataflow/src/framework/mod.rs
+@@ -383,7 +383,7 @@ struct BasicBlockRank {}
+ 
+         let results = Results { analysis: self, entry_states };
+ 
+-        if tcx.sess.opts.unstable_opts.dump_mir_dataflow {
++        if (*tcx.sess.opts.unstable_opts.read_dump_mir_dataflow()) {
+             let res = write_graphviz_results(tcx, body, &results, pass_name);
+             if let Err(e) = res {
+                 error!("Failed to write graphviz dataflow results: {}", e);
+diff --git a/compiler/rustc_mir_transform/src/coroutine/mod.rs b/compiler/rustc_mir_transform/src/coroutine/mod.rs
+index 1e63dca78..e42069318 100644
+--- a/compiler/rustc_mir_transform/src/coroutine/mod.rs
++++ b/compiler/rustc_mir_transform/src/coroutine/mod.rs
+@@ -1106,7 +1106,7 @@ fn run_pass(&self, tcx: TyCtxt<'tcx>, body: &mut Body<'tcx>) {
+         let liveness_info =
+             locals_live_across_suspend_points(tcx, body, &always_live_locals, movable);
+ 
+-        if tcx.sess.opts.unstable_opts.validate_mir {
++        if (*tcx.sess.opts.unstable_opts.read_validate_mir()) {
+             let mut vis = EnsureCoroutineFieldAssignmentsNeverAlias {
+                 assigned_local: None,
+                 saved_locals: &liveness_info.saved_locals,
+diff --git a/compiler/rustc_mir_transform/src/pass_manager.rs b/compiler/rustc_mir_transform/src/pass_manager.rs
+index f3f65a070..8ecc26910 100644
+--- a/compiler/rustc_mir_transform/src/pass_manager.rs
++++ b/compiler/rustc_mir_transform/src/pass_manager.rs
+@@ -321,8 +321,8 @@ fn run_passes_inner<'tcx>(
+     let prof_arg = tcx.sess.prof.enabled().then(|| format!("{:?}", body.source.def_id()));
+ 
+     if !body.should_skip() {
+-        let validate = validate_each & tcx.sess.opts.unstable_opts.validate_mir;
+-        let lint = tcx.sess.opts.unstable_opts.lint_mir;
++        let validate = validate_each & (*tcx.sess.opts.unstable_opts.read_validate_mir());
++        let lint = (*tcx.sess.opts.unstable_opts.read_lint_mir());
+ 
+         let ctx = PassCtx::for_body(tcx, body.source.def_id());
+ 
+@@ -394,9 +394,9 @@ fn run_passes_inner<'tcx>(
+         dump_mir_for_phase_change(tcx, body);
+ 
+         let validate =
+-            (validate_each & tcx.sess.opts.unstable_opts.validate_mir & !body.should_skip())
++            (validate_each & (*tcx.sess.opts.unstable_opts.read_validate_mir()) & !body.should_skip())
+                 || new_phase == MirPhase::Runtime(RuntimePhase::Optimized);
+-        let lint = tcx.sess.opts.unstable_opts.lint_mir & !body.should_skip();
++        let lint = (*tcx.sess.opts.unstable_opts.read_lint_mir()) & !body.should_skip();
+         if validate {
+             validate_body(tcx, body, format!("after phase change to {}", new_phase.name()));
+         }
+diff --git a/compiler/rustc_mir_transform/src/validate.rs b/compiler/rustc_mir_transform/src/validate.rs
+index 28a508bde..a456c9d50 100644
+--- a/compiler/rustc_mir_transform/src/validate.rs
++++ b/compiler/rustc_mir_transform/src/validate.rs
+@@ -433,7 +433,7 @@ fn visit_terminator(&mut self, terminator: &Terminator<'tcx>, location: Location
+ 
+                         // Call arguments are moved by reference, so they must be plain locals
+                         // or the contents of a box; other moved places violate MIR invariants.
+-                        if self.tcx.sess.opts.unstable_opts.validate_mir
++                        if (*self.tcx.sess.opts.unstable_opts.read_validate_mir())
+                             && self.body.phase < MirPhase::Runtime(RuntimePhase::Initial)
+                         {
+                             let is_plain_local = place.projection.is_empty();
+@@ -648,7 +648,7 @@ fn predicate_must_hold_modulo_regions(
+ impl<'a, 'tcx> Visitor<'tcx> for TypeChecker<'a, 'tcx> {
+     fn visit_operand(&mut self, operand: &Operand<'tcx>, location: Location) {
+         // This check is somewhat expensive, so only run it when -Zvalidate-mir is passed.
+-        if self.tcx.sess.opts.unstable_opts.validate_mir
++        if (*self.tcx.sess.opts.unstable_opts.read_validate_mir())
+             && self.body.phase < MirPhase::Runtime(RuntimePhase::Initial)
+         {
+             // `Operand::Copy` is only supposed to be used with `Copy` types.
+diff --git a/compiler/rustc_monomorphize/src/collector.rs b/compiler/rustc_monomorphize/src/collector.rs
+index bfe3ba91b..7b204f959 100644
+--- a/compiler/rustc_monomorphize/src/collector.rs
++++ b/compiler/rustc_monomorphize/src/collector.rs
+@@ -1223,7 +1223,7 @@ fn create_fn_mono_item<'tcx>(
+     source: Span,
+ ) -> Spanned<MonoItem<'tcx>> {
+     let def_id = instance.def_id();
+-    if tcx.sess.opts.unstable_opts.profile_closures
++    if (*tcx.sess.opts.unstable_opts.read_profile_closures())
+         && def_id.is_local()
+         && tcx.is_closure_like(def_id)
+     {
+diff --git a/compiler/rustc_monomorphize/src/partitioning.rs b/compiler/rustc_monomorphize/src/partitioning.rs
+index 16df895b0..75376ac08 100644
+--- a/compiler/rustc_monomorphize/src/partitioning.rs
++++ b/compiler/rustc_monomorphize/src/partitioning.rs
+@@ -1221,7 +1221,7 @@ fn collect_and_partition_mono_items(tcx: TyCtxt<'_>, (): ()) -> MonoItemPartitio
+         tcx.dcx().emit_fatal(CouldntDumpMonoStats { error: err.to_string() });
+     }
+ 
+-    if tcx.sess.opts.unstable_opts.print_mono_items {
++    if (*tcx.sess.opts.unstable_opts.read_print_mono_items()) {
+         let mut item_to_cgus: UnordMap<_, Vec<_>> = Default::default();
+ 
+         for cgu in codegen_units {
+@@ -1287,7 +1287,7 @@ fn dump_mono_items_stats<'tcx>(
+         Path::new(".")
+     };
+ 
+-    let format = tcx.sess.opts.unstable_opts.dump_mono_stats_format;
++    let format = (*tcx.sess.opts.unstable_opts.read_dump_mono_stats_format());
+     let ext = format.extension();
+     let filename = format!("{crate_name}.mono_items.{ext}");
+     let output_path = output_directory.join(&filename);
+diff --git a/compiler/rustc_query_impl/src/execution.rs b/compiler/rustc_query_impl/src/execution.rs
+index ca60614ba..e3bf3285f 100644
+--- a/compiler/rustc_query_impl/src/execution.rs
++++ b/compiler/rustc_query_impl/src/execution.rs
+@@ -543,7 +543,7 @@ fn load_from_disk_or_invoke_provider_green<'tcx, C: QueryCache>(
+     };
+     let (value, verify) = match try_value {
+         Some(value) => {
+-            if std::intrinsics::unlikely(tcx.sess.opts.unstable_opts.query_dep_graph) {
++            if std::intrinsics::unlikely((*tcx.sess.opts.unstable_opts.read_query_dep_graph())) {
+                 dep_graph_data.mark_debug_loaded_from_disk(*dep_node)
+             }
+ 
+diff --git a/compiler/rustc_query_impl/src/incremental.rs b/compiler/rustc_query_impl/src/incremental.rs
+index afcab4a0b..f2a75b6a1 100644
+--- a/compiler/rustc_query_impl/src/incremental.rs
++++ b/compiler/rustc_query_impl/src/incremental.rs
+@@ -376,7 +376,7 @@ fn encode_query_values_inner<'tcx, C, V>(
+ }
+ 
+ pub(crate) fn verify_query_key_hashes<'tcx>(tcx: TyCtxt<'tcx>) {
+-    if tcx.sess.opts.unstable_opts.incremental_verify_ich || cfg!(debug_assertions) {
++    if (*tcx.sess.opts.unstable_opts.read_incremental_verify_ich()) || cfg!(debug_assertions) {
+         tcx.sess.time("verify_query_key_hashes", || {
+             for_each_query_vtable!(ALL, tcx, |query| {
+                 verify_query_key_hashes_inner(query, tcx);
+@@ -431,7 +431,7 @@ pub(crate) fn should_verify_loaded_value(
+ ) -> bool {
+     let hash = Fingerprint::from(key_fingerprint).to_smaller_hash().as_u64();
+     hash % 32 == dep_graph_data.session_count() % 32
+-        || tcx.sess.opts.unstable_opts.incremental_verify_ich
++        || (*tcx.sess.opts.unstable_opts.read_incremental_verify_ich())
+ }
+ 
+ /// Inner implementation of [`DepKindVTable::promote_from_disk_fn`] for queries.
+diff --git a/compiler/rustc_session/src/config.rs b/compiler/rustc_session/src/config.rs
+index 64cfdfd5f..7c3993f87 100644
+--- a/compiler/rustc_session/src/config.rs
++++ b/compiler/rustc_session/src/config.rs
+@@ -1528,8 +1528,8 @@ impl Options {
+     /// Returns `true` if there is a reason to build the dep graph.
+     pub fn build_dep_graph(&self) -> bool {
+         self.incremental.is_some()
+-            || self.unstable_opts.dump_dep_graph
+-            || self.unstable_opts.query_dep_graph
++            || (*self.unstable_opts.read_dump_dep_graph())
++            || (*self.unstable_opts.read_query_dep_graph())
+     }
+ 
+     pub fn file_path_mapping(&self) -> FilePathMapping {
+@@ -1542,8 +1542,8 @@ pub fn file_path_mapping(&self) -> FilePathMapping {
+ 
+     /// Returns `true` if there will be an output file generated.
+     pub fn will_create_output_file(&self) -> bool {
+-        !self.unstable_opts.parse_crate_root_only && // The file is just being parsed
+-            self.unstable_opts.ls.is_empty() // The file is just being queried
++        !(*self.unstable_opts.read_parse_crate_root_only()) && // The file is just being parsed
++            (*self.unstable_opts.read_ls()).is_empty() // The file is just being queried
+     }
+ 
+     #[inline]
+diff --git a/compiler/rustc_session/src/diagnostics.rs b/compiler/rustc_session/src/diagnostics.rs
+index e673435da..8fad9bb43 100644
+--- a/compiler/rustc_session/src/diagnostics.rs
++++ b/compiler/rustc_session/src/diagnostics.rs
+@@ -129,7 +129,7 @@ pub fn add_feature_diagnostics_for_issue(
+             // We're unlikely to stabilize something out of `rustc_attrs`
+             // without at least renaming it, so pointing out how old
+             // the compiler is will do little good.
+-        } else if sess.opts.unstable_opts.ui_testing {
++        } else if (*sess.opts.unstable_opts.read_ui_testing()) {
+             err.subdiagnostic(SuggestUpgradeCompiler::ui_testing());
+         } else if let Some(suggestion) = SuggestUpgradeCompiler::new() {
+             err.subdiagnostic(suggestion);
+@@ -168,7 +168,7 @@ pub fn feature_err_unstable_feature_bound(
+             // We're unlikely to stabilize something out of `rustc_attrs`
+             // without at least renaming it, so pointing out how old
+             // the compiler is will do little good.
+-        } else if sess.opts.unstable_opts.ui_testing {
++        } else if (*sess.opts.unstable_opts.read_ui_testing()) {
+             err.subdiagnostic(SuggestUpgradeCompiler::ui_testing());
+         } else if let Some(suggestion) = SuggestUpgradeCompiler::new() {
+             err.subdiagnostic(suggestion);
+diff --git a/compiler/rustc_session/src/lib.rs b/compiler/rustc_session/src/lib.rs
+index e3580d36e..b807713e9 100644
+--- a/compiler/rustc_session/src/lib.rs
++++ b/compiler/rustc_session/src/lib.rs
+@@ -6,6 +6,7 @@
+ #![feature(iter_intersperse)]
+ #![feature(macro_derive)]
+ #![feature(macro_metavar_expr)]
++#![feature(macro_metavar_expr_concat)]
+ #![feature(option_into_flat_iter)]
+ #![feature(rustc_attrs)]
+ // To generate CodegenOptionsTargetModifiers and UnstableOptionsTargetModifiers enums
+diff --git a/compiler/rustc_session/src/options.rs b/compiler/rustc_session/src/options.rs
+index 9a3e74c28..264c4c123 100644
+--- a/compiler/rustc_session/src/options.rs
++++ b/compiler/rustc_session/src/options.rs
+@@ -543,6 +543,26 @@ pub struct $struct_name {
+             )*
+         }
+ 
++        impl $struct_name {
++            $(
++                /// The option's value. A read of an option the dependency graph does not
++                /// track is reported, for testing incremental compilation
++                /// (`rustc_data_structures::untracked`).
++                #[inline]
++                #[track_caller]
++                #[allow(dead_code)]
++                pub fn ${concat(read_, $opt)}(&self) -> &$t {
++                    if stringify!($dep_tracking_marker) == "UNTRACKED" {
++                        rustc_data_structures::untracked::untracked_read(concat!(
++                            "the untracked option ",
++                            stringify!($opt)
++                        ));
++                    }
++                    &self.$opt
++                }
++            )*
++        }
++
+         #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Copy, Clone, Encodable, BlobDecodable)]
+         pub enum $tmod_enum {
+             $(
+diff --git a/compiler/rustc_session/src/output.rs b/compiler/rustc_session/src/output.rs
+index 4824abae6..ba42fc461 100644
+--- a/compiler/rustc_session/src/output.rs
++++ b/compiler/rustc_session/src/output.rs
+@@ -98,7 +98,7 @@ pub fn filename_for_input(
+     crate_name: Symbol,
+     outputs: &OutputFilenames,
+ ) -> OutFileName {
+-    let libname = format!("{}{}", crate_name, sess.opts.cg.extra_filename);
++    let libname = format!("{}{}", crate_name, (*sess.opts.cg.read_extra_filename()));
+ 
+     match crate_type {
+         CrateType::Rlib => {
+diff --git a/compiler/rustc_session/src/session.rs b/compiler/rustc_session/src/session.rs
+index f068aaa58..447a2d9a6 100644
+--- a/compiler/rustc_session/src/session.rs
++++ b/compiler/rustc_session/src/session.rs
+@@ -352,11 +352,11 @@ pub fn early_lto(&self) -> LtoCli {
+     }
+ 
+     pub fn print_llvm_stats(&self) -> bool {
+-        self.opts.unstable_opts.print_codegen_stats
++        (*self.opts.unstable_opts.read_print_codegen_stats())
+     }
+ 
+     pub fn print_llvm_stats_json(&self) -> Option<&String> {
+-        self.opts.unstable_opts.print_codegen_stats_json.as_ref()
++        (*self.opts.unstable_opts.read_print_codegen_stats_json()).as_ref()
+     }
+ 
+     pub fn relocation_model(&self) -> RelocModel {
+@@ -673,10 +673,10 @@ pub fn create_feature_err<'a>(&'a self, err: impl Diagnostic<'a>, feature: Symbo
+     /// Record the fact that we called `trimmed_def_paths`, and do some
+     /// checking about whether its cost was justified.
+     pub fn record_trimmed_def_paths(&self) {
+-        if self.opts.unstable_opts.print_type_sizes
+-            || self.opts.unstable_opts.query_dep_graph
+-            || self.opts.unstable_opts.dump_mir.is_some()
+-            || self.opts.unstable_opts.unpretty.is_some()
++        if (*self.opts.unstable_opts.read_print_type_sizes())
++            || (*self.opts.unstable_opts.read_query_dep_graph())
++            || (*self.opts.unstable_opts.read_dump_mir()).is_some()
++            || (*self.opts.unstable_opts.read_unpretty()).is_some()
+             || self.prof.is_args_recording_enabled()
+             || self.opts.output_types.contains_key(&OutputType::Mir)
+             || std::env::var_os("RUSTC_LOG").is_some()
+@@ -897,7 +897,7 @@ pub fn diagnostic_width(&self) -> usize {
+         let default_column_width = 140;
+         if let Some(width) = self.opts.diagnostic_width {
+             width
+-        } else if self.opts.unstable_opts.ui_testing {
++        } else if (*self.opts.unstable_opts.read_ui_testing()) {
+             default_column_width
+         } else {
+             termize::dimensions().map_or(default_column_width, |(w, _)| w)
+@@ -1070,7 +1070,7 @@ pub fn fewer_names(&self) -> bool {
+     }
+ 
+     pub fn unstable_options(&self) -> bool {
+-        self.opts.unstable_opts.unstable_options
++        (*self.opts.unstable_opts.read_unstable_options())
+     }
+ 
+     pub fn is_nightly_build(&self) -> bool {
+@@ -1280,9 +1280,9 @@ pub fn pointer_authentication_init_fini(&self) -> Option<&PointerAuthSchema> {
+ // JUSTIFICATION: part of session construction
+ #[allow(rustc::bad_opt_access)]
+ fn default_emitter(sopts: &config::Options, source_map: Arc<SourceMap>) -> Box<DynEmitter> {
+-    let macro_backtrace = sopts.unstable_opts.macro_backtrace;
+-    let track_diagnostics = sopts.unstable_opts.track_diagnostics;
+-    let terminal_url = match sopts.unstable_opts.terminal_urls {
++    let macro_backtrace = (*sopts.unstable_opts.read_macro_backtrace());
++    let track_diagnostics = (*sopts.unstable_opts.read_track_diagnostics());
++    let terminal_url = match (*sopts.unstable_opts.read_terminal_urls()) {
+         TerminalUrl::Auto => {
+             match (std::env::var("COLORTERM").as_deref(), std::env::var("TERM").as_deref()) {
+                 (Ok("truecolor"), Ok("xterm-256color"))
+@@ -1310,9 +1310,9 @@ fn default_emitter(sopts: &config::Options, source_map: Arc<SourceMap>) -> Box<D
+                     .terminal_url(terminal_url)
+                     .theme(if unicode { OutputTheme::Unicode } else { OutputTheme::Ascii })
+                     .ignored_directories_in_source_blocks(
+-                        sopts.unstable_opts.ignore_directory_in_diagnostics_source_blocks.clone(),
++                        (*sopts.unstable_opts.read_ignore_directory_in_diagnostics_source_blocks()).clone(),
+                     );
+-                Box::new(emitter.ui_testing(sopts.unstable_opts.ui_testing))
++                Box::new(emitter.ui_testing((*sopts.unstable_opts.read_ui_testing())))
+             }
+         },
+         config::ErrorOutputType::Json { pretty, json_rendered, color_config } => Box::new(
+@@ -1323,9 +1323,9 @@ fn default_emitter(sopts: &config::Options, source_map: Arc<SourceMap>) -> Box<D
+                 json_rendered,
+                 color_config,
+             )
+-            .ui_testing(sopts.unstable_opts.ui_testing)
++            .ui_testing((*sopts.unstable_opts.read_ui_testing()))
+             .ignored_directories_in_source_blocks(
+-                sopts.unstable_opts.ignore_directory_in_diagnostics_source_blocks.clone(),
++                (*sopts.unstable_opts.read_ignore_directory_in_diagnostics_source_blocks()).clone(),
+             )
+             .diagnostic_width(sopts.diagnostic_width)
+             .macro_backtrace(macro_backtrace)
+@@ -1368,7 +1368,7 @@ pub fn build_early_session(
+ 
+     let host_triple = TargetTuple::from_tuple(config::host_tuple());
+     let (host, target_warnings) =
+-        Target::search(&host_triple, sopts.sysroot.path(), sopts.unstable_opts.unstable_options)
++        Target::search(&host_triple, sopts.sysroot.path(), (*sopts.unstable_opts.read_unstable_options()))
+             .unwrap_or_else(|e| {
+                 dcx.handle().fatal(format!("Error loading host specification: {e}"))
+             });
+@@ -1398,7 +1398,7 @@ pub fn build_session(
+     let (wasm_proc_macro_target, target_warnings) = Target::search(
+         &wasm_proc_macro_tuple,
+         sopts.sysroot.path(),
+-        sopts.unstable_opts.unstable_options,
++        (*sopts.unstable_opts.read_unstable_options()),
+     )
+     .unwrap_or_else(|e| {
+         dcx.fatal(format!("Error loading wasm proc-macro target specification: {e}"))
+@@ -1414,8 +1414,8 @@ pub fn build_session(
+         let profiler = SelfProfiler::new(
+             directory,
+             sopts.crate_name.as_deref(),
+-            sopts.unstable_opts.self_profile_events.as_deref(),
+-            &sopts.unstable_opts.self_profile_counter,
++            (*sopts.unstable_opts.read_self_profile_events()).as_deref(),
++            &(*sopts.unstable_opts.read_self_profile_counter()),
+         );
+         match profiler {
+             Ok(profiler) => Some(Arc::new(profiler)),
+@@ -1438,7 +1438,7 @@ pub fn build_session(
+ 
+     let prof = SelfProfilerRef::new(
+         self_profiler,
+-        sopts.unstable_opts.time_passes.then(|| sopts.unstable_opts.time_passes_format),
++        (*sopts.unstable_opts.read_time_passes()).then(|| (*sopts.unstable_opts.read_time_passes_format())),
+     );
+ 
+     let ctfe_backtrace = Lock::new(match env::var("RUSTC_CTFE_BACKTRACE") {
+@@ -1759,7 +1759,7 @@ fn validate_commandline_args_with_session_available(sess: &Session) {
+     }
+ 
+     if !sess.target.options.supported_split_debuginfo.contains(&sess.split_debuginfo())
+-        && !sess.opts.unstable_opts.unstable_options
++        && !(*sess.opts.unstable_opts.read_unstable_options())
+     {
+         sess.dcx().emit_err(diagnostics::SplitDebugInfoUnstablePlatform {
+             debuginfo: sess.split_debuginfo(),
+@@ -1794,7 +1794,7 @@ fn validate_commandline_args_with_session_available(sess: &Session) {
+         sess.dcx().emit_err(diagnostics::InstrumentationNotSupported { us: "XRay".to_string() });
+     }
+ 
+-    if let Some(flavor) = sess.opts.cg.linker_flavor
++    if let Some(flavor) = (*sess.opts.cg.read_linker_flavor())
+         && let Some(compatible_list) = sess.target.linker_flavor.check_compatibility(flavor)
+     {
+         let flavor = flavor.desc();
+diff --git a/compiler/rustc_span/src/source_map.rs b/compiler/rustc_span/src/source_map.rs
+index f394765ab..eb96cf619 100644
+--- a/compiler/rustc_span/src/source_map.rs
++++ b/compiler/rustc_span/src/source_map.rs
+@@ -558,6 +558,7 @@ pub fn is_line_before_span_empty(&self, sp: Span) -> bool {
+         }
+     }
+ 
++    #[track_caller]
+     pub fn span_to_lines(&self, sp: Span) -> FileLinesResult {
+         debug!("span_to_lines(sp={:?})", sp);
+         let (lo, hi) = self.is_valid_span(sp)?;
+@@ -596,6 +597,7 @@ pub fn span_to_lines(&self, sp: Span) -> FileLinesResult {
+     /// Extracts the source surrounding the given `Span` using the `extract_source` function. The
+     /// extract function takes three arguments: a string slice containing the source, an index in
+     /// the slice for the beginning of the span and an index in the slice for the end of the span.
++    #[track_caller]
+     pub fn span_to_source<F, T>(
+         &self,
+         sp: Span,
+@@ -604,6 +606,8 @@ pub fn span_to_source<F, T>(
+     where
+         F: FnMut(&str, usize, usize) -> Result<T, SpanSnippetError>,
+     {
++        // The text of a source file is not tracked; spans are, by position.
++        rustc_data_structures::untracked::untracked_read("source text");
+         let local_begin = self.lookup_byte_offset(sp.lo());
+         let local_end = self.lookup_byte_offset(sp.hi());
+ 
+@@ -646,6 +650,7 @@ pub fn is_span_accessible(&self, sp: Span) -> bool {
+     }
+ 
+     /// Returns the source snippet as `String` corresponding to the given `Span`.
++    #[track_caller]
+     pub fn span_to_snippet(&self, sp: Span) -> Result<String, SpanSnippetError> {
+         self.span_to_source(sp, |src, start_index, end_index| {
+             src.get(start_index..end_index)
+@@ -654,6 +659,7 @@ pub fn span_to_snippet(&self, sp: Span) -> Result<String, SpanSnippetError> {
+         })
+     }
+ 
++    #[track_caller]
+     pub fn span_to_margin(&self, sp: Span) -> Option<usize> {
+         Some(self.indentation_before(sp)?.len())
+     }
+@@ -671,6 +677,7 @@ pub fn indentation_before(&self, sp: Span) -> Option<String> {
+     }
+ 
+     /// Returns the source snippet as `String` before the given `Span`.
++    #[track_caller]
+     pub fn span_to_prev_source(&self, sp: Span) -> Result<String, SpanSnippetError> {
+         self.span_to_source(sp, |src, start_index, _| {
+             src.get(..start_index).map(|s| s.to_string()).ok_or(SpanSnippetError::IllFormedSpan(sp))
+@@ -679,6 +686,7 @@ pub fn span_to_prev_source(&self, sp: Span) -> Result<String, SpanSnippetError>
+ 
+     /// Extends the given `Span` to just after the previous occurrence of `c`. Return the same span
+     /// if no character could be found or if an error occurred while retrieving the code snippet.
++    #[track_caller]
+     pub fn span_extend_to_prev_char(&self, sp: Span, c: char, accept_newlines: bool) -> Span {
+         if let Ok(prev_source) = self.span_to_prev_source(sp) {
+             let prev_source = prev_source.rsplit(c).next().unwrap_or("");
+@@ -711,6 +719,7 @@ pub fn span_extend_to_prev_char_before(
+     /// Extends the given `Span` to just after the previous occurrence of `pat` when surrounded by
+     /// whitespace. Returns None if the pattern could not be found or if an error occurred while
+     /// retrieving the code snippet.
++    #[track_caller]
+     pub fn span_extend_to_prev_str(
+         &self,
+         sp: Span,
+@@ -747,6 +756,7 @@ pub fn span_extend_to_prev_str(
+     }
+ 
+     /// Returns the source snippet as `String` after the given `Span`.
++    #[track_caller]
+     pub fn span_to_next_source(&self, sp: Span) -> Result<String, SpanSnippetError> {
+         self.span_to_source(sp, |src, _, end_index| {
+             src.get(end_index..).map(|s| s.to_string()).ok_or(SpanSnippetError::IllFormedSpan(sp))
+@@ -754,6 +764,7 @@ pub fn span_to_next_source(&self, sp: Span) -> Result<String, SpanSnippetError>
+     }
+ 
+     /// Extends the given `Span` while the next character matches the predicate
++    #[track_caller]
+     pub fn span_extend_while(
+         &self,
+         span: Span,
+@@ -767,11 +778,13 @@ pub fn span_extend_while(
+ 
+     /// Extends the span to include any trailing whitespace, or returns the original
+     /// span if a `SpanSnippetError` was encountered.
++    #[track_caller]
+     pub fn span_extend_while_whitespace(&self, span: Span) -> Span {
+         self.span_extend_while(span, char::is_whitespace).unwrap_or(span)
+     }
+ 
+     /// Extends the given `Span` to previous character while the previous character matches the predicate
++    #[track_caller]
+     pub fn span_extend_prev_while(
+         &self,
+         span: Span,
+@@ -799,12 +812,14 @@ pub fn span_extend_to_next_char(&self, sp: Span, c: char, accept_newlines: bool)
+     }
+ 
+     /// Extends the given `Span` to contain the entire line it is on.
++    #[track_caller]
+     pub fn span_extend_to_line(&self, sp: Span) -> Span {
+         self.span_extend_to_prev_char(self.span_extend_to_next_char(sp, '\n', true), '\n', true)
+     }
+ 
+     /// Given a `Span`, tries to get a shorter span ending before the first occurrence of `char`
+     /// `c`.
++    #[track_caller]
+     pub fn span_until_char(&self, sp: Span, c: char) -> Span {
+         match self.span_to_snippet(sp) {
+             Ok(snippet) => {
+@@ -882,6 +897,7 @@ pub fn span_wrapped_by_angle_or_parentheses(&self, span: Span) -> bool {
+ 
+     /// Given a `Span`, tries to get a shorter span ending just after the first occurrence of `char`
+     /// `c`.
++    #[track_caller]
+     pub fn span_through_char(&self, sp: Span, c: char) -> Span {
+         if let Ok(snippet) = self.span_to_snippet(sp)
+             && let Some(offset) = snippet.find(c)
+@@ -895,6 +911,7 @@ pub fn span_through_char(&self, sp: Span, c: char) -> Span {
+     /// or the original `Span`.
+     ///
+     /// If `sp` points to `"let mut x"`, then a span pointing at `"let "` will be returned.
++    #[track_caller]
+     pub fn span_until_non_whitespace(&self, sp: Span) -> Span {
+         let mut whitespace_found = false;
+ 
+@@ -911,6 +928,7 @@ pub fn span_until_non_whitespace(&self, sp: Span) -> Span {
+     /// or the original `Span` in case of error.
+     ///
+     /// If `sp` points to `"let mut x"`, then a span pointing at `"let"` will be returned.
++    #[track_caller]
+     pub fn span_until_whitespace(&self, sp: Span) -> Span {
+         self.span_take_while(sp, |c| !c.is_whitespace())
+     }
+diff --git a/compiler/rustc_trait_selection/src/error_reporting/infer/mod.rs b/compiler/rustc_trait_selection/src/error_reporting/infer/mod.rs
+index b2b57e018..9d88ae348 100644
+--- a/compiler/rustc_trait_selection/src/error_reporting/infer/mod.rs
++++ b/compiler/rustc_trait_selection/src/error_reporting/infer/mod.rs
+@@ -2385,7 +2385,7 @@ fn expected_found_str_term(
+                 let exp_s = exp.content();
+                 let fnd_s = fnd.content();
+                 if !self.tcx.sess.opts.verbose
+-                    && self.tcx.sess.opts.unstable_opts.write_long_types_to_disk
++                    && (*self.tcx.sess.opts.unstable_opts.read_write_long_types_to_disk())
+                 {
+                     // We aren't explicitly asking for `--verbose` output, and we are storing long
+                     // types to disk, so we try to shorten the output.
+diff --git a/compiler/rustc_ty_utils/src/layout.rs b/compiler/rustc_ty_utils/src/layout.rs
+index 8d8e50139..bb4978b23 100644
+--- a/compiler/rustc_ty_utils/src/layout.rs
++++ b/compiler/rustc_ty_utils/src/layout.rs
+@@ -101,7 +101,7 @@ fn layout_of<'tcx>(
+ 
+     // If we are running with `-Zprint-type-sizes`, maybe record layouts
+     // for dumping later.
+-    if cx.tcx().sess.opts.unstable_opts.print_type_sizes {
++    if (*cx.tcx().sess.opts.unstable_opts.read_print_type_sizes()) {
+         record_layout_for_printing(&cx, layout);
+     }
+ 

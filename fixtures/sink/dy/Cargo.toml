@@ -1,0 +1,11 @@
+[package]
+name = "sink-dy"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[lib]
+crate-type = ["rlib", "dylib"]
+
+[dependencies]
+sink-core = { path = "../core" }

@@ -1,0 +1,31 @@
+--- a/compiler/rustc_metadata/src/rmeta/encoder.rs
++++ b/compiler/rustc_metadata/src/rmeta/encoder.rs
+@@ -1571,8 +1571,6 @@
+                 record_some_lazy!(self.tables.trait_def[def_id] <- self.tcx.trait_def(def_id));
+                 record_defaulted_array!(self.tables.explicit_super_clauses_of[def_id] <-
+                     self.tcx.explicit_super_clauses_of(def_id).skip_binder());
+-                record_defaulted_array!(self.tables.explicit_implied_clauses_of[def_id] <-
+-                    self.tcx.explicit_implied_clauses_of(def_id).skip_binder());
+                 let module_children = self.tcx.module_children_local(local_id);
+                 record_array!(self.tables.module_children_non_reexports[def_id] <-
+                     module_children.iter().map(|child| child.res.def_id().index));
+--- a/compiler/rustc_metadata/src/rmeta/decoder/cstore_impl.rs
++++ b/compiler/rustc_metadata/src/rmeta/decoder/cstore_impl.rs
+@@ -234,7 +234,16 @@
+     generics_of => { table }
+     inferred_outlives_of => { table_defaulted_array }
+     explicit_super_clauses_of => { table_defaulted_array }
+-    explicit_implied_clauses_of => { table_defaulted_array }
++    explicit_implied_clauses_of => {
++        let lazy = cdata.root.tables.explicit_implied_clauses_of.get(cdata, def_id.index);
++        if lazy.is_default() {
++            // Before #122891: a trait's implied clauses were taken to be its super clauses.
++            tcx.explicit_super_clauses_of(def_id)
++        } else {
++            let value: &[_] = tcx.arena.alloc_from_iter(lazy.decode((cdata, tcx)));
++            value.process_decoded(tcx, || unreachable!())
++        }
++    }
+     type_of => { table }
+     type_alias_is_checked => { table_direct }
+     variances_of => { table }

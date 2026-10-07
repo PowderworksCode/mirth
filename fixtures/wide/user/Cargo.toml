@@ -1,0 +1,9 @@
+[package]
+name = "wide-user"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+wide-core = { path = "../core" }
+wide-derive = { path = "../derive" }

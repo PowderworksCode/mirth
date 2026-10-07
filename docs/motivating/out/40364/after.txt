@@ -1,0 +1,8 @@
+$ toolchain 1.46.0
+one
+two
+# env-dep:MIRTH_DEMO=two
+
+--- stderr ---
+
+exit 0

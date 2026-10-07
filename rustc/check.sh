@@ -5,6 +5,10 @@
 #   the list     everything each process did with metadata, P3 among it,
 #                against tests/rmeta/<fixture>.txt
 #   P5           a second clean build gives the same .rmeta bytes
+#   P5 threads   the same, with the parallel front end (-Zthreads=8)
+#   touch        an incremental rebuild after touching every source file,
+#                against tests/rmeta/<fixture>.touch.txt: metadata should be
+#                reused from the incremental cache, not encoded again
 #   P6           an incremental rebuild after fixtures/<fixture>/edit gives the
 #                same .rmeta bytes as a clean build of the edited source
 #
@@ -38,8 +42,9 @@ fresh() {
 }
 
 build() {
-  CARGO_INCREMENTAL=1 "$mirth" record --rustc "$rustc" --out "$work/$1.record" -- \
-    cargo +"$TOOLCHAIN" build --manifest-path "$work/run/src/Cargo.toml" --target-dir "$work/run/target"
+  CARGO_INCREMENTAL=1 RUSTFLAGS="${THREADS:+-Zthreads=$THREADS}" "$mirth" record --rustc "$rustc" --out "$work/$1.record" -- \
+    cargo +"$TOOLCHAIN" build --manifest-path "$work/run/src/Cargo.toml" --target-dir "$work/run/target" ||
+    { grep -v '^ *Compiling' "$work/$1.record/stderr" | head -40; return 1; }
 }
 
 keep() {
@@ -80,6 +85,29 @@ else
   cat "$work/p5.diff"
   failed=1
 fi
+
+echo "== P5 under the parallel front end (-Zthreads=8)"
+fresh
+THREADS=8 build a8 || exit 1
+keep a8
+fresh
+THREADS=8 build b8 || exit 1
+keep b8
+if diff <(rmetas a8) <(rmetas b8) > "$work/p5-threads.diff"; then
+  echo "P5 holds with -Zthreads=8: $(rmetas a8 | wc -l) .rmeta files identical"
+else
+  echo "P5 broken with -Zthreads=8: .rmeta files differ between two clean builds"
+  cat "$work/p5-threads.diff"
+  failed=1
+fi
+
+echo "== an incremental rebuild after touching every source file"
+fresh
+build inc-before || exit 1
+find "$work/run/src" -name '*.rs' -exec touch {} +
+build touch || exit 1
+"$mirth" report --sites "$sites" --out "$work/touch.record" "${roots[@]}" \
+  --expect "$repo/tests/rmeta/$fixture.touch.txt" "$@" || failed=1
 
 if [ -x "$repo/fixtures/$fixture/edit" ]; then
   echo "== P6: an incremental rebuild after an edit"

@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# A new private function in the middle crate.
+set -euo pipefail
+echo 'fn unused_helper() -> u32 { 4 }' >> user/src/lib.rs

@@ -1,0 +1,16 @@
+$ toolchain nightly-2016-08-30
+50e58a5d263a4b4c036eb475d954c0e1  o1/liblib.rlib
+50e58a5d263a4b4c036eb475d954c0e1  o2/liblib.rlib
+50e58a5d263a4b4c036eb475d954c0e1  o3/liblib.rlib
+50e58a5d263a4b4c036eb475d954c0e1  o4/liblib.rlib
+50e58a5d263a4b4c036eb475d954c0e1  o5/liblib.rlib
+d9c31955006a49def3e7d07bcd165436  o1/rust.metadata.bin
+d9c31955006a49def3e7d07bcd165436  o2/rust.metadata.bin
+5c51b89a636d171a66f665172438427c  o1/lib.0.o
+5c51b89a636d171a66f665172438427c  o2/lib.0.o
+50e58a5d263a4b4c036eb475d954c0e1  r1/liblib.rlib
+50e58a5d263a4b4c036eb475d954c0e1  r2/liblib.rlib
+
+--- stderr ---
+
+exit 0

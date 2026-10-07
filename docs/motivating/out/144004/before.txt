@@ -1,0 +1,9 @@
+$ toolchain nightly-2025-07-06
+fn.f0: 
+fn.f1: 
+static.S0: 
+static.S1: 
+
+--- stderr ---
+
+exit 0

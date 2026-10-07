@@ -1,0 +1,15 @@
+$ toolchain nightly-2023-11-26
+
+  nightly-2023-11-26-x86_64-unknown-linux-gnu unchanged - rustc 1.76.0-nightly (f5dc2653f 2023-11-25)
+
+rustc exit=0
+total 1024
+-rw-r--r-- 1 exedev exedev 1048576 Oct  7 09:55 libbig.rmeta
+thread 'rustc' panicked at /rustc/f5dc2653fdd8b5d177b2ccbd84057954340a89fc/compiler/rustc_serialize/src/opaque.rs:233:42:
+range start index 14979654 out of range for slice of length 1048576
+
+--- stderr ---
+info: syncing channel updates for nightly-2023-11-26-x86_64-unknown-linux-gnu
+info: checking for self-update (current version: 1.29.1)
+
+exit 0

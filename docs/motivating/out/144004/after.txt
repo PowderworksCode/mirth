@@ -1,0 +1,9 @@
+$ toolchain nightly-2025-07-24
+fn.f0: no_mangle 
+fn.f1: link_section = ".here"] 
+static.S0: no_mangle 
+static.S1: link_section = ".there"] 
+
+--- stderr ---
+
+exit 0

@@ -1,0 +1,22 @@
+$ toolchain nightly-2017-11-17
+
+  nightly-2017-11-17-x86_64-unknown-linux-gnu unchanged - rustc 1.23.0-nightly (d0f8e2913 2017-11-16)
+
+inode before=68388 after=68388
+BUG: liba.rmeta rewritten in place
+BUG: old hard link sees new bytes
+nightly-2017-11-17: reader runs=1704 failed=2
+--- fail-8-25.err
+error: internal compiler error: unexpected panic
+note: the compiler unexpectedly panicked. this is a bug.
+thread 'rustc' panicked at 'index out of bounds: the len is 2088928 but the index is 6805836', /checkout/src/libserialize/leb128.rs:59:20
+--- fail-9-76.err
+error: internal compiler error: unexpected panic
+note: the compiler unexpectedly panicked. this is a bug.
+thread 'rustc' panicked at 'index out of bounds: the len is 4186080 but the index is 6805836', /checkout/src/libserialize/leb128.rs:59:20
+
+--- stderr ---
+info: syncing channel updates for nightly-2017-11-17-x86_64-unknown-linux-gnu
+info: checking for self-update (current version: 1.29.1)
+
+exit 0

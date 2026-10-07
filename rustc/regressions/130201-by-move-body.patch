@@ -1,0 +1,17 @@
+--- a/compiler/rustc_metadata/src/rmeta/encoder.rs
++++ b/compiler/rustc_metadata/src/rmeta/encoder.rs
+@@ -1610,14 +1610,6 @@
+             {
+                 let coroutine_for_closure = self.tcx.coroutine_for_closure(def_id);
+                 record_some!(self.tables.coroutine_for_closure[def_id] <- coroutine_for_closure.into());
+-
+-                // If this async closure has a by-move body, record it too.
+-                if tcx.needs_coroutine_by_move_body_def_id(coroutine_for_closure) {
+-                    let id = self.tcx.coroutine_by_move_body_def_id(coroutine_for_closure);
+-                    record_some!(
+-                        self.tables.coroutine_by_move_body_def_id[coroutine_for_closure] <- id.into()
+-                    )
+-                }
+             }
+             if let DefKind::Static { .. } = def_kind {
+                 if !self.tcx.is_foreign_item(def_id) {

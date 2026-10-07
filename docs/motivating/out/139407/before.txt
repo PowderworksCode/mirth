@@ -1,0 +1,27 @@
+$ toolchain nightly-2025-04-10
+pass1 ok
+(pass2 is expected to fail with an assembler error)
+
+--- stderr ---
+error: invalid instruction mnemonic 'missing'
+  --> main.rs:28:30
+   |
+28 |             std::arch::asm!("missing");
+   |                              ^^^^^^^
+   |
+note: instantiated into assembly here
+  --> <inline asm>:2:2
+   |
+2  |     missing
+   |     ^^^^^^^
+
+error: aborting due to 1 previous error
+
+
+thread 'main' panicked at main.rs:14:5:
+assertion `left == right` failed
+  left: 1
+ right: 0
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+exit 101

@@ -1,0 +1,8 @@
+$ toolchain nightly-2021-03-17
+pass1 ok
+pass2 ok
+clean ok
+
+--- stderr ---
+
+exit 0

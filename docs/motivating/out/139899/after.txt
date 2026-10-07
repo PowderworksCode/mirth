@@ -1,0 +1,9 @@
+$ toolchain nightly-2025-05-09
+compile-error.rs 2018 exit=101
+compile-error.rs 2024 exit=101
+run-error.rs 2018 exit=101
+run-error.rs 2024 exit=101
+
+--- stderr ---
+
+exit 0

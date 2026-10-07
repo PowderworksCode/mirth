@@ -1,0 +1,9 @@
+[package]
+name = "sink-mid"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+sink-core = { path = "../core" }
+sink-macros = { path = "../macros" }

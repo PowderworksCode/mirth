@@ -1,0 +1,20 @@
+$ toolchain 1.84.0
+pass1
+ABC
+incremental pass2 built and ran
+
+--- stderr ---
+error[E0119]: conflicting implementations of trait `Other` for type `S<W>`
+  --> main.rs:20:1
+   |
+15 | impl<T: Trait> Other for T {
+   | -------------------------- first implementation here
+...
+20 | impl<T> Other for S<T> {
+   | ^^^^^^^^^^^^^^^^^^^^^^ conflicting implementation for `S<W>`
+
+error: aborting due to 1 previous error
+
+For more information about this error, try `rustc --explain E0119`.
+
+exit 1

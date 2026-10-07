@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Only a doc comment changes.
+set -euo pipefail
+sed -i 's|/// Builds a `Shape::Poly` from a list of pairs.|/// Builds a `Shape::Poly` from a list of (x, y) pairs.|' core/src/lib.rs

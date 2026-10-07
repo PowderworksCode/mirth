@@ -1,0 +1,649 @@
+[
+ {
+  "issue": 34902,
+  "title": "Metadata xrefs encoded in pointer-address (ASLR) order: rlib differs on every run",
+  "fix_pr": 35984,
+  "merged": "2016-08-28",
+  "how_it_violates": "encode_xrefs iterated an FnvHashMap<XRef<'tcx>, u32>. Its keys are interned ty::Predicate pointers, so the hash and the iteration order depend on heap addresses, which ASLR changes on every run. The commit 'Make metadata encoding deterministic' in PR #35984 ('Steps towards reproducible builds', cc tracking issue #34902) sorts the xrefs by their ID before encoding. This is the classic single-threaded pointer-address nondeterminism: the same command run twice in the same directory gives different rust.metadata.bin bytes, while the object file stays identical.",
+  "before_toolchain": "nightly-2016-08-27",
+  "after_toolchain": "nightly-2016-08-30",
+  "reproducible_cheaply": true,
+  "files": [
+   {
+    "path": "gen.sh",
+    "content": "{\necho 'pub trait Tr<T> {}'\nfor i in $(seq 1 30); do echo \"pub struct S$i;\"; echo \"pub fn f$i<T: Tr<S$i> + Clone + Into<S$i>>(_t: T) {}\"; done\n} > lib.rs\n"
+   }
+  ],
+  "commands": "sh gen.sh\nfor i in 1 2 3 4 5; do rm -rf o$i; mkdir o$i; rustc +TOOLCHAIN lib.rs --crate-type rlib --crate-name lib --out-dir o$i; done\nmd5sum o*/liblib.rlib\n(cd o1 && ar x liblib.rlib); (cd o2 && ar x liblib.rlib); md5sum o1/rust.metadata.bin o2/rust.metadata.bin o1/lib.0.o o2/lib.0.o\n# control: with ASLR disabled the old compiler is deterministic\nfor i in 1 2; do rm -rf r$i; mkdir r$i; setarch -R rustc +TOOLCHAIN lib.rs --crate-type rlib --crate-name lib --out-dir r$i; done; md5sum r*/liblib.rlib",
+  "observe": "Verified locally. On nightly-2016-08-27 (rustc 1.13.0-nightly 198713106) 10 runs gave 10 different liblib.rlib hashes. Only the rust.metadata.bin member differs; lib.0.o is identical. Under 'setarch -R' (ASLR off) the runs are identical, which confirms that pointer addresses are the cause. On nightly-2016-08-30 (77d2cd28f) all 10 runs give the same hash. Very old toolchain: install it with 'rustup toolchain install nightly-2016-08-27 --profile minimal'.",
+  "properties": [
+   "P5"
+  ]
+ },
+ {
+  "issue": 45841,
+  "title": "ICE: index out of bounds in libserialize/leb128.rs (rustc wrote .rmeta in place; a concurrent rustc read the half-written file)",
+  "fix_pr": 45899,
+  "merged": "2017-11-18",
+  "how_it_violates": "Before the fix, rustc_trans::back::link::emit_metadata did File::create(out_filename) + write_all straight into the final lib<name>.rmeta path (O_WRONLY|O_CREAT|O_TRUNC). Another rustc that was searching the same -L directory could open the file while it was truncated or only partly written, and then panicked decoding it. The issue thread (arielb1: \"the compiler writing metadata in parts, so that another instance of the compiler can read metadata while it is being partially written to. Should be fixable by doing an atomic rename\") and PR #45899 (\"atomically write .rmeta outputs to avoid races ... write a temporary file and then rename it\") record exactly this. The fix added the rmeta* tempdir inside the output directory plus fs::rename, and the comment \"To avoid races with another rustc process scanning the output directory...\" is still in compiler/rustc_metadata/src/fs.rs today. This is the bug that P1 itself comes from.",
+  "before_toolchain": "nightly-2017-11-17",
+  "after_toolchain": "nightly-2017-11-20",
+  "reproducible_cheaply": true,
+  "files": [
+   {
+    "path": "a.rs",
+    "content": "#![crate_type = \"lib\"]\npub fn f() -> u32 { 1 }\n"
+   },
+   {
+    "path": "run.sh",
+    "content": "#!/bin/sh\n# Deterministic check: is liba.rmeta overwritten in place (same inode) or replaced by rename?\n# usage: sh run.sh TOOLCHAIN   (run in a fresh dir containing a.rs; appends to a.rs)\nset -e\nTC=$1; D=out-$TC; mkdir $D\nrustc +$TC --crate-type lib --emit=metadata a.rs --out-dir $D\nln $D/liba.rmeta $D/snapshot.rmeta\nino_before=$(stat -c %i $D/liba.rmeta)\nprintf 'pub fn g() {}\\n' >> a.rs\nrustc +$TC --crate-type lib --emit=metadata a.rs --out-dir $D\nino_after=$(stat -c %i $D/liba.rmeta)\necho \"inode before=$ino_before after=$ino_after\"\nif [ \"$ino_before\" = \"$ino_after\" ]; then echo \"BUG: liba.rmeta rewritten in place\"; else echo \"OK: liba.rmeta replaced by rename\"; fi\nif cmp -s $D/liba.rmeta $D/snapshot.rmeta; then echo \"BUG: old hard link sees new bytes\"; else echo \"OK: old hard link still holds previous metadata\"; fi\n"
+   },
+   {
+    "path": "race.sh",
+    "content": "#!/bin/bash\n# Optional: shows the actual symptom (torn read -> ICE). A rare race (about 1 in 1000-3000 reader runs here).\n# usage: bash race.sh TOOLCHAIN [SECONDS] [READERS]\nTC=$1; T=${2:-60}; R=${3:-12}; D=race-$TC; mkdir -p $D\npython3 -c 'print(\"#![crate_type=\\\"lib\\\"]\"); [print(f\"pub fn f{i}(x: u64) -> u64 {{ x.wrapping_mul({i}) }}\\npub struct S{i} {{ pub a: u64, pub b: String }}\") for i in range(20000)]' > big.rs\necho 'extern crate big;' > user.rs\nrustc +$TC --crate-type lib --emit=metadata big.rs --out-dir $D\nend=$((SECONDS+T))\n( while [ $SECONDS -lt $end ]; do rustc +$TC --emit=metadata big.rs --out-dir $D 2>/dev/null; done ) &\nfor r in $(seq $R); do\n ( mkdir -p $D/u$r; n=0; while [ $SECONDS -lt $end ]; do n=$((n+1));\n     rustc +$TC --crate-type lib --emit=metadata user.rs -L $D --out-dir $D/u$r > $D/u$r/err 2>&1 || cp $D/u$r/err $D/fail-$r-$n.err; done; echo $n > $D/u$r/count ) &\ndone\nwait\ntotal=$(cat $D/u*/count | paste -sd+ | bc); fails=$(ls $D | grep -c '^fail-')\necho \"$TC: reader runs=$total failed=$fails\"\nfor f in $(ls $D | grep '^fail-' | head -3); do echo \"--- $f\"; grep -m3 -E 'error|panicked' $D/$f; done\n"
+   }
+  ],
+  "commands": "rustup toolchain install TOOLCHAIN --profile minimal\nsh run.sh TOOLCHAIN\n# syscall-level view (needs strace):\nstrace -f -e trace=openat,rename rustc +TOOLCHAIN --crate-type lib --emit=metadata a.rs --crate-name a --out-dir st 2>&1 | grep rmeta\n# optional, probabilistic symptom reproduction (run more than once):\nbash race.sh TOOLCHAIN 90",
+  "observe": "nightly-2017-11-17 (rustc 1.23.0-nightly d0f8e2913 2017-11-16): run.sh prints the same inode before and after the rebuild, then \"BUG: liba.rmeta rewritten in place\" and \"BUG: old hard link sees new bytes\". strace shows openat(\"st/liba.rmeta\", O_WRONLY|O_CREAT|O_TRUNC) with no rename. nightly-2017-11-20 (5041b3bb3 2017-11-19): the inode changes, then \"OK: liba.rmeta replaced by rename\" and \"OK: old hard link still holds previous metadata\". strace shows the write going to st/rmeta.XXXX/rust.metadata.bin, followed by rename(... , \"st/liba.rmeta\"). race.sh on 2017-11-17 gave 1 failure in 1078 reader runs in one 60s attempt and 0 in another 90s attempt. The failure was the exact ICE from the issue: \"thread 'rustc' panicked at 'index out of bounds: the len is 2432992 but the index is 6805837', /checkout/src/libserialize/leb128.rs:59:20\". On 2017-11-20: 0 failures in 1719 runs.",
+  "properties": [
+   "P1",
+   "P2"
+  ]
+ },
+ {
+  "issue": 65036,
+  "title": "Module re-exports serialized into metadata in FxHashMap order keyed by (Ident, Namespace), which is Symbol-index dependent",
+  "fix_pr": 65043,
+  "merged": "2019-10-06",
+  "how_it_violates": "The PR text says: 're-exports end up getting serialized into crate metadata, which means that metadata generation was non-deterministic'. A module's resolutions were an FxHashMap<(Ident, Namespace), ...>, and Ident hashes by Symbol interner index. Anything that changes interning order changes the order of re-exports in .rmeta. The fix changes Resolutions to an FxIndexMap. The reported symptom (#65036) was flaky diagnostics, std::mem::transmute vs std::intrinsics::transmute. The reproduction below uses the same unrelated-file-in-search-path trigger as #159677. A proc macro interns the item names after the extern crate lookup has interned 'foo_bar', so the indices shift.",
+  "before_toolchain": "nightly-2019-10-05",
+  "after_toolchain": "nightly-2019-10-08",
+  "reproducible_cheaply": true,
+  "files": [
+   {
+    "path": "foo.rs",
+    "content": "pub struct Foo;\n"
+   },
+   {
+    "path": "foo_bar.rs",
+    "content": "pub struct FooBar;\n"
+   },
+   {
+    "path": "gen.rs",
+    "content": "extern crate proc_macro;\nuse proc_macro::TokenStream;\n#[proc_macro]\npub fn make(_: TokenStream) -> TokenStream {\n    (1..=40).map(|i| format!(\"pub fn item_{}() {{}}\\n\", i)).collect::<String>().parse().unwrap()\n}\n#[proc_macro]\npub fn reexports(_: TokenStream) -> TokenStream {\n    (1..=40).map(|i| format!(\"pub use inner::item_{};\\n\", i)).collect::<String>().parse().unwrap()\n}\n"
+   },
+   {
+    "path": "client.rs",
+    "content": "extern crate foo;\nextern crate gen;\nmod inner { gen::make!(); }\ngen::reexports!();\n"
+   }
+  ],
+  "commands": "rustc +TOOLCHAIN gen.rs --crate-type proc-macro\nrustc +TOOLCHAIN foo.rs --crate-type rlib\nrustc +TOOLCHAIN client.rs --crate-type rlib --emit metadata -L . -o client1.rmeta\nrustc +TOOLCHAIN foo_bar.rs --crate-type rlib\nrustc +TOOLCHAIN client.rs --crate-type rlib --emit metadata -L . -o client2.rmeta\ncmp client1.rmeta client2.rmeta && echo IDENTICAL\ndiff <(strings -n4 client1.rmeta) <(strings -n4 client2.rmeta) | head",
+  "observe": "Verified locally. On nightly-2019-10-05 (rustc 1.40.0-nightly 2e7244807 2019-10-04) cmp reports 'differ: byte 5157', and the strings diff shows the item_N re-export names in a different order (item_21, item_1, item_24, item_11, ...). On nightly-2019-10-08 (f3c9cece7 2019-10-07) the script prints IDENTICAL.",
+  "properties": [
+   "P5"
+  ]
+ },
+ {
+  "issue": 68149,
+  "title": "Spurious rebuilds under pipelining: a consumer opened (and recorded in its dep-info) a dependency's .rlib that was still being produced, instead of only the .rmeta",
+  "fix_pr": 68298,
+  "merged": "2020-01-23",
+  "how_it_violates": "Under cargo pipelining, a consumer starts as soon as the dependency's .rmeta is published, while the dependency's rustc is still producing the .rlib. When the locator resolved a transitive dependency by searching -L dependency=, it opened and remembered the .rlib if it was present, even though an rlib-only build needs just the .rmeta. ehuss traced the timeline: T1 libcore.rmeta emitted; T2 the backtrace build starts; T3 libcore.rlib emitted; T4 backtrace loads libcore.rlib; T5 its dep-info lists both. Cargo backdates the dep-info to T2, so the next build sees rlib mtime T3 > T2 and spuriously rebuilds std crates (reported by petrochenkov with -Zbinary-dep-depinfo in x.py). This is a P2-adjacent violation: a pipelined consumer reaches into a dependency artifact (.rlib) that is not yet finished or published from its point of view. PR #68298 ('Avoid declaring a fake dependency edge') stopped storing rlib/dylib paths when only producing an rlib. Caveat: the file opened is the .rlib, not the .rmeta.",
+  "before_toolchain": "nightly-2020-01-22",
+  "after_toolchain": "nightly-2020-01-24",
+  "reproducible_cheaply": true,
+  "files": [
+   {
+    "path": "a.rs",
+    "content": "pub fn fa() -> u32 { 1 }\n"
+   },
+   {
+    "path": "b.rs",
+    "content": "extern crate a;\npub fn fb() -> u32 { a::fa() }\n"
+   },
+   {
+    "path": "c.rs",
+    "content": "extern crate b;\npub fn fc() -> u32 { b::fb() }\n"
+   },
+   {
+    "path": "run.sh",
+    "content": "#!/bin/bash\n# usage: run.sh TOOLCHAIN -- shows which dependency files the consumer `c` opened / recorded\nT=$1; rm -rf D; mkdir D\nR=\"rustc +$T --crate-type lib -C extra-filename=-x -L dependency=D --out-dir D\"\n$R --emit=metadata,link a.rs\n$R --emit=metadata,link --extern a=D/liba-x.rmeta b.rs\n# c is compiled like cargo does under pipelining: only b's .rmeta is given; a is found by search\n$R -Zbinary-dep-depinfo --emit=dep-info,metadata,link --extern b=D/libb-x.rmeta c.rs\necho \"== $T: deps recorded by c:\"; tr ' ' '\\n' < D/c-x.d | grep -E 'lib[ab]-x\\.r[a-z]+$' | sort -u\n"
+   }
+  ],
+  "commands": "rustup toolchain install TOOLCHAIN --profile minimal\nchmod +x run.sh\n./run.sh TOOLCHAIN\n# which dependency files c actually opens:\nstrace -f -e trace=openat -o st.txt rustc +TOOLCHAIN --crate-type lib -C extra-filename=-x -L dependency=D --out-dir D --emit=metadata,link --extern b=D/libb-x.rmeta c.rs; grep -o 'D/lib[ab]-x\\.r[a-z]*' st.txt | sort | uniq -c",
+  "observe": "Run on this VM. nightly-2020-01-22 (rustc 5e8897b7b 2020-01-21, which does not contain merge be663bf85): c's dep-info lists D/liba-x.rlib as well as liba-x.rmeta and libb-x.rmeta, and strace shows c opening D/liba-x.rlib. nightly-2020-01-24 (rustc 41f41b235 2020-01-23, which contains it): only liba-x.rmeta and libb-x.rmeta are listed and opened. This deterministic check shows the cause: the consumer opening the in-flight rlib. The user-visible symptom, a spurious cargo rebuild, needs the rlib to appear in the small window between the consumer starting and loading crates (ehuss: 'the time between T2 and T4 is extremely small'), plus -Zbinary-dep-depinfo, so the cargo-level symptom is not cheap to reproduce.",
+  "properties": [
+   "P2"
+  ]
+ },
+ {
+  "issue": 40364,
+  "title": "env!/option_env! values were baked into the output, but the env vars were not reported as dependencies: cargo did not rebuild when the variable changed",
+  "fix_pr": 71858,
+  "merged": "2020-06-26",
+  "how_it_violates": "P4: env!() reads the process environment while compiling, and the value ends up in the output. rustc did not record that the variable was read, so build tools treated the crate as fresh after the variable changed. PR #71858 added '# env-dep:KEY=VALUE' lines to dep-info, closing #40364, #44074 and #70517. Cargo then read those lines and rebuilt on a change (rust-lang/cargo PR #8421, merged 2020-06-30). Both parts are needed for the repro, so it uses stable releases with the matching cargo: 1.45.0 has neither part, 1.46.0 has both. rustc nightlies after 2020-06-26 have the dep-info lines; cargo's rebuild arrived when the cargo submodule was next updated in early July 2020.",
+  "before_toolchain": "1.45.0",
+  "after_toolchain": "1.46.0",
+  "reproducible_cheaply": true,
+  "files": [
+   {
+    "path": "Cargo.toml",
+    "content": "[package]\nname = \"envdemo\"\nversion = \"0.1.0\"\nedition = \"2018\"\n"
+   },
+   {
+    "path": "src/main.rs",
+    "content": "fn main() {\n    println!(\"{}\", env!(\"MIRTH_DEMO\"));\n}\n"
+   }
+  ],
+  "commands": "cargo +TOOLCHAIN clean -q; MIRTH_DEMO=one cargo +TOOLCHAIN run -q; MIRTH_DEMO=two cargo +TOOLCHAIN run -q; grep env-dep target/debug/deps/envdemo-*.d || echo 'no env-dep in dep-info'",
+  "observe": "Verified locally. With 1.45.0 the two runs print 'one' then 'one': the stale binary is reused after MIRTH_DEMO changed. With 1.46.0 they print 'one' then 'two'. On 1.46.0 the dep-info file also has a '# env-dep:MIRTH_DEMO=two' line; 1.45.0 has none.",
+  "properties": [
+   "P4"
+  ]
+ },
+ {
+  "issue": 82920,
+  "title": "Miscompilation with incr. comp. (supertrait predicates sorted by DefId; reordering trait declarations breaks dyn method calls)",
+  "fix_pr": 83074,
+  "merged": "2021-03-15",
+  "how_it_violates": "Bounds and predicates were sorted by DefId, which is not stable across sessions. When two trait declarations swap places, the query result changes but is still treated as green and reused, so the vtable layout and the method call sites disagree. The incremental binary calls the wrong trait method, while a clean build is correct. The original report was a rust-analyzer test suite failing with out-of-bounds panics and segfaults until `cargo clean`. Labelled I-unsound.",
+  "before_toolchain": "nightly-2021-03-13",
+  "after_toolchain": "nightly-2021-03-17",
+  "reproducible_cheaply": true,
+  "files": [
+   {
+    "path": "main.rs",
+    "content": "trait MyTrait: One + Two {}\nimpl<T> One for T {\n    fn method_one(&self) -> usize {\n        1\n    }\n}\nimpl<T> Two for T {\n    fn method_two(&self) -> usize {\n        2\n    }\n}\nimpl<T: One + Two> MyTrait for T {}\n\nfn main() {\n    let a: &dyn MyTrait = &true;\n    assert_eq!(a.method_one(), 1);\n    assert_eq!(a.method_two(), 2);\n}\n\n// Re-order traits 'One' and 'Two' between compilation sessions\n\n#[cfg(rpass1)]\ntrait One { fn method_one(&self) -> usize; }\n\ntrait Two { fn method_two(&self) -> usize; }\n\n#[cfg(rpass2)]\ntrait One { fn method_one(&self) -> usize; }\n"
+   }
+  ],
+  "commands": "rm -rf inc\nrustc +TOOLCHAIN --cfg rpass1 -C incremental=inc main.rs -o a.out && ./a.out && echo pass1 ok\nrustc +TOOLCHAIN --cfg rpass2 -C incremental=inc main.rs -o a.out && ./a.out && echo pass2 ok\n# control: a clean build of the edited source passes\nrustc +TOOLCHAIN --cfg rpass2 main.rs -o clean.out && ./clean.out && echo clean ok",
+  "observe": "Verified locally. On nightly-2021-03-13, the incremental pass 2 binary panics with \"assertion failed: `(left == right)` left: `2`, right: `1`\" (method_two was called for method_one), while a clean rpass2 build prints 'clean ok'. On nightly-2021-03-17 both passes print ok. Regression test: tests/incremental/issue-82920-predicate-order-miscompile.rs.",
+  "properties": [
+   "P6",
+   "tracked"
+  ]
+ },
+ {
+  "issue": 84252,
+  "title": "ICE: found unstable fingerprints for has_global_allocator(): the query read untracked CStore state",
+  "fix_pr": 84260,
+  "merged": "2021-04-17",
+  "how_it_violates": "has_global_allocator was answered from the CStore (the crate loader's per-crate metadata state) without recording any dependency. PR #84260: 'This query reads from untracked global state in `CStore`'. It was fixed by making it eval_always. The repro is the regression test tests/incremental/issue-84252-global-alloc.rs: removing #[global_allocator] between sessions leaves the cached result stale, and recomputing it gives a different value. The sibling fix #83153 (extern_mod_stmt_cnum made eval_always for the same reason, issue #83126) is a related example. #83126 is still open on GitHub, so I left it out as a separate entry.",
+  "before_toolchain": "nightly-2021-04-16",
+  "after_toolchain": "nightly-2021-04-19",
+  "reproducible_cheaply": true,
+  "files": [
+   {
+    "path": "lib.rs",
+    "content": "#![crate_type=\"lib\"]\n#![crate_type=\"cdylib\"]\n\n#[allow(unused_imports)]\nuse std::alloc::System;\n\n#[cfg(bpass1)]\n#[global_allocator]\nstatic ALLOC: System = System;\n"
+   }
+  ],
+  "commands": "rm -rf inc out; mkdir out\nrustc +TOOLCHAIN -C incremental=inc --out-dir out --cfg bpass1 lib.rs; echo rc1=$?\nrustc +TOOLCHAIN -C incremental=inc --out-dir out lib.rs; echo rc2=$?",
+  "observe": "Before the fix (nightly-2021-04-16): the second build panics with \"found unstable fingerprints for has_global_allocator(lib[8787]): false\" (assertion left/right Fingerprint mismatch in rustc_query_system plumbing.rs) and exits non-zero. After the fix (nightly-2021-04-19): rc1=0 and rc2=0.",
+  "properties": [
+   "tracked"
+  ]
+ },
+ {
+  "issue": 66955,
+  "title": "--remap-path-prefix was UNTRACKED: changing it under incremental reused stale codegen and debuginfo with the old path",
+  "fix_pr": 84233,
+  "merged": "2021-04-29",
+  "how_it_violates": "P4, read broadly as untracked state that reaches the output: #48162 made --remap-path-prefix UNTRACKED so that the crate hash stayed the same. Remapped paths still went into the outputs, so after the flag changed, an incremental rebuild reused cached codegen units holding the old prefix. The result was a mix of old and new remapped paths. The fix (#84233) added TRACKED_NO_CRATE_HASH: the option invalidates the incremental cache but stays out of the crate hash. Note: in this era metadata was always re-encoded, so the rmeta itself picked up the new path. The stale data is in the object code and debuginfo inside the rlib.",
+  "before_toolchain": "nightly-2021-04-29",
+  "after_toolchain": "nightly-2021-05-01",
+  "reproducible_cheaply": true,
+  "files": [
+   {
+    "path": "lib.rs",
+    "content": "pub fn f() -> u32 { 1 }\n#[inline] pub fn g() -> &'static str { file!() }\n"
+   },
+   {
+    "path": "run.sh",
+    "content": "#!/bin/sh\nTC=$1\nrm -rf out incr; mkdir out\nfor P in /AAAA_first /BBBB_second; do\n  rustc +$TC lib.rs --crate-type=rlib --out-dir out -g -C incremental=incr --remap-path-prefix=\"$PWD=$P\"\n  echo \"after remap to $P, rlib contains:\"; strings out/liblib.rlib | grep -oE '/(AAAA_first|BBBB_second)' | sort | uniq -c\ndone\n"
+   }
+  ],
+  "commands": "sh run.sh TOOLCHAIN",
+  "observe": "Verified locally. On nightly-2021-04-29, after the second build (remap to /BBBB_second) the rlib still contains '2 /AAAA_first' and only '1 /BBBB_second'; the stale object code and debuginfo were reused. On nightly-2021-05-01 it contains '3 /BBBB_second' and no /AAAA_first.",
+  "properties": [
+   "P4"
+  ]
+ },
+ {
+  "issue": 89598,
+  "title": "VTable-related miscompilation with incremental compilation (reordering trait methods calls the wrong method)",
+  "fix_pr": 89619,
+  "merged": "2021-10-08",
+  "how_it_violates": "#86475 added an untracked global vtable cache to tcx. After trait methods are reordered, the object file for the main CGU is reused from the incremental cache with the old vtable layout, while mod1 is recompiled for the new layout. The incremental binary then calls method2 where a clean build calls method1, so the binaries differ (a miscompile). P-critical, I-unsound, regression-from-stable-to-beta.",
+  "before_toolchain": "nightly-2021-10-07",
+  "after_toolchain": "nightly-2021-10-10",
+  "reproducible_cheaply": true,
+  "files": [
+   {
+    "path": "main.rs",
+    "content": "trait Foo {\n    #[cfg(rpass1)]\n    fn method1(&self) -> u32;\n\n    fn method2(&self) -> u32;\n\n    #[cfg(rpass2)]\n    fn method1(&self) -> u32;\n}\n\nimpl Foo for u32 {\n    fn method1(&self) -> u32 { 17 }\n    fn method2(&self) -> u32 { 42 }\n}\n\nfn main() {\n    let x: &dyn Foo = &0u32;\n    assert_eq!(mod1::foo(x), 17);\n}\n\nmod mod1 {\n    pub(super) fn foo(x: &dyn super::Foo) -> u32 {\n        x.method1()\n    }\n}\n"
+   }
+  ],
+  "commands": "rm -rf inc\nrustc +TOOLCHAIN --cfg rpass1 -C incremental=inc main.rs -o a.out && ./a.out && echo pass1 ok\nrustc +TOOLCHAIN --cfg rpass2 -C incremental=inc main.rs -o a.out && ./a.out && echo pass2 ok\n# control: a clean build of the edited source passes\nrustc +TOOLCHAIN --cfg rpass2 main.rs -o clean.out && ./clean.out && echo clean ok",
+  "observe": "Verified locally. On nightly-2021-10-07, pass 1 prints 'pass1 ok'; the incremental pass 2 binary panics with \"assertion failed: `(left == right)` left: `42`, right: `17`\" because method2 was called through the stale vtable. The clean build of rpass2 runs fine. On nightly-2021-10-10 both passes print ok. Regression test: tests/incremental/reorder_vtable.rs.",
+  "properties": [
+   "P6",
+   "tracked"
+  ]
+ },
+ {
+  "issue": 107001,
+  "title": "rustc leaves *.rcgu.o object files in the output directory when a post-monomorphization lint (unconditional_panic / arithmetic_overflow) fails the build after codegen has started",
+  "fix_pr": 110107,
+  "merged": "2023-04-21",
+  "how_it_violates": "The const-prop lints (unconditional_panic, arithmetic_overflow) ran in mir_drops_elaborated_and_const_checked, which was only forced lazily, so their errors could fire after codegen had already written the CGU object files. rustc then aborted without deleting them, leaving `<crate>.<hash>.rcgu.o` / `<crate>.<crate>.<hash>-cgu.N.rcgu.o` in the output directory (target/debug/deps under cargo). PR #110107 ('Ensure mir_drops_elaborated_and_const_checked when requiring codegen') makes sure that query runs before codegen. Its description says: 'may emit errors while codegen has started, and the compiler would exit leaving object code files around. Found by @cuviper in #109731' (cuviper's comment there: 'each time I try one of these failing tests, it's leaving temporary *.rcgu.o files around'). Issue #107001 is the standalone report with this exact repro. It is still marked open, but its repro stops leaking at this PR. I bisected the nightlies myself and the boundary is exactly this merge: nightly-2023-04-21 (8bdcc62cb) leaks and nightly-2023-04-22 (fec9adcdb) is clean. The commit range between them contains #110107.",
+  "before_toolchain": "nightly-2023-04-21",
+  "after_toolchain": "nightly-2023-04-22",
+  "reproducible_cheaply": true,
+  "files": [
+   {
+    "path": "code.rs",
+    "content": "fn main() {\n    let a = [1, 2, 3, 4, 5];\n    let _x = a[9];\n}\n"
+   }
+  ],
+  "commands": "mkdir out\nrustc +TOOLCHAIN code.rs --out-dir out; echo \"exit=$?\"\nls -A out",
+  "observe": "Both toolchains fail the same way: 'error: this operation will panic at runtime ... index out of bounds: the length is 5 but the index is 9' with `#[deny(unconditional_panic)]`, exit=1. On nightly-2023-04-21 (also stable 1.70.0), `ls -A out` lists 6 leftover object files, e.g. `code.1tgaf0fuackrygys.rcgu.o code.code.56d798bc-cgu.0.rcgu.o ...`. On nightly-2023-04-22 (also stable 1.71.0 and everything since, through nightly-2026-10-06), `out` is empty. Verified locally.",
+  "properties": [
+   "P7"
+  ]
+ },
+ {
+  "issue": 111227,
+  "title": "debugger_visualizer files (#111226 / #111227 / #111295) were read into rmeta but tracked by neither dep-info nor incremental: stale rmeta and an incremental ICE",
+  "fix_pr": 111641,
+  "merged": "2023-05-19",
+  "how_it_violates": "P4: the contents of files named by #![debugger_visualizer(natvis_file / gdb_script_file)] were read and encoded into crate metadata (the debugger_visualizers query), but those files were not tracked inputs. They were missing from dep-info (#111226), so cargo never rebuilt after a change. The incremental system also did not see them: changing the natvis file gave 'internal compiler error: encountered incremental compilation error with debugger_visualizers' (#111227), and changed GDB scripts were not picked up (#111295). The fix (#111641) made debugger_visualizers an eval_always query computed from the AST and added the files to dep-info. Its tests include run-make/incremental-debugger-visualizer, which greps the rmeta for the file contents.",
+  "before_toolchain": "nightly-2023-05-18",
+  "after_toolchain": "nightly-2023-05-21",
+  "reproducible_cheaply": true,
+  "files": [
+   {
+    "path": "foo.rs",
+    "content": "#![debugger_visualizer(natvis_file = \"./foo.natvis\")]\n#![debugger_visualizer(gdb_script_file = \"./foo.py\")]\n\npub struct Foo {\n    pub x: u32,\n}\n"
+   },
+   {
+    "path": "run.sh",
+    "content": "#!/bin/sh\nTC=$1\nrm -rf out incr; mkdir out\necho \"GDB script v1\" > foo.py; echo \"Natvis v1\" > foo.natvis\nrustc +$TC foo.rs --crate-type=rlib --emit=metadata,dep-info --out-dir out -C incremental=incr\ngrep -q foo.py out/foo.d && echo \"foo.py in dep-info\" || echo \"foo.py NOT in dep-info\"\necho \"Natvis v2\" > foo.natvis\nrustc +$TC foo.rs --crate-type=rlib --emit=metadata --out-dir out -C incremental=incr 2>&1 | head -3\ngrep -a -o \"Natvis v[12]\" out/libfoo.rmeta\n"
+   }
+  ],
+  "commands": "sh run.sh TOOLCHAIN",
+  "observe": "Verified locally. On nightly-2023-05-18 the script prints 'foo.py NOT in dep-info'. The second, incremental compile prints 'error: internal compiler error: encountered incremental compilation error with debugger_visualizers(foo[47df])', and libfoo.rmeta still contains 'Natvis v1', so the metadata is stale. On nightly-2023-05-21 foo.py is listed in foo.d, the rebuild succeeds, and the rmeta contains 'Natvis v2'.",
+  "properties": [
+   "P4"
+  ]
+ },
+ {
+  "issue": 111295,
+  "title": "debugger_visualizer: edits to the visualizer script are not picked up under incremental (stale content that is exported into metadata)",
+  "fix_pr": 111641,
+  "merged": "2023-05-19",
+  "how_it_violates": "The debugger_visualizers query result (the script contents, which are also encoded into crate metadata so downstream binaries embed upstream visualizers) did not depend on the script file. After the .py file was edited, an incremental rebuild reused the stale contents. #111641 ('Fix dependency tracking for debugger visualizers') made the query eval_always, and the fix also hashes the visualizer contents into crate_hash. The code comment says 'that content is exported into crate metadata, so any changes to it need to be reflected in the crate hash', so downstream crates that read it from metadata also see the change. The same PR fixes #111227 (an ICE from changing a natvis file with --crate-type=rlib) and #111226 (dep-info). The repro is single-crate, as in the issue. No gdb is needed: read the .debug_gdb_scripts section directly.",
+  "before_toolchain": "nightly-2023-05-18",
+  "after_toolchain": "nightly-2023-05-21",
+  "reproducible_cheaply": true,
+  "files": [
+   {
+    "path": "foo.rs",
+    "content": "#![debugger_visualizer(gdb_script_file = \"foo.py\")]\n\nfn main() {\n    let x = 1;\n    println!(\"breakpoint {x}\");\n}\n"
+   }
+  ],
+  "commands": "rm -rf incremental foo\necho \"print('hello!')\" > foo.py\nrustc +TOOLCHAIN -Cincremental=incremental -g foo.rs\necho \"print('hello world')\" > foo.py\nrustc +TOOLCHAIN -Cincremental=incremental -g foo.rs\nobjcopy -O binary --only-section=.debug_gdb_scripts foo /dev/stdout | tr -c '[:print:]' ' ' | grep -o \"print('[^']*')\"",
+  "observe": "Before the fix (nightly-2023-05-18): the rebuilt binary's .debug_gdb_scripts still contains print('hello!'), the stale script. After the fix (nightly-2023-05-21): it contains print('hello world'). Linux/ELF only; needs binutils objcopy.",
+  "properties": [
+   "tracked"
+  ]
+ },
+ {
+  "issue": 117254,
+  "title": "FileEncoder delayed error reporting is still broken (rmeta write errors swallowed; truncated .rmeta published with exit 0)",
+  "fix_pr": 117301,
+  "merged": "2023-11-26",
+  "how_it_violates": "rmeta encoding never called FileEncoder::finish, so an I/O error while writing the temp file (ENOSPC in crater, EFBIG here) was swallowed. rustc then renamed the short temp file to the final lib<name>.rmeta and exited 0. Downstream crates ICE'd in MemDecoder (\"We're going ahead to decode a result which was not completely written out\", issue text). The rename itself is atomic, but the file it publishes is not fully written, which breaks the second half of P1. Introduced by the delayed error scheme of #94732 and not fixed by #115542. #117301 added the finish() check, but only with emit_err; see the next entry for the remaining hole.",
+  "before_toolchain": "nightly-2023-11-26",
+  "after_toolchain": "nightly-2023-11-28",
+  "reproducible_cheaply": true,
+  "files": [
+   {
+    "path": "gen.py",
+    "content": "print('#![crate_type=\"lib\"]')\nfor i in range(20000):\n    print(f'pub fn f{i}(x: u64) -> u64 {{ x.wrapping_mul({i}) }}')\n    print(f'pub struct S{i} {{ pub a: u64, pub b: String }}')\n"
+   },
+   {
+    "path": "user.rs",
+    "content": "extern crate big;\n"
+   }
+  ],
+  "commands": "rustup toolchain install TOOLCHAIN --profile minimal\npython3 gen.py > big.rs   # ~6.8 MB of metadata\nmkdir out\n# Cap file size at 1 MiB and ignore SIGXFSZ so write() fails with EFBIG (a cheap stand-in for a full disk, no root needed)\nbash -c \"trap '' XFSZ; ulimit -f 1024; rustc +TOOLCHAIN --crate-type lib --emit=metadata big.rs --out-dir out; echo rustc exit=\\$?\"\nls -l out\nrustc +TOOLCHAIN --crate-type lib --emit=metadata user.rs -L out -o u.rmeta 2>&1 | grep -m2 -E 'panicked|range|error'",
+  "observe": "nightly-2023-11-26 (1.76.0-nightly f5dc2653f 2023-11-25): no diagnostic, \"rustc exit=0\", and out/libbig.rmeta is exactly 1048576 bytes, a truncated file at the final path. The downstream rustc then ICEs in rustc_serialize/src/opaque.rs (\"range start index ... out of range for slice of length 1048576\"). nightly-2023-11-28 (49b3924bd 2023-11-27): rustc now prints \"error: failed to write to `.../rmetaXXXX/lib.rmeta`: File too large (os error 27)\" and exits 1. However, the 1048576-byte out/libbig.rmeta is still published, and the downstream rustc still panics with \"range start index 14979595 out of range for slice of length 1048576\" (fixed fully by #119510 below).",
+  "properties": [
+   "P1"
+  ]
+ },
+ {
+  "issue": 119456,
+  "title": "ICE 'range start index ... out of range for slice of length 16384': rmeta I/O error reported with emit_err, so the truncated temp file is still renamed to the final path",
+  "fix_pr": 119510,
+  "merged": "2024-01-03",
+  "how_it_violates": "After #117301, rmeta write errors were reported with emit_err, which does not stop compilation. rustc kept going and renamed the incomplete temp file over lib<name>.rmeta, and cargo could start a dependent build that read it (PR #119510: \"there is a window of time between the call to emit_err and the full error reporting where rustc believes it has emitted a valid rmeta file and will permit Cargo to launch a build for a dependent crate\"). Switching to emit_fatal aborts before the rename, so nothing partial reaches the final path. The reporter hit this on 1.75.0 with typst as a dependency (disk-full); the PR author reproduced it with an LD_PRELOAD write() that randomly returns ENOSPC.",
+  "before_toolchain": "nightly-2024-01-01",
+  "after_toolchain": "nightly-2024-01-05",
+  "reproducible_cheaply": true,
+  "files": [
+   {
+    "path": "gen.py",
+    "content": "print('#![crate_type=\"lib\"]')\nfor i in range(20000):\n    print(f'pub fn f{i}(x: u64) -> u64 {{ x.wrapping_mul({i}) }}')\n    print(f'pub struct S{i} {{ pub a: u64, pub b: String }}')\n"
+   },
+   {
+    "path": "user.rs",
+    "content": "extern crate big;\n"
+   }
+  ],
+  "commands": "rustup toolchain install TOOLCHAIN --profile minimal\npython3 gen.py > big.rs\nmkdir out\nbash -c \"trap '' XFSZ; ulimit -f 1024; rustc +TOOLCHAIN --crate-type lib --emit=metadata big.rs --out-dir out; echo rustc exit=\\$?\"\nls -l out\nrustc +TOOLCHAIN --crate-type lib --emit=metadata user.rs -L out -o u.rmeta 2>&1 | grep -m2 -E 'panicked|range|error'",
+  "observe": "nightly-2024-01-01 (1.77.0-nightly e51e98dde 2023-12-31): \"error: failed to write to `.../rmetaXXXX/lib.rmeta`: File too large (os error 27)\" and exit 1, yet `ls -l out` shows libbig.rmeta at 1048576 bytes. The reader then panics: \"thread 'rustc' panicked at .../compiler/rustc_serialize/src/opaque.rs:262:42: range start index 12750977 out of range for slice of length 1048576\". nightly-2024-01-05 (f688dd684 2024-01-04): same error and exit 1, but out/ is empty (the truncated file is never renamed into place), and the reader gets a clean \"error[E0463]: can't find crate for `big`\". Current stable 1.97.1 behaves the same as 2024-01-05 (the temp file is now named full.rmeta).",
+  "properties": [
+   "P1"
+  ]
+ },
+ {
+  "issue": 122859,
+  "title": "Implied bound not implied across crates: associated-type bounds in supertrait position were dropped from metadata (implied_predicates encoded as super_predicates)",
+  "fix_pr": 122891,
+  "merged": "2024-03-24",
+  "how_it_violates": "For traits, the metadata encoder assumed `implied_predicates_of` was equal to `super_predicates_of` and only wrote the latter. So the implied predicates that come from associated type bounds (`trait Bar: Super<SuperAssoc: Bound>`) were never written. The dependent crate read a smaller predicate list without noticing, and lost the bound. That shows up as a wrong E0277 that only happens across crates. The PR says: 'The assumption that they didn't differ was hard-coded in #107614, so in cross-crate positions this means that we forget the implied predicates from associated type bounds.' The same code compiles when crate_b is a local module.",
+  "before_toolchain": "nightly-2024-03-24",
+  "after_toolchain": "nightly-2024-03-26",
+  "reproducible_cheaply": true,
+  "files": [
+   {
+    "path": "crate_b.rs",
+    "content": "pub trait Foo { type FooAssoc: Bar; }\npub trait Bar: Super<SuperAssoc: Bound> {}\npub trait Super { type SuperAssoc; }\npub trait Bound: Unsatisfied {}\npub trait Unsatisfied {}\n"
+   },
+   {
+    "path": "main.rs",
+    "content": "use crate_b::{Foo, Super, Unsatisfied};\nfn foo<T: Foo>() {\n    unsatisfied::<<T::FooAssoc as Super>::SuperAssoc>()\n}\nfn unsatisfied<B: Unsatisfied>() {}\nfn main() {}\n"
+   }
+  ],
+  "commands": "rustc +TOOLCHAIN --edition 2021 --crate-type lib crate_b.rs\nrustc +TOOLCHAIN --edition 2021 main.rs -L . --extern crate_b",
+  "observe": "Verified locally. On nightly-2024-03-24, main.rs fails with `error[E0277]: the trait bound `<<T as Foo>::FooAssoc as Super>::SuperAssoc: Unsatisfied` is not satisfied`. On nightly-2024-03-26 it compiles (there is only a dead-code warning). Pasting crate_b's contents into main.rs as `mod crate_b` compiles on both, which shows that only the cross-crate (metadata) path is affected.",
+  "properties": [
+   "P3"
+  ]
+ },
+ {
+  "issue": 130201,
+  "title": "ICE: `coroutine_by_move_body_def_id` unsupported by its crate when calling a foreign crate's async closure as AsyncFnOnce (query result and by-move MIR were never encoded in rmeta)",
+  "fix_pr": 130201,
+  "merged": "2024-09-17",
+  "how_it_violates": "The dependency crate never wrote the `coroutine_by_move_body_def_id` table entry, and never wrote optimized_mir for the synthetic by-move body. When the dependent crate asked for that entry, the lookup found nothing and fell through to a missing provider, which ICEs. The PR text says: 'We weren't encoding this query in the metadata though, nor were we properly recording that synthetic MIR in `mir_keys`, so the `optimized_mir` wasn't getting encoded either!' There is no separate issue; PR #130201 itself is the reference, and its regression test is tests/ui/async-await/async-closures/foreign.rs.",
+  "before_toolchain": "nightly-2024-09-17",
+  "after_toolchain": "nightly-2024-09-19",
+  "reproducible_cheaply": true,
+  "files": [
+   {
+    "path": "foreign.rs",
+    "content": "#![feature(async_closure)]\npub fn closure() -> impl async Fn() {\n    async || {}\n}\n"
+   },
+   {
+    "path": "main.rs",
+    "content": "#![feature(async_closure)]\nextern crate foreign;\nasync fn call_once(f: impl async FnOnce()) {\n    f().await;\n}\nfn main() {\n    let _ = call_once(foreign::closure());\n}\n"
+   }
+  ],
+  "commands": "rustc +TOOLCHAIN --edition 2021 --crate-type lib foreign.rs\nrustc +TOOLCHAIN --edition 2021 main.rs -L .",
+  "observe": "Verified locally. On nightly-2024-09-17, compiling main.rs ICEs with: `error: internal compiler error: compiler/rustc_middle/src/query/plumbing.rs:664:5: `tcx.coroutine_by_move_body_def_id(DefId(20:6 ~ foreign[87b3]::closure::{closure#0}::{closure#0}))` unsupported by its crate; perhaps the `coroutine_by_move_body_def_id` query was never assigned a provider function`. On nightly-2024-09-19 it compiles cleanly and produces the `main` binary.",
+  "properties": [
+   "P3"
+  ]
+ },
+ {
+  "issue": 135514,
+  "title": "Rust 1.84 sometimes allows overlapping impls in incremental re-builds (new solver did not record deps for cached tasks)",
+  "fix_pr": 133828,
+  "merged": "2024-12-05",
+  "how_it_violates": "A clean build of the edited source fails with E0119 (conflicting implementations). The incremental rebuild after the same edit accepts it, because coherence results computed through the new solver's cache had no dependency edges. The accepted program is a safe transmute: Vec<u8> becomes String and prints ABC. The diagnostics and the success or failure differ from a clean build. Labelled I-unsound, regression-from-stable-to-stable. #135522 added tests/incremental/overlapping-impls-in-new-solver-issue-135514.rs. The fix was already on master before the issue was filed, so 1.85 is fixed and 1.84.x is affected.",
+  "before_toolchain": "1.84.0",
+  "after_toolchain": "1.85.0",
+  "reproducible_cheaply": true,
+  "files": [
+   {
+    "path": "main.rs",
+    "content": "trait Trait {}\n\nstruct S0<T>(T);\n\nstruct S<T>(T);\nimpl<T> Trait for S<T> where S0<T>: Trait {}\n\nstruct W;\n\ntrait Other {\n    type Choose<L, R>;\n}\n\n// first impl\nimpl<T: Trait> Other for T {\n    type Choose<L, R> = L;\n}\n\n// second impl: overlaps the first one once `S<W>: Trait` holds\nimpl<T> Other for S<T> {\n    type Choose<L, R> = R;\n}\n\n#[cfg(rpass1)]\nimpl Trait for W {}\n\n#[cfg(rpass1)]\npub fn transmute<L, R>(_l: L) -> R {\n    todo!();\n}\n\n#[cfg(rpass2)]\nimpl Trait for S<W> {}\n\n#[cfg(rpass2)]\nfn use_first_impl<T: Trait, L, R>(l: L) -> <<T as TyEq>::To as Other>::Choose<L, R> {\n    l\n}\n\n#[cfg(rpass2)]\nfn use_second_impl<T, L, R>(l: <S<T> as Other>::Choose<L, R>) -> R {\n    l\n}\n\ntrait TyEq {\n    type To;\n}\nimpl<T> TyEq for T {\n    type To = T;\n}\n\n#[cfg(rpass2)]\nfn transmute_inner<W, T, L, R>(l: L) -> R\nwhere\n    T: Trait + TyEq<To = S<W>>,\n{\n    use_second_impl::<W, L, R>(use_first_impl::<T, L, R>(l))\n}\n\n#[cfg(rpass2)]\npub fn transmute<L, R>(l: L) -> R {\n    transmute_inner::<W, S<W>, L, R>(l)\n}\n\nfn main() {\n    if cfg!(rpass2) {\n        let v = vec![65_u8, 66, 67];\n        let s: String = transmute(v);\n        println!(\"{}\", s);\n    } else {\n        println!(\"pass1\");\n    }\n}\n"
+   }
+  ],
+  "commands": "rm -rf inc\nrustc +TOOLCHAIN --cfg rpass1 -A warnings -C incremental=inc main.rs -o a.out && ./a.out\nrustc +TOOLCHAIN --cfg rpass2 -A warnings -C incremental=inc main.rs -o a.out && ./a.out && echo 'incremental pass2 built and ran'\n# control: clean build of the edited source\nrustc +TOOLCHAIN --cfg rpass2 -A warnings main.rs -o clean.out",
+  "observe": "Verified locally. On 1.84.0, pass 1 prints 'pass1'; the incremental pass 2 compiles without error and prints 'ABC' then 'incremental pass2 built and ran'; the clean build of the same source fails with error[E0119]: conflicting implementations of trait `Other` for type `S<W>`. On 1.85.0 the incremental pass 2 also fails with E0119. On 1.83.0 the old solver rejects pass 1 itself, so use 1.84.0. For nightlies, try nightly-2024-12-04 (bug) and nightly-2024-12-07 (fixed); these were not run.",
+  "properties": [
+   "P6"
+  ]
+ },
+ {
+  "issue": 138678,
+  "title": "Randomly seeded HashMap (pulldown-cmark reference_definitions) iterated while collecting doc links: lib.rmeta differs between identical runs",
+  "fix_pr": 138678,
+  "merged": "2025-03-28",
+  "how_it_violates": "P4: metadata encoding read a randomly seeded std HashMap. rustc_resolve::rustdoc::parse_links walks pulldown-cmark's reference_definitions(), a HashMap with RandomState, and pushes the links in that iteration order. The resulting list of doc-link candidates is encoded into crate metadata, so two runs of rustc on the same input wrote different .rmeta bytes. The bug came in with #136363 (merged 2025-02-16). The fix (#138678) sorts the links by label. #138678 is the PR; it has no separate issue, and its description says the nondeterminism was found in Bazel lib.rmeta outputs.",
+  "before_toolchain": "nightly-2025-03-28",
+  "after_toolchain": "nightly-2025-03-30",
+  "reproducible_cheaply": true,
+  "files": [
+   {
+    "path": "lib.rs",
+    "content": "//! Crate docs.\n//!\n//! [l0]: crate::S0\n//! [l1]: crate::S1\n//! [l2]: crate::S2\n//! [l3]: crate::S3\n//! [l4]: crate::S4\n//! [l5]: crate::S5\n//! [l6]: crate::S6\n//! [l7]: crate::S7\n//! [l8]: crate::S8\n//! [l9]: crate::S9\n//! [l10]: crate::S10\n//! [l11]: crate::S11\n//! [l12]: crate::S12\n//! [l13]: crate::S13\n//! [l14]: crate::S14\n//! [l15]: crate::S15\npub struct S0;\npub struct S1;\npub struct S2;\npub struct S3;\npub struct S4;\npub struct S5;\npub struct S6;\npub struct S7;\npub struct S8;\npub struct S9;\npub struct S10;\npub struct S11;\npub struct S12;\npub struct S13;\npub struct S14;\npub struct S15;\n"
+   }
+  ],
+  "commands": "for i in 1 2 3 4 5 6 7 8; do rm -rf out; mkdir out; rustc +TOOLCHAIN lib.rs --crate-type=rlib --emit=metadata --out-dir out 2>/dev/null; sha256sum out/liblib.rmeta | cut -c1-16; done | sort | uniq -c",
+  "observe": "Verified locally. On nightly-2025-03-28 (rustc 1.87.0-nightly 3f5502370 2025-03-27), the 8 identical compilations gave 8 different liblib.rmeta hashes, each counted once. On nightly-2025-03-30 (1.88.0-nightly 1799887bb 2025-03-29), all 8 gave the same hash (count 8).",
+  "properties": [
+   "P4"
+  ]
+ },
+ {
+  "issue": 139407,
+  "title": "Instructions missing from (naked_)asm blocks after fixing an assembler error and rebuilding (hard-linked temp files corrupt the incremental cache)",
+  "fix_pr": 139453,
+  "merged": "2025-04-11",
+  "how_it_violates": "Object files were hard-linked from fixed temp paths into the incremental session directory. A session that fails in the assembler (left unfinalized) overwrites a temp file that a previous, finalized session still hard-links. On the next successful build the reused object holds code from the failed session's source, so the binary differs from a clean build. The fix gives temp files a per-invocation random prefix. Labelled I-unsound. The run-make regression test is tests/run-make/dirty-incr-due-to-hard-link. The reporter hit it with plain `cargo run` (no -Csave-temps) on aarch64-apple-darwin. The test, used here, needs -Csave-temps to keep the temp files on x86_64 Linux. It needs a failed build in between (an asm error), but it is deterministic.",
+  "before_toolchain": "nightly-2025-04-10",
+  "after_toolchain": "nightly-2025-04-13",
+  "reproducible_cheaply": true,
+  "files": [
+   {
+    "path": "main.rs",
+    "content": "#[inline(never)]\n#[cfg(any(rpass1, rpass3))]\nfn a() -> i32 {\n    0\n}\n\n#[cfg(any(cfail2))]\nfn a() -> i32 {\n    1\n}\n\nfn main() {\n    evil::evil();\n    assert_eq!(a(), 0);\n}\n\nmod evil {\n    #[cfg(any(rpass1, rpass3))]\n    pub fn evil() {\n        unsafe {\n            std::arch::asm!(\"/*  */\");\n        }\n    }\n\n    #[cfg(any(cfail2))]\n    pub fn evil() {\n        unsafe {\n            std::arch::asm!(\"missing\");\n        }\n    }\n}\n"
+   }
+  ],
+  "commands": "rm -rf inc a.out *.o *.rcgu* \nR=\"rustc +TOOLCHAIN -C incremental=inc -C save-temps main.rs -o a.out\"\n$R --cfg rpass1 && ./a.out && echo pass1 ok\n$R --cfg cfail2; echo '(pass2 is expected to fail with an assembler error)'\n$R --cfg rpass3 && ./a.out && echo pass3 ok",
+  "observe": "Verified locally on x86_64 Linux. On nightly-2025-04-10 (and on stable 1.70.0, 1.86.0 and 1.87.0), pass 1 prints 'pass1 ok' and pass 2 fails with \"error: invalid instruction mnemonic 'missing'\". Pass 3 has the same source as pass 1, yet its binary panics with \"assertion `left == right` failed left: 1 right: 0\": a() from the failed cfail2 session leaked into the reused object. On nightly-2025-04-13 and on 1.88.0, pass 3 prints 'pass3 ok'.",
+  "properties": [
+   "P6"
+  ]
+ },
+ {
+  "issue": 139899,
+  "title": "rustdoc --test leaves rustdoctest* temporary directories behind whenever a doctest fails (compile error or panic)",
+  "fix_pr": 140706,
+  "merged": "2025-05-08",
+  "how_it_violates": "When any doctest failed, rustdoc (or libtest) called process::exit, so the TempDir destructor never ran and the `rustdoctestXXXXXX` directory was never removed. Issue #139899 reports 6197 of them piling up in /tmp. PR #140706 ('[rustdoc] Ensure that temporary doctest folder is correctly removed even if doctests failed') adds a libtest hook that runs after all tests and cleans the folder up. It also adds the regression test tests/run-make/rustdoc/doctest/tempdir-removal, whose two input files are used verbatim below. The leftovers go to TMPDIR, not to target/, so this hits P7 only when TMPDIR points inside the build tree. It is still a real, fixed 'temp dir left behind on the failure path' bug in the toolchain that `cargo test --doc` runs. Note: this is rustdoc, not rustc.",
+  "before_toolchain": "nightly-2025-05-07",
+  "after_toolchain": "nightly-2025-05-09",
+  "reproducible_cheaply": true,
+  "files": [
+   {
+    "path": "compile-error.rs",
+    "content": "#![doc(test(attr(deny(warnings))))]\n\n//! ```\n//! let a = 12;\n//! ```\n"
+   },
+   {
+    "path": "run-error.rs",
+    "content": "//! ```\n//! panic!();\n//! ```\n"
+   }
+  ],
+  "commands": "mkdir tmp\nfor f in compile-error.rs run-error.rs; do for ed in 2018 2024; do TMPDIR=$PWD/tmp rustdoc +TOOLCHAIN --test $f --edition $ed >/dev/null 2>&1; echo \"$f $ed exit=$?\"; done; done\nls -A tmp",
+  "observe": "Every run exits 101 (failed doctest) on both toolchains. On nightly-2025-05-07, `ls -A tmp` shows one leftover directory per run (4 in total), e.g. `rustdoctestLP6B1A rustdoctesteGUqc8 rustdoctest0kc32h rustdoctestqVdzVs`. On nightly-2025-05-09, `tmp` is empty. Verified locally for both editions (2018 per-test and 2024 merged doctests).",
+  "properties": [
+   "P7"
+  ]
+ },
+ {
+  "issue": 114669,
+  "title": "Metadata was never reused across incremental sessions: always re-encoded (fixed by #114669 'Make metadata a workproduct and reuse it', with prerequisite #143247 'Avoid depending on forever-red DepNode when encoding metadata')",
+  "fix_pr": 114669,
+  "merged": "2025-07-04",
+  "how_it_violates": "A performance violation of 'metadata is reused (not re-encoded) when nothing it depends on changed'. Before July 2025, metadata encoding depended on the forever-red DepNode (iter_local_def_id / def_path_table read DepNodeIndex::FOREVER_RED_NODE) and was not a dep-graph task, so every incremental session re-encoded the .rmeta from scratch. #143247 (merged 2025-07-04, split out of #114669 'for perf') removed the forever-red read by depending on `analysis` instead. #114669 (merged 2025-07-04) wraps encoding in a Metadata dep-node task, saves the rmeta as a work product ('metadata') in the incremental dir, and when the node is green it hardlinks or copies the saved file instead of encoding ('can yield substantial gains (~10%)... if all the changes are in upstream crates and have no effect on it'). Observable without logs: the reused rmeta is a hardlink of the work product, so its inode stays the same across no-op sessions. Verified on both toolchains. This is a numbered PR, not an issue: no separate GitHub issue exists, so the issue field holds the PR number.",
+  "before_toolchain": "nightly-2025-07-03",
+  "after_toolchain": "nightly-2025-07-06",
+  "reproducible_cheaply": true,
+  "files": [
+   {
+    "path": "a.rs",
+    "content": "pub fn public() -> u32 { private() }\nfn private() -> u32 { 1 }\n"
+   }
+  ],
+  "commands": "rm -rf out inc; mkdir out\nfor i in 1 2; do rustc +TOOLCHAIN --edition 2021 --crate-type lib --emit=metadata,link -C incremental=inc --out-dir out a.rs; echo \"run$i inode=$(stat -c %i out/liba.rmeta) links=$(stat -c %h out/liba.rmeta)\"; done",
+  "observe": "Before (nightly-2025-07-03): run1 and run2 report different inodes and links=1, so the rmeta is freshly encoded on the unchanged rebuild. After (nightly-2025-07-06): links=2 (the file is hardlinked to the 'metadata' work product in the incremental dir) and run2 has the same inode as run1, so the metadata was reused rather than re-encoded. Note: after the fix, editing even a private fn body still changed the inode in my test (the Metadata node went red), so the no-op rebuild is the clean demonstration. Needs a filesystem with hardlinks; on one without them link_or_copy falls back to copying, and the inode check does not apply.",
+  "properties": [
+   "tracked"
+  ]
+ },
+ {
+  "issue": 144004,
+  "title": "rustdoc drops #[no_mangle] / #[link_section] from inlined cross-crate re-exports: those attributes were not encoded in crate metadata",
+  "fix_pr": 144050,
+  "merged": "2025-07-19",
+  "how_it_violates": "`no_mangle` and `link_section` were moved out of the generic encoded attribute list, and nothing else wrote them to the attribute table. A dependent crate that reads the dependency's attributes from metadata (here rustdoc inlining a `pub use a::*` re-export) silently gets no such attribute, with no error. The PR title is 'Fix encoding of link_section and no_mangle cross crate', and it fixes it by always encoding them. This is the 'missing attributes cross-crate' kind of P3 violation. The result is silent information loss, not an ICE.",
+  "before_toolchain": "nightly-2025-07-06",
+  "after_toolchain": "nightly-2025-07-24",
+  "reproducible_cheaply": true,
+  "files": [
+   {
+    "path": "a.rs",
+    "content": "#[unsafe(no_mangle)]\npub fn f0() {}\n#[unsafe(link_section = \".here\")]\npub fn f1() {}\n#[unsafe(no_mangle)]\npub static S0: () = ();\n#[unsafe(link_section = \".there\")]\npub static S1: () = ();\n"
+   },
+   {
+    "path": "b.rs",
+    "content": "pub use a::*;\n"
+   }
+  ],
+  "commands": "rustc +TOOLCHAIN a.rs --crate-type lib --edition 2024\nrustdoc +TOOLCHAIN b.rs --edition 2024 -L. --extern a\nfor f in fn.f0 fn.f1 static.S0 static.S1; do echo -n \"$f: \"; grep -o 'no_mangle\\|link_section[^<]*' doc/b/$f.html | sort -u | tr '\\n' ' '; echo; done",
+  "observe": "Verified locally. On nightly-2025-07-06 all four pages (doc/b/fn.f0.html, fn.f1.html, static.S0.html, static.S1.html) show no attribute, so every grep prints nothing. On nightly-2025-07-24 they show `no_mangle`, `link_section = \".here\"`, `no_mangle` and `link_section = \".there\"`. The issue adds that 1.88.0 stable also lacked both attributes, and 1.89 beta showed no_mangle but not link_section. The regression came and went with attribute-parsing refactors.",
+  "properties": [
+   "P3"
+  ]
+ },
+ {
+  "issue": 140413,
+  "title": "parallel rustc: static mut refs not reproducible",
+  "fix_pr": 144722,
+  "merged": "2025-08-13",
+  "how_it_violates": "With -Zthreads=50, building the same binary repeatedly gives different bytes. Mono items were sorted by (DefId, SymbolName) to pick their order in the output. DefId indices are allocated in access order, which is nondeterministic under the parallel front end. PR #144722 ('Fix parallel rustc not being reproducible due to unstable sorts of items') stops sorting by DefId. Two later facts confirm the fix: PR #161353 (merged 2026-09-01; it closed the issue and added tests/run-make/parallel-reproducible-build) found by bisection that the regression flips at nightly-2025-08-14, at commit #144722. The same PR also fixes the async-closure case #140425 (closed 2025-08-13).",
+  "before_toolchain": "nightly-2025-07-26",
+  "after_toolchain": "nightly-2025-12-10",
+  "reproducible_cheaply": true,
+  "files": [
+   {
+    "path": "static.rs",
+    "content": "// Checks that mutable static items can have mutable slices and other references\n\npub static mut TEST: &'static mut [isize] = &mut [1];\npub static mut EMPTY: &'static mut [isize] = &mut [];\npub static mut INT: &'static mut isize = &mut 1;\n\n// And the same for raw pointers.\n\npub static mut TEST_RAW: *mut [isize] = &mut [1isize] as *mut _;\npub static mut EMPTY_RAW: *mut [isize] = &mut [] as *mut _;\npub static mut INT_RAW: *mut isize = &mut 1isize as *mut _;\n\npub fn main() {\n    unsafe {\n        TEST[0] += 1;\n        assert_eq!(TEST[0], 2);\n        *INT_RAW += 1;\n        assert_eq!(*INT_RAW, 2);\n    }\n}\n"
+   }
+  ],
+  "commands": "for i in $(seq 1 15); do rustc +TOOLCHAIN static.rs -Zthreads=50 -o a 2>/dev/null; md5sum < a; done | sort | uniq -c",
+  "observe": "Verified locally. On nightly-2025-07-26 there were 2 distinct md5s of the binary over 15 runs. On nightly-2025-12-10 there was 1. The bisected boundary is nightly-2025-08-13 (bad) to nightly-2025-08-14 (good). Caveat: building this file as --crate-type=lib --emit=metadata is still nondeterministic, even on nightly-2026-10-06 (7-8 distinct rmeta md5s out of 10). That case is the still-open follow-up #162203, so use this repro for the binary only.",
+  "properties": [
+   "P5t"
+  ]
+ },
+ {
+  "issue": 159677,
+  "title": ".rmeta contents depend on unrelated files in the library search path (doc_link_resolutions encoded in Symbol-index hash order)",
+  "fix_pr": 159718,
+  "merged": "2026-07-24",
+  "how_it_violates": "Building the same client.rs with the same flags twice gives different .rmeta bytes if an unrelated rlib whose name starts with the dependency's name (libfoo_bar.rlib next to libfoo.rlib) is in the -L directory. The crate locator opens libfoo_bar.rlib to read its crate name, which interns the extra Symbol `foo_bar`. That shifts the interner indices of symbols interned later, such as the doc-link strings. DocLinkResMap was an UnordMap (FxHashMap) keyed by (Symbol, Namespace) and hashed by interner index, and it was encoded in hash-iteration order. The fix makes it an FxIndexMap, so entries are encoded in insertion order. The PR adds the regression test tests/run-make/rmeta-unrelated-search-path-files.",
+  "before_toolchain": "nightly-2026-07-20",
+  "after_toolchain": "nightly-2026-09-25",
+  "reproducible_cheaply": true,
+  "files": [
+   {
+    "path": "client.rs",
+    "content": "//! [crate::Client]\n\nextern crate foo;\n\npub struct Client;\n"
+   },
+   {
+    "path": "foo.rs",
+    "content": "pub struct Foo;\n"
+   },
+   {
+    "path": "foo_bar.rs",
+    "content": "pub struct FooBar;\n"
+   }
+  ],
+  "commands": "rustc +TOOLCHAIN foo.rs --crate-type rlib\nrustc +TOOLCHAIN client.rs --crate-type rlib --emit metadata -L . -o client1.rmeta\nrustc +TOOLCHAIN foo_bar.rs --crate-type rlib\nrustc +TOOLCHAIN client.rs --crate-type rlib --emit metadata -L . -o client2.rmeta\ncmp client1.rmeta client2.rmeta && echo IDENTICAL",
+  "observe": "Verified locally. On nightly-2026-07-20 (and on stable 1.97.1) cmp prints 'client1.rmeta client2.rmeta differ: byte 1256' (1263 on 1.97.1); the differing bytes are the reordered doc-link entry 'crate::Client'. On nightly-2026-09-25 the files are identical and the script prints IDENTICAL. The fix merged 2026-07-24T09:12Z, so nightly-2026-07-26 and later should be fixed.",
+  "properties": [
+   "P5"
+  ]
+ },
+ {
+  "issue": 150451,
+  "title": "parallel compiler: thread::spawn-ing loop not reproducible (LLVM inline-asm location cookies)",
+  "fix_pr": 160197,
+  "merged": "2026-09-07",
+  "how_it_violates": "With -Zthreads=3, compiling a tiny lib that uses thread::spawn gives a different .rlib each time. The output differs when bitcode is embedded or LTO is used. The cause is that the srcloc 'cookies' attached to LLVM inline asm were assigned nondeterministically by the parallel front end. PR #160197 ('Restrict LLVM inline asm location cookie usage. Fixes #150451') landed in rollup #162434 on 2026-09-07 and added tests/run-make/parallel-reproducible-inline-asm-cookie. The bug is in object code and bitcode, not in rmeta, but it breaks reproducibility of the published artifact.",
+  "before_toolchain": "nightly-2026-07-20",
+  "after_toolchain": "nightly-2026-09-25",
+  "reproducible_cheaply": true,
+  "files": [
+   {
+    "path": "spawn.rs",
+    "content": "use std::thread;\n\nfn _main() {\n    let _t1 = thread::spawn(|| {\n        for _ in 0..100 {\n            println!(\"test\");\n        }\n    });\n}\n"
+   }
+  ],
+  "commands": "for i in $(seq 1 15); do rustc +TOOLCHAIN spawn.rs --crate-type=lib -Zthreads=3 -Clink-dead-code=true -Copt-level=0 -Cembed-bitcode=true -o libs.rlib 2>/dev/null; md5sum < libs.rlib; done | sort | uniq -c",
+  "observe": "Verified locally. On nightly-2026-07-20 there were 7 distinct rlib md5s over 15 runs. On nightly-2026-09-25 there was 1.",
+  "properties": [
+   "P5t"
+  ]
+ },
+ {
+  "issue": 129094,
+  "title": "Parallel frontend: derives make metadata irreproducible (non-deterministic encoding of syntax contexts)",
+  "fix_pr": 161450,
+  "merged": "2026-09-16",
+  "how_it_violates": "With -Zthreads=N, the order in which SyntaxContexts and expansions are reached during metadata encoding depends on thread scheduling, so a tiny derive-heavy crate compiled repeatedly with the same inputs gives different rlibs. The fix ('Fix non-deterministic encoding of syntax contexts', which reiterates #157409) adds deterministic encoding indices in rustc_metadata/rmeta/encoder.rs and rustc_span/hygiene.rs. It also adds derives-issue-129094.rs to tests/run-make/parallel-reproducible-build. Unlike the other entries this is not single-threaded: it needs the parallel frontend.",
+  "before_toolchain": "nightly-2026-07-20",
+  "after_toolchain": "nightly-2026-09-25",
+  "reproducible_cheaply": false,
+  "files": [
+   {
+    "path": "derives.rs",
+    "content": "#![crate_type = \"lib\"]\n#[derive(Clone, Copy, Hash, PartialEq, PartialOrd)]\nstruct PackedPoint {\n    x: u32,\n}\n"
+   }
+  ],
+  "commands": "for i in $(seq 1 20); do rm -rf o$i; mkdir o$i; rustc +TOOLCHAIN derives.rs -Zthreads=16 -Copt-level=3 --out-dir o$i 2>/dev/null; done\nmd5sum o*/*.rlib | awk '{print $1}' | sort | uniq -c",
+  "observe": "Verified locally. On nightly-2026-07-20, 20 runs gave 3 distinct rlib hashes (15/4/1). On nightly-2026-09-25 all 20 runs give one hash. Race-dependent: it needs -Zthreads>1 and several runs, and how often it shows up depends on core count and scheduling. It reproduced readily on this VM.",
+  "properties": [
+   "P5",
+   "P5t"
+  ]
+ },
+ {
+  "issue": 162901,
+  "title": "Diagnostic deduplication breaks with incr comp: incremental builds print 4 copies of an error a non-incremental build prints once (also fixes #106571, duplicate JSON messages)",
+  "fix_pr": 163461,
+  "merged": "2026-10-02",
+  "how_it_violates": "In incremental mode, spans carry a parent (incremental-relative spans). The diagnostic dedup hash included Span::parent, so identical diagnostics hashed differently and were all emitted. The diagnostics from an incremental compile differ from a non-incremental compile of the same source. The fix PR also fixes #106571 (regression from #84762, Jan 2023), where `cargo check --message-format=json` with incremental on prints identical compiler-message lines twice for a proc-macro-generated error, and CARGO_INCREMENTAL=0 does not. No edit is needed: the difference is already there between an incremental and a non-incremental build. A P6 check that compares against a clean incremental build would not see it. It shows only when the reference build is non-incremental (CARGO_INCREMENTAL=0) or when diagnostic counts are compared.",
+  "before_toolchain": "nightly-2026-10-01",
+  "after_toolchain": "nightly-2026-10-03",
+  "reproducible_cheaply": true,
+  "files": [
+   {
+    "path": "main.rs",
+    "content": "#[global_allocator]\nstatic A: usize = 0;\n\nfn main() {}\n"
+   }
+  ],
+  "commands": "rm -rf inc\necho \"non-incremental: $(rustc +TOOLCHAIN main.rs -o x 2>&1 | grep -c '^error\\[E0277\\]') E0277 errors\"\necho \"incremental:     $(rustc +TOOLCHAIN -C incremental=inc main.rs -o x 2>&1 | grep -c '^error\\[E0277\\]') E0277 errors\"",
+  "observe": "Verified locally. On nightly-2026-10-01 (also 1.85.0, 1.92.0, 1.96.1), the non-incremental build prints 1 E0277 error and the incremental build prints 4 identical copies ('aborting due to 4 previous errors'). On nightly-2026-10-03 both print 1. Stable 1.70.0 prints 1 in both modes, so this form of the bug arrived later; #106571's proc-macro form dates from nightly-2023-01-03. Regression test: tests/ui/diagnostic-flags/deduplicate-diagnostics-incr.rs.",
+  "properties": [
+   "P6"
+  ]
+ }
+]

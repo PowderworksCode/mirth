@@ -1,0 +1,16 @@
+$ toolchain nightly-2019-10-05
+client1.rmeta client2.rmeta differ: byte 5163, line 16
+107,108d106
+< item_21
+< item_1
+110,118d107
+< item_24
+< item_11
+< item_31
+< item_37
+< item_40
+< item_28
+
+--- stderr ---
+
+exit 0

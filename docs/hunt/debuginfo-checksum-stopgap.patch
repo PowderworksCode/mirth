@@ -1,0 +1,20 @@
+--- a/compiler/rustc_codegen_llvm/src/debuginfo/metadata.rs	2026-10-07 15:55:46.835604483 +0000
++++ b/compiler/rustc_codegen_llvm/src/debuginfo/metadata.rs	2026-10-07 15:55:46.835604483 +0000
+@@ -617,8 +617,15 @@
+             rustc_span::SourceFileHashAlgorithm::Sha256 => llvm::ChecksumKind::SHA256,
+             rustc_span::SourceFileHashAlgorithm::Blake3 => llvm::ChecksumKind::None,
+         };
+-        rustc_data_structures::untracked::untracked_read("source file contents");
+-        let hash_value = hex_encode(source_file.src_hash.hash_bytes());
++        // mirth: testing only. A reused codegen unit keeps the checksum of the file as it was
++        // when the unit was compiled (hunt.md, finding 6); leave it out of incremental sessions
++        // so that the difference does not hide others.
++        let (hash_kind, hash_value) = if cx.sess().opts.incremental.is_some() {
++            (llvm::ChecksumKind::None, String::new())
++        } else {
++            rustc_data_structures::untracked::untracked_read("source file contents");
++            (hash_kind, hex_encode(source_file.src_hash.hash_bytes()))
++        };
+ 
+         let mut source = None;
+         let external_src;

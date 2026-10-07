@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# A body change that changes no interface.
+set -euo pipefail
+sed -i 's/(lo.min(p.x), hi.max(p.x))/(lo.min(p.x), hi.max(p.x).max(lo))/' core/src/lib.rs

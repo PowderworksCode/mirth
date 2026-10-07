@@ -1,0 +1,1043 @@
+[
+ {
+  "i": 0,
+  "name": "P5+ metadata determinism under irrelevant perturbation",
+  "citations": [
+   {
+    "n": 159677,
+    "supports": true,
+    "reason": "Issue explicitly demonstrates .rmeta non-determinism: the same crate produces different .rmeta when unrelated `libfoo_extra` is added to the library search path. This directly violates the invariant that .rmeta should be byte-identical regardless of unrelated crates in -L."
+   },
+   {
+    "n": 157743,
+    "supports": false,
+    "reason": "Performance regression in generated code for MaybeUninit initialization\u2014unrelated to .rmeta determinism; about optimization behavior, not output consistency."
+   },
+   {
+    "n": 157747,
+    "supports": false,
+    "reason": "Flaky rustdoc GUI test due to DOM timing; test infrastructure issue unrelated to .rmeta or build output determinism."
+   },
+   {
+    "n": 158602,
+    "supports": false,
+    "reason": "Soundness issue in test harness environment clearing; about test harness safety, not about .rmeta output determinism."
+   },
+   {
+    "n": 89911,
+    "supports": false,
+    "reason": "Reproducible build test failure with debuginfo=2 on Linux. While titled 'reproducible build,' the issue text does not explicitly demonstrate that .rmeta outputs differed between builds; the failure mechanics are not documented as a metadata determinism violation."
+   },
+   {
+    "n": 150409,
+    "supports": false,
+    "reason": "ICE (internal compiler error) in const hashing; a crash during compilation, not a demonstration of .rmeta output non-determinism."
+   },
+   {
+    "n": 150419,
+    "supports": false,
+    "reason": "LLVM instruction selection error for AArch64 SVE debuginfo spilling; compilation error unrelated to .rmeta determinism."
+   },
+   {
+    "n": 106571,
+    "supports": false,
+    "reason": "Duplicate messages in diagnostic JSON output; about diagnostic formatting and deduplication, not .rmeta or build output determinism."
+   },
+   {
+    "n": 151537,
+    "supports": false,
+    "reason": "ICE in const evaluation of SIMD types; a compiler crash unrelated to .rmeta output determinism."
+   },
+   {
+    "n": 142152,
+    "supports": false,
+    "reason": "ICE in query system dep graph under concurrent access; a crash with race condition but the issue text does not demonstrate that .rmeta outputs were inconsistent between builds."
+   },
+   {
+    "n": 141540,
+    "supports": false,
+    "reason": "Duplicate dep graph nodes under concurrent coloring; while this race could affect output, the issue text reports a compilation error/panic, not a demonstrated difference in .rmeta outputs."
+   },
+   {
+    "n": 141313,
+    "supports": false,
+    "reason": "GVN optimization creating overlapping assignments leading to UB; about MIR optimization correctness, not .rmeta output determinism."
+   },
+   {
+    "n": 138910,
+    "supports": false,
+    "reason": "Linker-plugin LTO documentation issue; about documentation completeness, not a violation of .rmeta determinism."
+   },
+   {
+    "n": 138089,
+    "supports": false,
+    "reason": "ICE in inherent associated type normalization; a compiler crash unrelated to .rmeta determinism."
+   },
+   {
+    "n": 133966,
+    "supports": false,
+    "reason": "ICE in const evaluation of wide pointer handling; a compiler crash unrelated to .rmeta output determinism."
+   },
+   {
+    "n": 151625,
+    "supports": false,
+    "reason": "ICE from invalid const literal validation; a compiler crash unrelated to .rmeta determinism."
+   },
+   {
+    "n": 150983,
+    "supports": false,
+    "reason": "ICE from generic const item type validation; a compiler crash unrelated to .rmeta determinism."
+   }
+  ],
+  "general": true,
+  "sharper_statement": ".rmeta contents must not depend on unrelated rlib files present in the library search path (-L), i.e., two builds with identical source, flags, and target produce byte-identical .rmeta even when the set of available (but unused) libraries in the search path differs.",
+  "comment": "Only citation #159677 provides concrete evidence of the property being violated. It demonstrates non-determinism in .rmeta production caused by the mere presence of an unrelated library in the search path. The original property statement claims coverage of five sources of irrelevant perturbation (HashMap seed, search path, build directory, environment variables, wall clock), but only the search path violation is actually supported by the cited issues. Most other citations are unrelated bugs: ICEs, soundness issues, test flakiness, optimization regressions, and diagnostic issues. This property is mechanically checkable by comparing .rmeta hashes across builds that differ only in search path contents."
+ },
+ {
+  "i": 1,
+  "name": "P6+ incremental equals clean (outputs and diagnostics)",
+  "citations": [
+   {
+    "n": 162407,
+    "supports": false,
+    "reason": "This is a build system invalidation issue where bootstrap fails to re-check, not about incremental vs clean outputs being different"
+   },
+   {
+    "n": 162901,
+    "supports": true,
+    "reason": "Explicitly shows incremental produces 4 duplicated diagnostics while clean produces 1 - direct violation of property"
+   },
+   {
+    "n": 162585,
+    "supports": false,
+    "reason": "This is a compiler crash/ICE issue, not about different outputs from incremental vs clean builds"
+   },
+   {
+    "n": 125564,
+    "supports": false,
+    "reason": "This is a compiler ICE issue, not about incremental vs clean outputs being different"
+   },
+   {
+    "n": 135062,
+    "supports": false,
+    "reason": "This is about incorrect type checking behavior; the issue does not explicitly compare incremental vs clean diagnostics or outputs"
+   },
+   {
+    "n": 159677,
+    "supports": true,
+    "reason": ".rmeta contents differ based on presence of unrelated files in library search path - direct violation of property that .rmeta bytes should match"
+   },
+   {
+    "n": 150464,
+    "supports": false,
+    "reason": "This is a compiler error/cycle detection issue, not about different outputs from incremental vs clean builds"
+   },
+   {
+    "n": 106571,
+    "supports": true,
+    "reason": "Duplicate diagnostic messages appear in JSON format - direct violation of property that incremental and clean should have the same diagnostics"
+   }
+  ],
+  "general": true,
+  "sharper_statement": "Incremental builds can produce different .rmeta bytes (due to iteration-order-dependent content like DocLinkResMap when encountering unrelated files in the library search path) and duplicate diagnostics compared to clean builds (due to span-based deduplication issues).",
+  "comment": "Of the 8 cited issues, 3 clearly support the property: #162901 and #106571 show diagnostic deduplication failures producing duplicates in incremental builds, and #159677 shows .rmeta content varying based on unrelated files. The other 5 issues are compiler crashes, build system issues, or type checking problems that do not directly demonstrate violations of the incremental-equals-clean property. The property itself is general and mechanically checkable as described in the how_to_check section."
+ },
+ {
+  "i": 2,
+  "name": "MIR passes validation after every pass at every mir-opt-level",
+  "citations": [
+   {
+    "n": 158037,
+    "supports": false,
+    "reason": "Text is truncated and does not clearly demonstrate a MIR validation failure of the stated property; fix addresses MIR phase assignment but property violation is not evidenced."
+   },
+   {
+    "n": 156409,
+    "supports": true,
+    "reason": "Shows type const with mismatched type (usize assigned i32), violating the requirement that const arguments have correct types; fix normalizes type const patterns to prevent this."
+   },
+   {
+    "n": 154750,
+    "supports": true,
+    "reason": "Fix explicitly states that normalizing a type const can change the value's type, causing MIR to become ill-formed; directly demonstrates const argument type violations break well-formedness."
+   },
+   {
+    "n": 154748,
+    "supports": true,
+    "reason": "Same as 154750: shows type const with wrong type (bool assigned i32), demonstrating that const argument type mismatches cause ill-formed MIR."
+   },
+   {
+    "n": 152962,
+    "supports": true,
+    "reason": "MIR validation catches broken MIR with failed subtyping (u8 vs usize) caused by type const with wrong type; demonstrates validation catching const argument violations."
+   },
+   {
+    "n": 158231,
+    "supports": true,
+    "reason": "Shows a local variable accessed after StorageDead and before next StorageLive (undefined behavior in MIR), directly violating the storage lifetime invariant; demonstrates pass-introduced violations of the property."
+   },
+   {
+    "n": 151647,
+    "supports": true,
+    "reason": "MIR validation reports broken MIR due to unevaluated const not being normalized, causing type equating to fail; demonstrates const normalization violations break well-formedness."
+   },
+   {
+    "n": 151579,
+    "supports": true,
+    "reason": "Shows broken MIR with NoSolution error related to unnormalized place types in captures; fix normalizes place types to restore well-formedness."
+   },
+   {
+    "n": 152278,
+    "supports": false,
+    "reason": "not in dataset"
+   },
+   {
+    "n": 120811,
+    "supports": true,
+    "reason": "Same pattern as 151579: broken MIR due to unnormalized place types; same fix (normalize capture place types) demonstrates the property violation."
+   }
+  ],
+  "general": true,
+  "sharper_statement": "MIR optimization passes must preserve well-formedness invariants: const arguments must have the types their parameters declare, locals must only be accessed between their StorageLive and StorageDead markers, and place types as well as const values must be fully normalized. This holds at all -Zmir-opt-level settings (0, 2, 4) and with -Zinline-mir, and can be verified mechanically by running -Zvalidate-mir -Zlint-mir on real crates.",
+  "comment": "Eight of ten citations confirm the property. Issue 158037's truncated text prevents clear verification. Issue 152278 is not in dataset. The supporting issues collectively demonstrate violations in three areas: const argument type mismatches, storage lifetime violations, and unnormalized place/const types. The property is general and mechanically checkable using existing compiler validation flags."
+ },
+ {
+  "i": 3,
+  "name": "extern \"C\" ABI matches the platform C compiler",
+  "citations": [
+   {
+    "n": 121408,
+    "supports": true,
+    "reason": "Union passed as scalar instead of indirectly by pointer, violating wasm C ABI specification."
+   },
+   {
+    "n": 162011,
+    "supports": true,
+    "reason": "Union with floats passed in FPRs instead of as aggregate, violating powerpc64 ELFv1 ABI."
+   },
+   {
+    "n": 163173,
+    "supports": false,
+    "reason": "Inline asm register naming issue, not about function parameter or return passing convention."
+   },
+   {
+    "n": 163074,
+    "supports": true,
+    "reason": "ArgAttributes mismatch detected in ABI test, indicating incorrect argument attribute handling."
+   },
+   {
+    "n": 163075,
+    "supports": false,
+    "reason": "not in dataset"
+   },
+   {
+    "n": 160827,
+    "supports": false,
+    "reason": "Missing wcslen builtin function, not a function signature ABI matching issue."
+   },
+   {
+    "n": 151791,
+    "supports": false,
+    "reason": "Internal Rust type layout calculation for Archive trait, not extern \"C\" function ABI."
+   },
+   {
+    "n": 122620,
+    "supports": true,
+    "reason": "Struct with f64 and f32 has incorrect ABI on sparc64, showing register/layout passing violation."
+   },
+   {
+    "n": 115399,
+    "supports": true,
+    "reason": "ICE in ABI calculation (fn_abi_of_instance) when computing struct passing on sparc64."
+   },
+   {
+    "n": 147883,
+    "supports": true,
+    "reason": "ICE in ABI calculation for struct with f64 and f32 on sparc, indicating broken ABI logic."
+   },
+   {
+    "n": 158897,
+    "supports": false,
+    "reason": "Intrinsic behavior issue with unaligned_volatile_store, not about extern \"C\" function ABI."
+   },
+   {
+    "n": 159244,
+    "supports": true,
+    "reason": "Bool return type emitted as i1 zeroext which violates aarch64 ABI guarantees, causing miscompilation."
+   },
+   {
+    "n": 159116,
+    "supports": false,
+    "reason": "Const evaluation and internal memory layout corruption, not extern \"C\" function signature handling."
+   },
+   {
+    "n": 43894,
+    "supports": true,
+    "reason": "Struct pass-by-value handling on SPARC violates C ABI, mismatching with clang output."
+   },
+   {
+    "n": 161382,
+    "supports": true,
+    "reason": "Homogeneous Vector Aggregates passed indirectly instead of directly in registers, violating AAPCS64."
+   }
+  ],
+  "general": true,
+  "sharper_statement": "For every target, a function signature with C-compatible types (unions, structs with floats, bool, homogeneous vector aggregates, and other aggregates) used in extern \\\"C\\\" functions must be lowered to argument passing and return value handling (register vs stack, indirect vs direct, sign/zero extension) that matches the behavior of clang/gcc for equivalent C declarations.",
+  "comment": "The property is general and mechanically checkable as described: cross-compile C and Rust with matching signatures and verify calling conventions match. The supporting citations show concrete violations across multiple targets (wasm, powerpc64, sparc64, aarch64) where rustc diverges from platform C compilers in how it passes/returns types."
+ },
+ {
+  "i": 4,
+  "name": "Interned type-system values are well-formed",
+  "citations": [
+   {
+    "n": 150506,
+    "supports": true,
+    "reason": "ICE from const value's valtree shape not matching type: expected scalar leaf but got struct value in Assume field"
+   },
+   {
+    "n": 150712,
+    "supports": true,
+    "reason": "ICE from valtree shape mismatch: Container generic arg received malformed valtree structure"
+   },
+   {
+    "n": 150734,
+    "supports": true,
+    "reason": "ICE from valtree shape mismatch: Outer struct const arg had invalid valtree structure"
+   },
+   {
+    "n": 151126,
+    "supports": true,
+    "reason": "ICE from const valtree shape mismatch: unevaluated const treated as if evaluated in array context"
+   },
+   {
+    "n": 158675,
+    "supports": true,
+    "reason": "Directly violates the third part of the property: ParamEnv contained two conflicting ConstArgHasType predicates for the same const parameter"
+   },
+   {
+    "n": 158362,
+    "supports": false,
+    "reason": "not in dataset"
+   },
+   {
+    "n": 157189,
+    "supports": true,
+    "reason": "GenericArgs-carrying value (Borrow TraitRef) had argument count not matching generics_of: passed only receiver when trait had additional parameters"
+   },
+   {
+    "n": 137084,
+    "supports": true,
+    "reason": "Index out of bounds from args-generics mismatch: empty args when generics expected, shows violation of count-matching invariant"
+   },
+   {
+    "n": 150673,
+    "supports": true,
+    "reason": "Index out of bounds from incorrect generics index mapping in delegation, caused by failure to maintain args-generics correspondence"
+   },
+   {
+    "n": 150714,
+    "supports": true,
+    "reason": "ICE from const arg valtree mismatch: accessing struct field offsets failed because const arg structure didn't match its type"
+   },
+   {
+    "n": 150841,
+    "supports": true,
+    "reason": "Const value's valtree shape (empty tuple literal) does not match declared type (non-tuple), violating the property"
+   },
+   {
+    "n": 151024,
+    "supports": true,
+    "reason": "Const value's valtree shape (empty array literal) does not match declared type (non-array), violating the property"
+   },
+   {
+    "n": 151186,
+    "supports": true,
+    "reason": "Index out of bounds from args-generics count mismatch: empty args when function pointer type generics exist"
+   }
+  ],
+  "general": true,
+  "sharper_statement": "Every interned GenericArgs-carrying value (TraitRef, AliasTy, FnDef, etc.) must have arguments whose count and kind match the corresponding generics_of definition. Every interned const value must have a valtree whose structure matches its type. No ParamEnv must contain two predicates with the same parameter (e.g., ConstArgHasType) that specify different constraints.",
+  "comment": "All 12 cited issues (excluding the not-in-dataset one) demonstrate clear violations of this invariant, supporting all three facets of the property. The issues fall into two categories: valtree shape mismatches with const types (the majority), and GenericArgs count/kind mismatches with their generics definitions. One issue directly shows ParamEnv predicate conflicts. The property is general across all interned type-system values and mechanically checkable via the debug assertions described in how_to_check."
+ },
+ {
+  "i": 5,
+  "name": "Old and next trait solvers agree",
+  "citations": [
+   {
+    "n": 102580,
+    "supports": true,
+    "reason": "Shows derive(Clone) overflow in old solver but not next-solver, documenting solver disagreement on acceptance"
+   },
+   {
+    "n": 90950,
+    "supports": true,
+    "reason": "HRTB bounds issue marked as fixed-by-next-solver, showing solvers disagreed on what's accepted"
+   },
+   {
+    "n": 152789,
+    "supports": true,
+    "reason": "Explicitly states code compiles with old solver but ICEs with -Znext-solver"
+   },
+   {
+    "n": 151329,
+    "supports": true,
+    "reason": "ICE with next-solver (could not replace AliasTerm), showing solver disagreement"
+   },
+   {
+    "n": 151957,
+    "supports": true,
+    "reason": "Explicitly states compiles with old solver but ICEs with -Znext-solver"
+   },
+   {
+    "n": 151323,
+    "supports": true,
+    "reason": "ICE with next-solver, showing solver disagreement on handling stalled coroutine obligations"
+   },
+   {
+    "n": 151322,
+    "supports": true,
+    "reason": "ICE with next-solver, showing solver disagreement on opaque type handling"
+   },
+   {
+    "n": 151318,
+    "supports": true,
+    "reason": "ICE with -Znext-solver on region-dependent goals, showing solver disagreement"
+   },
+   {
+    "n": 138274,
+    "supports": true,
+    "reason": "Fixed by solver fix PR #152327, indicating solver-related disagreement in async block handling"
+   },
+   {
+    "n": 137916,
+    "supports": true,
+    "reason": "ICE with next-solver on unsize coercion, showing solver disagreement"
+   },
+   {
+    "n": 151462,
+    "supports": true,
+    "reason": "ICE with -Znext-solver in transmutability error reporting, showing solver disagreement"
+   }
+  ],
+  "general": true,
+  "sharper_statement": "The next-solver and old solver must behave identically on any crate: accepting and rejecting the same items, inferring the same types for each body (up to region erasure), and selecting the same impls. The cited issues are cases where this invariant was violated, with the next-solver either panicking (ICE) or disagreeing with the old solver on acceptance/rejection of code.",
+  "comment": "All 11 citations demonstrate clear violations of the property by showing cases where the two solvers disagreed. Most show next-solver panicking on code the old solver accepts; one shows the reverse (old solver overflowing where next-solver succeeds). This is a mechanically checkable property: compile with both solvers and compare exit status, diagnostics, typeck_results, and codegen instances."
+ },
+ {
+  "i": 6,
+  "name": "Library operations stay sound under injected panics and allocation failures",
+  "citations": [
+   {
+    "n": 162720,
+    "supports": true,
+    "reason": "Issue text demonstrates allocator returning pointer with full provenance (10 extra bytes) being incorrectly restricted when Arc derives through mutable reference, causing UB on deallocation."
+   },
+   {
+    "n": 162719,
+    "supports": true,
+    "reason": "Issue text shows Box::into_unique restricting pointer provenance through mutable reference, violating the contract that deallocate receives pointer with same provenance as allocate."
+   },
+   {
+    "n": 158165,
+    "supports": true,
+    "reason": "Issue text and reproducer show key comparator panic during split_off unwinds mid-restructuring, leaving tree inconsistent with stale length, causing double-free on safe iteration."
+   },
+   {
+    "n": 157203,
+    "supports": true,
+    "reason": "Issue text shows allocation failure causing handle_alloc_error to unwind, leaving Arc with strong count 0, creating use-after-free."
+   },
+   {
+    "n": 155746,
+    "supports": true,
+    "reason": "Issue text demonstrates allocator-backed Arc::make_mut panic-unsafety where allocator panic during clone leaves data freed but reachable, causing UAF on later access."
+   },
+   {
+    "n": 152211,
+    "supports": true,
+    "reason": "Issue text and examples show closure panic in array::map/try_map leaves unprocessed elements undroppd, violating drop invariant."
+   },
+   {
+    "n": 114581,
+    "supports": false,
+    "reason": "This is a generic Stacked Borrows violation in SGX-specific unsafe code, not about library operations receiving user callbacks, allocators panicking, or allocation failures."
+   },
+   {
+    "n": 160815,
+    "supports": true,
+    "reason": "Issue text describes aliasing violations when using Condvar/Mutex with custom allocators and Arc::get_mut_unchecked, causing mutable reference creation that violates aliasing rules."
+   },
+   {
+    "n": 161018,
+    "supports": false,
+    "reason": "This is a threading/cleanup issue where process::exit from non-main thread incorrectly unmaps main thread's stack. Not about user callbacks, allocators, or allocation failures."
+   },
+   {
+    "n": 43894,
+    "supports": false,
+    "reason": "SPARC struct ABI code generation issue completely unrelated to panic safety or allocation failures."
+   },
+   {
+    "n": 161382,
+    "supports": false,
+    "reason": "AAPCS64 HVA ABI handling issue completely unrelated to panic safety or allocation failures."
+   }
+  ],
+  "general": true,
+  "sharper_statement": "Library operations (particularly BTreeMap, Arc, Box, and array functions) fail to maintain soundness invariants when user callbacks (comparators, closures) panic or when allocations fail. Violations include: improper drops of unprocessed values, state corruption leading to double-frees, use-after-free from incorrect strong count management, and aliasing violations when custom allocators or mutable reference derivation are involved. Additionally, allocators that return pointers with provenance exceeding the requested size can be unsoundly treated as having restricted provenance, violating the deallocation contract.",
+  "comment": "7 of 11 citations support the property. The property is general (applies across multiple library functions and failure modes) and mechanically checkable via Miri with fault injection. The unsupported issues (#114581, #161018, #43894, #161382) are unrelated soundness problems in different subsystems: generic unsafe code, threading cleanup, and ABI code generation respectively."
+ },
+ {
+  "i": 7,
+  "name": "P4+ no query reads untracked state",
+  "citations": [
+   {
+    "n": 162901,
+    "supports": false,
+    "reason": "Diagnostic deduplication logic produces different hashes due to how Span::parent is considered; not about untracked state reads (env vars, clock, filesystem, HashMap iteration)"
+   },
+   {
+    "n": 162407,
+    "supports": false,
+    "reason": "Build system (bootstrap) dependency tracking issue, not a rustc query reading untracked state; the property is specifically about queries in incremental compilation"
+   },
+   {
+    "n": 159677,
+    "supports": true,
+    "reason": "Directly demonstrates HashMap iteration order (symbol interning) affecting .rmeta output when unrelated files in library search path are scanned, without that filesystem dependency being tracked in dep graph"
+   },
+   {
+    "n": 160255,
+    "supports": false,
+    "reason": "Type resolution ICE in borrowck when handling const with fn pointer types; not about env vars, clock, filesystem metadata, or HashMap iteration order"
+   }
+  ],
+  "general": true,
+  "sharper_statement": "No query reads HashMap/HashSet iteration order (including symbol interner order) in ways that affect incremental compilation artifacts (like .rmeta) unless the dependency on which symbols get interned/which HashMap entries are iterated is recorded in the dep graph.",
+  "comment": "Only one of four citations supports the property. Issue #159677 is strong evidence: rustc's proc-macro dependency search scans unrelated crates in the filesystem, interns their symbols as a side effect, and since Symbol hashes the interner index, .rmeta hashing depends on which files were present without that dependency being tracked. The other three citations address different classes of bugs (deduplication logic, build system invalidation, type resolution ICE) unrelated to untracked state reads."
+ },
+ {
+  "i": 8,
+  "name": "Metadata reads hit entries the writer wrote",
+  "citations": [
+   {
+    "n": 163426,
+    "supports": true,
+    "reason": "The ICE directly shows reading an SVH from the metadata table that was never written because metadata generation was skipped for rustdoc runs"
+   },
+   {
+    "n": 159233,
+    "supports": true,
+    "reason": "The panic shows reading invocation_parents[invoc_id] for an eager invocation that never went through collection, so the entry was never written"
+   },
+   {
+    "n": 159703,
+    "supports": false,
+    "reason": "Issue text is truncated and does not explain what metadata entry was read that was never written"
+   }
+  ],
+  "general": true,
+  "sharper_statement": "Reads of metadata table entries fail when the upstream encoder never wrote those entries, causing ICEs when dependent crates attempt to access missing (table, DefIndex) pairs or when compiler passes try to read unwritten entries from internal lookup tables",
+  "comment": "Two of three cited issues strongly support the property with clear evidence of reads hitting unwritten table entries. The third issue has insufficient text to verify. The property is mechanically checkable via mirth's table write/read logging approach."
+ },
+ {
+  "i": 9,
+  "name": "Parallel front end is deterministic",
+  "citations": [
+   {
+    "n": 129094,
+    "supports": true,
+    "reason": "PR #161450 fixes non-deterministic encoding of syntax contexts in parallel compilation, confirming that parallel compiler produced non-deterministic outputs for derived trait code"
+   },
+   {
+    "n": 150451,
+    "supports": true,
+    "reason": "Issue directly shows repeated compilations with -Zthreads=3 producing different output checksums (ddeb820..., 0604d96..., 3c39057...), proving repeated runs do not agree"
+   },
+   {
+    "n": 153391,
+    "supports": true,
+    "reason": "PR #153694 fixes arbitrary rotation of cycle[0] by parallel deadlock handler, demonstrating non-deterministic behavior in parallel compiler's query system affecting output consistency"
+   }
+  ],
+  "general": true,
+  "sharper_statement": "The parallel front end with -Zthreads > 1 produces non-deterministic behavior in: (1) encoding of syntax contexts affecting derived code generation, (2) LLVM inline asm location cookies in bitcode/LTO output, and (3) query cycle handling in the deadlock resolver. These cause byte-identical outputs and repeated runs to diverge from both -Zthreads=1 and each other.",
+  "comment": "All three cited issues demonstrate genuine violations of the determinism property. The property is general and mechanically checkable through byte-comparing outputs and comparing diagnostics across runs with different thread settings. The issues show the parallel front end fails this property across multiple subsystems: syntax context encoding, LLVM cookies, and query cycle handling."
+ },
+ {
+  "i": 10,
+  "name": "rustdoc accepts every crate rustc accepts",
+  "citations": [
+   {
+    "n": 156418,
+    "supports": true,
+    "reason": "Text shows rustdoc ICEs on valid anon const code with type-relative paths when rustc check would succeed, directly violating the core property"
+   },
+   {
+    "n": 156327,
+    "supports": false,
+    "reason": "not in dataset"
+   },
+   {
+    "n": 149089,
+    "supports": true,
+    "reason": "Text shows rustdoc ICEs when documenting a real crate (embedded-io) that rustc accepts, directly violating the property"
+   },
+   {
+    "n": 150153,
+    "supports": true,
+    "reason": "Text shows rustdoc ICEs on build-pass code involving type-relative paths in nested items, violating the property"
+   },
+   {
+    "n": 147882,
+    "supports": true,
+    "reason": "Text shows rustdoc ICEs building docs for serde_with dependency when rustc would accept it, violating the property"
+   },
+   {
+    "n": 147057,
+    "supports": true,
+    "reason": "Text shows rustdoc ICEs on workspace code with type-relative path lookups, violating the property"
+   },
+   {
+    "n": 158050,
+    "supports": true,
+    "reason": "Text and PR show proc-macro-generated impl blocks overwriting source spans in intra-doc links, directly violating the proc-macro span requirement"
+   },
+   {
+    "n": 157756,
+    "supports": false,
+    "reason": "This is about rustc's orphan checking being too strict, not about rustdoc failing when rustc succeeds; a different bug in the same subsystem"
+   }
+  ],
+  "general": true,
+  "sharper_statement": "rustdoc must not ICE on any Rust code that passes `cargo check`, particularly code involving type-relative paths and anon consts with `--generate-link-to-definition`, and must not allow proc-macro-generated spans to overwrite source spans in documentation links",
+  "comment": "Seven of eight citations support the property with clear violations. The supporting issues show two categories of failure: (1) rustdoc ICEs on code that rustc accepts (issues #156418, #149089, #150153, #147882, #147057), primarily related to type-relative path resolution in nested items, and (2) proc-macro spans overwriting source spans in doc links (#158050). Issue #157756 about orphan checking is unrelated\u2014it's about rustc being too strict, not about the rustdoc-accepts-everything-rustc-accepts relationship. The property is mechanically testable: run cargo check, then all rustdoc modes on a corpus, and verify no failures."
+ },
+ {
+  "i": 11,
+  "name": "Results agree across opt-level, mir-opt-level, codegen-units and LTO",
+  "citations": [
+   {
+    "n": 163779,
+    "supports": true,
+    "reason": "Shows observable behavior (return value and potential panic) differs when optimizations are enabled vs disabled, with the assert being incorrectly eliminated at higher opt-levels"
+   },
+   {
+    "n": 163220,
+    "supports": false,
+    "reason": "This is a performance regression issue (throughput measurements), but the property explicitly specifies 'observable behaviour (test results, stdout, exit and panic status)' which are semantic concerns, not performance metrics"
+   },
+   {
+    "n": 162348,
+    "supports": true,
+    "reason": "Shows exit status differs based on opt-level: crashes with SIGILL in release mode (optimizations enabled) but presumably succeeds without optimization"
+   },
+   {
+    "n": 153645,
+    "supports": true,
+    "reason": "Shows linkability fails when opt-level >= 1 (due to thin-local LTO eliminating necessary symbols), but succeeds at opt-level = 0, codegen-units = 1, or lto = off, directly violating the linkability invariant"
+   },
+   {
+    "n": 153451,
+    "supports": false,
+    "reason": "While a linking issue, it's platform-specific (FreeBSD environ symbol) rather than clearly dependent on the property's configuration parameters (opt-level, mir-opt-level, codegen-units, lto)"
+   }
+  ],
+  "general": true,
+  "sharper_statement": "Compiler optimization passes and LTO can silently change program semantics: a program's observable behavior (exit status, panic status, and linkability) may differ across -Copt-level 0/3, -Zmir-opt-level 0/4, codegen-units 1/16, and lto off/thin/fat settings, when it should remain identical.",
+  "comment": "Three issues confirm the property: a range propagation pass incorrectly eliminates overflow checks (#163779), optimization passes can trigger crashes (#162348), and LTO can eliminate necessary function symbols (#153645). The property is indeed general and mechanically checkable via regression testing across configuration matrices."
+ },
+ {
+  "i": 12,
+  "name": "Every span is valid",
+  "citations": [
+   {
+    "n": 151610,
+    "supports": true,
+    "reason": "The fix reveals spans becoming empty (lo >= hi) when stmt.span == tail_expr.span, violating the lo <= hi requirement"
+   },
+   {
+    "n": 151607,
+    "supports": true,
+    "reason": "SubstitutionParts have overlapping byte ranges (5:13-5:16 overlaps with 5:15-5:16), violating the non-overlap requirement"
+   },
+   {
+    "n": 147339,
+    "supports": true,
+    "reason": "Span context mismatch between body_span (#5) and covspan.span (#6) indicates spans not properly within the same SourceFile context"
+   },
+   {
+    "n": 131292,
+    "supports": true,
+    "reason": "Assertion failure on byte position arithmetic indicates span boundaries are invalid, violating UTF-8 character boundary constraints"
+   },
+   {
+    "n": 156316,
+    "supports": true,
+    "reason": "Span created by subtracting BytePos(1) from multibyte character tokens points into the middle of UTF-8 sequences, violating character boundary requirement"
+   },
+   {
+    "n": 155037,
+    "supports": true,
+    "reason": "span_extend_prev_while using hardcoded byte offset 1 instead of c.len_utf8() caused spans to point into middle of UTF-8 multibyte characters"
+   }
+  ],
+  "general": true,
+  "sharper_statement": "Every span in diagnostics (including suggestion parts) and in encoded metadata has lo <= hi (non-empty), lies inside an existing SourceFile with matching context, falls on UTF-8 character boundaries, and each suggestion's substitutions do not overlap.",
+  "comment": "All six cited issues represent concrete violations of the span invariant: invalid empty spans, overlapping suggestion parts, context mismatches across files, and byte positions pointing into the middle of multibyte UTF-8 characters. The property is general and mechanically checkable as described in the how_to_check field."
+ },
+ {
+  "i": 13,
+  "name": "Semantically neutral edits do not change results",
+  "citations": [
+   {
+    "n": 156004,
+    "supports": false,
+    "reason": "About improving compiler diagnostics for type inference, not about source code edit neutrality"
+   },
+   {
+    "n": 86959,
+    "supports": true,
+    "reason": "Shows parentheses marked as unnecessary are actually required in 2018 edition for pattern alternation, violating the property's guarantee that neutral edits don't change compilation"
+   },
+   {
+    "n": 160741,
+    "supports": true,
+    "reason": "Shows braces marked as unnecessary actually affect lock release timing and program behavior, demonstrating the linter incorrectly classifies a non-neutral edit as neutral"
+   },
+   {
+    "n": 157758,
+    "supports": true,
+    "reason": "Shows Debug implemented on a normalized projection type is not recognized as Debug being implemented for the underlying type, violating the property's expectation that normalized aliases are equivalent"
+   },
+   {
+    "n": 157757,
+    "supports": true,
+    "reason": "Shows Debug implemented on a free type alias is not recognized as equivalent to Debug on the normalized target type, contradicting the property's treatment of normalizing aliases"
+   },
+   {
+    "n": 152004,
+    "supports": true,
+    "reason": "Shows pub(crate) glob re-export marked as unused is actually required for compilation, demonstrating the linter incorrectly identifies a non-neutral edit as removable"
+   },
+   {
+    "n": 151983,
+    "supports": false,
+    "reason": "Shows missing lint detection for unused variables in match guards, not about false claims that edits are neutral or incorrect equivalence handling"
+   }
+  ],
+  "general": true,
+  "sharper_statement": "The Rust compiler may incorrectly identify certain edits as semantically neutral (particularly parentheses in patterns, braces affecting resource lifetime scope, and glob re-exports) when they are actually required for compilation or correct behavior, and may fail to recognize trait implementations on type aliases and projections that normalize to an underlying type as equivalent to direct implementations on that type.",
+  "comment": "5 out of 7 citations support the property by demonstrating violations where the compiler incorrectly claims edits are neutral or fails to recognize equivalent types. The property is general (applies to any neutral edits) and mechanically checkable (compare outputs after applying a catalogue of neutral rewrites), though it requires precise definition of what constitutes semantic neutrality. The violations occur in the linting system's classification of necessity and in trait resolution's handling of normalized aliases."
+ },
+ {
+  "i": 14,
+  "name": "A successful compile contains no error types",
+  "citations": [
+   {
+    "n": 150969,
+    "supports": true,
+    "reason": "ErrorGuaranteed values were being processed as regular const values instead of being detected as errors, demonstrating that error types appeared in internal structures (ConstValue) without proper error checking"
+   },
+   {
+    "n": 149588,
+    "supports": true,
+    "reason": "Type error placeholders ({type error}) were created in transmute layout checking when normalization failed, but these errors weren't emitted properly, violating the invariant that error types should only appear after errors are reported"
+   },
+   {
+    "n": 151299,
+    "supports": false,
+    "reason": "Text is truncated and does not clearly show violation of the invariant; fix is merely a regression test without explanation of the root cause"
+   },
+   {
+    "n": 154780,
+    "supports": true,
+    "reason": "ICE message explicitly states 'TyKind::Error constructed but no error reported', directly demonstrating the property violation in delegation's handling of generic parameters"
+   }
+  ],
+  "general": true,
+  "sharper_statement": "If a compilation exits 0, no ty::Error, ConstKind::Error, or ErrorGuaranteed-carrying value should appear in compiler internals (valtree constants, transmute layout checking, MIR, query results, or metadata). Error types are created only after errors are emitted; violations occur when compiler subsystems construct these types during failed operations (const evaluation, layout normalization, or delegation) without emitting corresponding errors or errors without reporting.",
+  "comment": "Three of four issues support the property with clear violations where error types were constructed or improperly handled without corresponding error emission. Issue #151299 cannot be verified due to truncated text. The property is mechanically checkable via mirth as described in how_to_check."
+ },
+ {
+  "i": 15,
+  "name": "Layout views agree",
+  "citations": [
+   {
+    "n": 154426,
+    "supports": true,
+    "reason": "Issue shows unsafe binder layout check was examining outer type when it should use inner type layout, directly violating the agreement property"
+   },
+   {
+    "n": 154424,
+    "supports": true,
+    "reason": "Issue shows discriminant helpers were not using unsafe binder's erased inner type view, violating layout agreement across components"
+   },
+   {
+    "n": 155412,
+    "supports": true,
+    "reason": "Issue demonstrates transmute size check allowed invalid transmutes by ignoring repr(align) differences, violating agreement between SizeSkeleton and actual layout"
+   },
+   {
+    "n": 88290,
+    "supports": true,
+    "reason": "Issue shows transmute check ignoring alignment and enum repr, causing SizeSkeleton to disagree with actual type layouts"
+   }
+  ],
+  "general": true,
+  "sharper_statement": "Unsafe binder layout checks and discriminant helpers must use the inner type's layout view. Transmute's SizeSkeleton check must account for repr(align/packed) differences that affect a type's actual size. repr(transparent) wrappers have the same ABI as their non-ZST field.",
+  "comment": "All four citations support the property. The unsafe binder citations (#154426, #154424) show failures where layout checks examined the wrapper instead of delegating to the inner type. The transmute citations (#155412, #88290) show the SizeSkeleton check was incomplete, failing to reject transmutes when repr(align/packed) changed the size. The property is mechanically checkable by recording layout_of per type and comparing against what each component (transmute checks, wrapper handling, discriminant helpers) assumes about layout."
+ },
+ {
+  "i": 16,
+  "name": "Each encoded record is written once and hashed after it is final",
+  "citations": [
+   {
+    "n": 150018,
+    "supports": true,
+    "reason": "Issue text explicitly shows `trying to encode a dep node twice` panic message, directly violating the write-once invariant"
+   },
+   {
+    "n": 142778,
+    "supports": true,
+    "reason": "Fixed by same PR #151509 addressing duplicate dep node writes; the bounds-check assertion failure is a symptom of the invariant violation"
+   },
+   {
+    "n": 163426,
+    "supports": true,
+    "reason": "Issue text shows `crate_hash(LOCAL_CRATE) called before metadata encoding` panic, directly violating the constraint that crate_hash not be computed before encoder finishes"
+   }
+  ],
+  "general": true,
+  "sharper_statement": "The metadata encoder writes each dep node at most once under concurrent execution, and crate_hash is not computed before metadata encoding finishes",
+  "comment": "All three citations directly or indirectly support the property. The property is general and mechanically checkable via mirth logging and instrumentation as specified in how_to_check. The concrete violations are: (1) concurrent race conditions causing duplicate dep node writes to metadata, and (2) premature crate_hash computation before metadata encoding."
+ },
+ {
+  "i": 17,
+  "name": "rustdoc output is the same however an item is re-exported",
+  "citations": [
+   {
+    "n": 119965,
+    "supports": false,
+    "reason": "Issue is about intra-doc link resolution with mixed inner/outer doc comments, not about re-exported items showing different documentation"
+   },
+   {
+    "n": 81893,
+    "supports": true,
+    "reason": "Directly demonstrates multi-level re-exports losing documentation from intermediate levels"
+   },
+   {
+    "n": 53724,
+    "supports": true,
+    "reason": "Shows glob re-exports failing to include items that appear in named re-exports"
+   },
+   {
+    "n": 96166,
+    "supports": true,
+    "reason": "Demonstrates cfg badges failing to propagate to glob re-exported items while appearing on individual re-exports"
+   },
+   {
+    "n": 154921,
+    "supports": true,
+    "reason": "Shows cfg attributes being lost when type aliases are re-exported, violating the property that re-exports show the same cfg badges"
+   }
+  ],
+  "general": true,
+  "sharper_statement": "Re-exported items may fail to preserve the documentation and cfg badges of their original definitions, particularly: multi-level re-exports may lose documentation from intermediate levels, glob re-exports may fail to include items that appear in named re-exports, and cfg badges may not propagate correctly to glob re-exports or re-exported type aliases.",
+  "comment": "Four of five citations directly demonstrate violations. The property is mechanically checkable via rustdoc JSON comparison across re-export forms."
+ },
+ {
+  "i": 18,
+  "name": "#[expect] is fulfilled exactly when the lint fires",
+  "citations": [
+   {
+    "n": 152004,
+    "supports": true,
+    "reason": "False positive in unused imports lint demonstrates lint firing incorrectly, violating the property's assumption that lint emission reliably indicates expectation fulfillment."
+   },
+   {
+    "n": 151983,
+    "supports": true,
+    "reason": "Missing unused_variables lint in match guards shows the differential check failing: #[expect] would be unfulfilled but #[warn] would emit the lint."
+   },
+   {
+    "n": 152401,
+    "supports": true,
+    "reason": "Direct violation: #[expect(missing_docs)] reported unfulfilled even though removing it shows the lint does fire, proving expectation status does not match lint emission."
+   },
+   {
+    "n": 152289,
+    "supports": false,
+    "reason": "not in dataset"
+   }
+  ],
+  "general": true,
+  "sharper_statement": "#[expect(L)] fulfillment status is not always correctly aligned with whether #[warn(L)] would actually emit L. Cases involving match guards, derives, and cfg_attr show mismatches where expectations are reported as unfulfilled despite the lint firing, or vice versa.",
+  "comment": "All three available citations demonstrate violations of the property's core claim about the correspondence between #[expect] fulfillment and lint emission. The property is mechanically testable through differential checking but the cited issues prove the implementation does not reliably implement this invariant, particularly in complex scoping contexts."
+ },
+ {
+  "i": 19,
+  "name": "Query results contain no inference variables",
+  "citations": [
+   {
+    "n": 153525,
+    "supports": true,
+    "reason": "Issue shows ICE when type inference variable (?0t) appears in cached query result (lit_to_const) and query system attempts to hash it, directly violating the property"
+   },
+   {
+    "n": 153524,
+    "supports": true,
+    "reason": "Issue shows ICE when const inference variable (?0c) appears in cached query result and cannot be hashed, demonstrating the exact invariant violation described in the property"
+   }
+  ],
+  "general": true,
+  "sharper_statement": "Inference variables leak into the const literal lowering logic (lit_to_const), appearing in cached query results where they cause hashing panics.",
+  "comment": "Both cited issues demonstrate inference variables escaping into the const literal lowering phase and then being encountered during query result caching/hashing, causing ICE panics. The property is mechanically checkable as described in the how_to_check field using tools like mirth to inspect query returns and HashStable calls."
+ },
+ {
+  "i": 20,
+  "name": "Each diagnostic is emitted once",
+  "citations": [
+   {
+    "n": 115376,
+    "supports": false,
+    "reason": "Issue shows errors with different codes (E0310 vs E0311) at the same span. Property requires identical level, code, message, AND primary span for a duplicate violation; different codes means these are distinct diagnostics by the property's definition"
+   },
+   {
+    "n": 106571,
+    "supports": false,
+    "reason": "Issue text in dataset is incomplete/truncated; does not show the actual duplicate diagnostics despite title suggesting duplicates appeared in JSON output"
+   }
+  ],
+  "general": true,
+  "sharper_statement": "When the same diagnostic (identified by identical level, error code, message text, and primary source span) is emitted more than once in a single compilation session, it appears multiple times in --error-format=json output. This can be detected by extracting diagnostics from JSON and checking for exact duplicates by the tuple (level, code, message, span).",
+  "comment": "The property is mechanically checkable by post-processing JSON diagnostics and building a key from (level, code, message, primary_span), then detecting keys with count > 1. However, neither cited issue actually demonstrates this specific violation: #115376 shows different error codes despite same span, and #106571's issue text is truncated, preventing verification of the actual duplicates despite the suggestive title about \"duplicate messages\"."
+ },
+ {
+  "i": 21,
+  "name": "Symbol names are injective and stable",
+  "citations": [
+   {
+    "n": 158644,
+    "supports": true,
+    "reason": "Issue shows splat attributes missing from v0 mangling, causing distinct function types (splatted vs non-splatted) to generate the same symbol name, directly violating the injectivity property"
+   }
+  ],
+  "general": true,
+  "sharper_statement": "The v0 and legacy symbol mangling schemes must encode all type attributes that the type system considers semantically distinct, including splat on function types, to ensure monomorphized instances never share symbol names. V0 symbols must round-trip through rustc-demangle to the instance's path.\"",
+  "comment": "The cited issue (158644) is an exemplary violation: distinct types in the Rust type system (splat vs no splat on function pointer types) were compressed to the same symbol due to a mangling bug. The property as stated is mechanically verifiable via mirth's instance tracking and symbol injection/round-trip checks. The evidence is concrete: a reproducible test case, explicit design decision reference (#153697), and a fixing PR (#158890)."
+ },
+ {
+  "i": 22,
+  "name": "dyn types have a dyn-compatible principal",
+  "citations": [
+   {
+    "n": 154619,
+    "supports": true,
+    "reason": "Issue demonstrates a concrete violation: dyn Trait where Trait: DerefPure (a non-dyn-compatible principal) was allowed to compile and caused unsoundness; the PR fix explicitly prevents dyn-incompatible traits from being principals of trait objects"
+   }
+  ],
+  "general": true,
+  "sharper_statement": "In successful compilations, every TyKind::Dynamic that reaches typeck, MIR, or metadata must have a principal trait that is explicitly marked dyn-compatible; allowing Dynamic types with non-dyn-compatible principals (like DerefPure) enables unsound behavior.",
+  "comment": "The property is well-supported by the single citation. Issue #154619 is a direct counterexample to the property that was caught in practice and fixed. The property is mechanically checkable by asserting dyn-compatibility markers on all principals of Dynamic types in a successful compilation session."
+ },
+ {
+  "i": 23,
+  "name": "Machine-applicable suggestions apply cleanly",
+  "citations": [
+   {
+    "n": 161213,
+    "supports": true,
+    "reason": "Shows a violation where the const-extraction suggestion was generated with overlapping component spans, causing a compiler panic that prevents clean application"
+   },
+   {
+    "n": 161472,
+    "supports": true,
+    "reason": "Shows a violation where a suggestion was generated with an incorrect empty span, causing a compiler panic that prevents processing and application"
+   }
+  ],
+  "general": true,
+  "sharper_statement": "Applying every MachineApplicable suggestion (rustfix) gives code that compiles and the diagnostic is gone, provided that suggestions are generated with correctly-calculated non-empty, non-overlapping spans. Violations occur when the suggestion system generates suggestions with malformed spans that cause compiler panics.",
+  "comment": "Both cited issues demonstrate concrete violations of the property by showing cases where suggestions were generated with defective spans (overlapping or empty), causing compiler panics rather than clean application. The property is general and mechanically checkable via cargo fix, but the cited issues reveal specific preconditions: suggestion span correctness is critical to the property holding."
+ },
+ {
+  "i": 24,
+  "name": "Polonius accepts at least what NLL accepts, and no more than is sound",
+  "citations": [
+   {
+    "n": 153215,
+    "supports": true,
+    "reason": "Shows Polonius misses errors in opaque type region liveness tracking that NLL correctly handles, allowing unsound code to be accepted."
+   },
+   {
+    "n": 160669,
+    "supports": true,
+    "reason": "Demonstrates Polonius accepting code with undefined behavior (segfault confirmed by Miri) that should be rejected, violating soundness."
+   }
+  ],
+  "general": true,
+  "sharper_statement": "-Zpolonius=next has soundness bugs in opaque type region handling that allow acceptance of programs with undefined behavior, violating the guarantee that Polonius-only-accepted programs should be sound under Miri.",
+  "comment": "Both issues are violations of the second part of the property: that programs accepted only by Polonius run without UB under Miri. The property is mechanically checkable by differential borrow-checking with both NLL and Polonius, followed by Miri testing of Polonius-only-accepting programs."
+ },
+ {
+  "i": 25,
+  "name": "Unstable syntax is gated before expansion",
+  "citations": [
+   {
+    "n": 152501,
+    "supports": true,
+    "reason": "The issue demonstrates `try bikeshed () {}` inside `#[cfg(false)]` compiling without a pre-expansion gate warning, directly violating the property that unstable syntax must be rejected pre-expansion even in dead code."
+   },
+   {
+    "n": 152499,
+    "supports": true,
+    "reason": "The issue demonstrates `const { 0 }` patterns (unstable syntax) being accepted pre-expansion in macro patterns and let bindings when they should be rejected, violating the property that all unstable syntax must be pre-expansion gated."
+   }
+  ],
+  "general": true,
+  "sharper_statement": "Every unstable syntactic form must be rejected at pre-expansion on stable without its feature gate, even inside #[cfg(FALSE)] blocks or unused macro_rules arms, to prevent code breakage when feature gates are removed.",
+  "comment": "Both cited issues show violations where unstable syntax forms were accepted pre-expansion when they should have been rejected. The property is general and mechanically checkable via the described UI test procedure."
+ },
+ {
+  "i": 26,
+  "name": "Built-in attributes reject malformed arguments",
+  "citations": [
+   {
+    "n": 154977,
+    "supports": true,
+    "reason": "The issue demonstrates that `#[macro_export(local_inner_macros)]` silently ignored malformed arguments like `(false)` and `= false` instead of erroring, violating the property that built-in attributes must reject argument forms their template does not allow. The fix (PR #155193) explicitly adds checking to reject such malformed arguments."
+   }
+  ],
+  "general": true,
+  "sharper_statement": "Every built-in attribute rejects argument forms its template does not allow by producing a diagnostic error, rather than silently ignoring excess or incorrectly-formed arguments.",
+  "comment": "The property is supported by a clear violation: a built-in attribute accepted and silently ignored arguments it should reject. The property is general and mechanically checkable\u2014the how_to_check guidance correctly describes a systematic approach: generate malformed argument forms for each attribute (extra arguments, wrong syntactic form, etc.) and verify that diagnostics are produced for all of them. This requires generating test cases for each BUILTIN_ATTRIBUTE template and ensuring proper argument validation."
+ },
+ {
+  "i": 27,
+  "name": "Advertised target features exist in LLVM",
+  "citations": [
+   {
+    "n": 159976,
+    "supports": true,
+    "reason": "Issue demonstrates that register classes required target features (vfp2) inconsistently with the target baseline. The fix adjusted register class requirements and added missing implied features, directly correcting a violation of the property's consistency requirement."
+   }
+  ],
+  "comment": "The single cited issue provides clear evidence of a violation. Register classes were requiring features in a manner inconsistent with the target's baseline capabilities. The fix involved both adjusting feature requirements and adding missing implied features, confirming the underlying inconsistency that the property prohibits.",
+  "general": false,
+  "sharper_statement": "Every target feature that rustc lists for a target, and every feature that an asm register class or intrinsic requires, must be recognized by LLVM and must be consistent with the target's baseline\u2014that is, register class and intrinsic feature requirements cannot exceed what is available for that target's baseline configuration."
+ },
+ {
+  "i": 28,
+  "name": "Eq and Hash agree for std types",
+  "citations": [
+   {
+    "n": 161651,
+    "supports": true,
+    "reason": "Issue shows Path::new(r\"\\\\?\\C:/foo\") == Path::new(r\"\\\\?\\C:\\foo\") is true, but their hashes differ, directly violating the Eq/Hash agreement invariant for the std Path type."
+   }
+  ],
+  "general": true,
+  "sharper_statement": "For every std type implementing both Eq and Hash, a == b implies hash(a) == hash(b), for every Hasher. (The property statement is precise and matches the evidence; the violation in Path on Windows with verbatim paths is a concrete instance of this general invariant being broken.)",
+  "comment": "The property is a fundamental requirement of the Rust hash contract. The cited issue directly demonstrates a violation where Path types on Windows violated this invariant due to inconsistent handling of slashes in verbatim path prefixes. The fix addresses the root cause by making path normalization consistent. This is a general, mechanically checkable property that applies to all std types implementing both Eq and Hash."
+ }
+]

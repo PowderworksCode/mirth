@@ -1,0 +1,21 @@
+$ toolchain nightly-2024-03-26
+
+--- stderr ---
+warning: function `foo` is never used
+ --> main.rs:2:4
+  |
+2 | fn foo<T: Foo>() {
+  |    ^^^
+  |
+  = note: `#[warn(dead_code)]` on by default
+
+warning: function `unsatisfied` is never used
+ --> main.rs:5:4
+  |
+5 | fn unsatisfied<B: Unsatisfied>() {}
+  |    ^^^^^^^^^^^
+
+warning: 2 warnings emitted
+
+
+exit 0

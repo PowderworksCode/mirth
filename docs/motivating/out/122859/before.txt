@@ -1,0 +1,24 @@
+$ toolchain nightly-2024-03-24
+
+--- stderr ---
+error[E0277]: the trait bound `<<T as Foo>::FooAssoc as Super>::SuperAssoc: Unsatisfied` is not satisfied
+ --> main.rs:3:19
+  |
+3 |     unsatisfied::<<T::FooAssoc as Super>::SuperAssoc>()
+  |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `Unsatisfied` is not implemented for `<<T as Foo>::FooAssoc as Super>::SuperAssoc`
+  |
+note: required by a bound in `unsatisfied`
+ --> main.rs:5:19
+  |
+5 | fn unsatisfied<B: Unsatisfied>() {}
+  |                   ^^^^^^^^^^^ required by this bound in `unsatisfied`
+help: consider further restricting the associated type
+  |
+2 | fn foo<T: Foo>() where <<T as Foo>::FooAssoc as Super>::SuperAssoc: Unsatisfied {
+  |                  ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+error: aborting due to 1 previous error
+
+For more information about this error, try `rustc --explain E0277`.
+
+exit 1

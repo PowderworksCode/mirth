@@ -1,0 +1,108 @@
+diff -ru a/core/src/asyncs.rs b/core/src/asyncs.rs
+--- a/core/src/asyncs.rs	2026-10-07 11:00:50.308004685 +0000
++++ b/core/src/asyncs.rs	2026-10-07 14:53:30.747111230 +0000
+@@ -30,23 +30,30 @@
+     }
+ }
+ 
+-pub async fn add_later(a: u32, b: u32) -> u32 {
+-    YieldOnce::default().await;
+-    a + b
++// No `async fn` in this variant of the fixture: under `-Zthreads` they make builds
++// nondeterministic (rust-lang/rust#162202).
++pub fn add_later(a: u32, b: u32) -> impl Future<Output = u32> {
++    async move {
++        YieldOnce::default().await;
++        a + b
++    }
+ }
+ 
+-#[allow(async_fn_in_trait)]
++/// A trait method returning a boxed future. (An `async fn` here makes `-Zthreads` builds
++/// nondeterministic: rust-lang/rust#162202.)
+ pub trait Fetch {
+-    async fn fetch(&self, key: &str) -> Option<String>;
++    fn fetch<'a>(&'a self, key: &'a str) -> core::pin::Pin<Box<dyn core::future::Future<Output = Option<String>> + 'a>>;
+ }
+ 
+ #[derive(Debug)]
+ pub struct Static(pub &'static [(&'static str, &'static str)]);
+ 
+ impl Fetch for Static {
+-    async fn fetch(&self, key: &str) -> Option<String> {
+-        YieldOnce::default().await;
+-        self.0.iter().find(|(k, _)| *k == key).map(|(_, v)| v.to_string())
++    fn fetch<'a>(&'a self, key: &'a str) -> core::pin::Pin<Box<dyn core::future::Future<Output = Option<String>> + 'a>> {
++        Box::pin(async move {
++            YieldOnce::default().await;
++            self.0.iter().find(|(k, _)| *k == key).map(|(_, v)| v.to_string())
++        })
+     }
+ }
+ 
+@@ -55,10 +62,12 @@
+     async move |greeting: &str| format!("{greeting}, {name}")
+ }
+ 
+-pub async fn call_twice(f: impl AsyncFn(&str) -> String) -> String {
+-    let a = f("hello").await;
+-    let b = f("bye").await;
+-    format!("{a}; {b}")
++pub fn call_twice(f: impl AsyncFn(&str) -> String) -> impl Future<Output = String> {
++    async move {
++        let a = f("hello").await;
++        let b = f("bye").await;
++        format!("{a}; {b}")
++    }
+ }
+ 
+ pub fn boxed_future(n: u32) -> Pin<Box<dyn Future<Output = u32> + Send>> {
+diff -ru a/core/src/shapes.rs b/core/src/shapes.rs
+--- a/core/src/shapes.rs	2026-10-07 11:00:50.316004651 +0000
++++ b/core/src/shapes.rs	2026-10-07 14:27:50.983376965 +0000
+@@ -178,14 +178,15 @@
+     }
+ }
+ 
+-/// Return-position `impl Trait` in a trait.
++/// A trait method returning a boxed iterator. (`impl Trait` here, with the `async fn` in
++/// `asyncs::Fetch`, makes `-Zthreads` builds nondeterministic: rust-lang/rust#162202.)
+ pub trait Labels {
+-    fn labels(&self) -> impl Iterator<Item = String> + '_;
++    fn labels(&self) -> Box<dyn Iterator<Item = String> + '_>;
+ }
+ 
+ impl Labels for [Square] {
+-    fn labels(&self) -> impl Iterator<Item = String> + '_ {
+-        self.iter().map(|s| format!("square {}", s.side))
++    fn labels(&self) -> Box<dyn Iterator<Item = String> + '_> {
++        Box::new(self.iter().map(|s| format!("square {}", s.side)))
+     }
+ }
+ 
+diff -ru a/mid/src/lib.rs b/mid/src/lib.rs
+--- a/mid/src/lib.rs	2026-10-07 11:00:50.316004651 +0000
++++ b/mid/src/lib.rs	2026-10-07 14:53:30.747111230 +0000
+@@ -96,14 +96,16 @@
+     }
+ }
+ 
+-pub async fn lookup(store: &impl Fetch, keys: &[&str]) -> Vec<String> {
+-    let mut out = Vec::new();
+-    for key in keys {
+-        if let Some(v) = store.fetch(key).await {
+-            out.push(v);
++pub fn lookup<'a>(store: &'a impl Fetch, keys: &'a [&'a str]) -> impl Future<Output = Vec<String>> + 'a {
++    async move {
++        let mut out = Vec::new();
++        for key in keys {
++            if let Some(v) = store.fetch(key).await {
++                out.push(v);
++            }
+         }
++        out
+     }
+-    out
+ }
+ 
+ pub fn labels(squares: &[Square]) -> Vec<String> {

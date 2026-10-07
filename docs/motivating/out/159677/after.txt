@@ -1,0 +1,6 @@
+$ toolchain nightly-2026-09-25
+IDENTICAL
+
+--- stderr ---
+
+exit 0

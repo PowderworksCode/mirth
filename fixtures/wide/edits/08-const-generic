@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# A const generic argument changes in a type alias.
+set -euo pipefail
+sed -i 's/Grid<u8, 4, 3>/Grid<u8, 5, 3>/' user/src/lib.rs

@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# The derive's output changes, so every user of it does.
+set -euo pipefail
+sed -i 's|const NAME: \&'"'"'static str = \\"{name}\\";|const NAME: \&'"'"'static str = \\"{name}!\\";|' derive/src/lib.rs

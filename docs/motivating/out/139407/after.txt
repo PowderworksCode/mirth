@@ -1,0 +1,22 @@
+$ toolchain nightly-2025-04-13
+pass1 ok
+(pass2 is expected to fail with an assembler error)
+pass3 ok
+
+--- stderr ---
+error: invalid instruction mnemonic 'missing'
+  --> main.rs:28:30
+   |
+28 |             std::arch::asm!("missing");
+   |                              ^^^^^^^
+   |
+note: instantiated into assembly here
+  --> <inline asm>:2:2
+   |
+2  |     missing
+   |     ^^^^^^^
+
+error: aborting due to 1 previous error
+
+
+exit 0
