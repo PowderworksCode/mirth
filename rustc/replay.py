@@ -48,6 +48,7 @@ p.add_argument("--jobs", default="4")
 p.add_argument("--keep", type=int, default=3, help="differences kept per crate")
 p.add_argument("--from", dest="start", type=int, default=0, help="first commit index to replay")
 p.add_argument("--to", dest="end", type=int, default=None, help="last commit index to replay")
+p.add_argument("--rustflags", default="", help="more flags for every build, such as -Copt-level=2")
 p.add_argument("--no-verify-reuse", action="store_true",
                help="do not set RUSTC_VERIFY_REUSE (needs a compiler with docs/hunt/verify-reuse.patch)")
 args = p.parse_args()
@@ -66,7 +67,7 @@ env.update(
     RUSTC_WRAPPER="",
     CARGO_INCREMENTAL="1",
     # A commit that denies warnings would otherwise stop building with a newer compiler.
-    RUSTFLAGS="--cap-lints=warn",
+    RUSTFLAGS=f"--cap-lints=warn {args.rustflags}".strip(),
     CARGO_TERM_COLOR="never",
 )
 if not args.no_verify_reuse:
