@@ -41,6 +41,10 @@ otherwise identical), diagnostics and files written, is
 
 The other 45 boolean untracked options gave the same output incrementally as clean.
 (`-Zdump-dep-graph` and `-Zno-parallel-backend` failed to build this crate either way.)
+Untracked options that take a value, given one each (`-Ccodegen-units=1`, `=3`,
+`-Zmir-include-spans=yes`, `-Zthreads=4`, `-Zterminal-urls=yes`,
+`-Zignore-directory-in-diagnostics-source-blocks`, `-Cstrip=symbols`), also gave the same
+output incrementally as clean.
 `-Csave-temps` writing no temporaries for reused codegen units is probably fine for a
 debugging option.
 
