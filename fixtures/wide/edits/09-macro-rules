@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# An exported macro's expansion changes.
+set -euo pipefail
+sed -i 's|\$crate::Point { x: \$x, y: \$y }|\$crate::Point { x: \$y, y: \$x }|' core/src/lib.rs

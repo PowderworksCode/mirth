@@ -23,9 +23,15 @@ Seven real bugs from rustc's history were then replayed by reverting their
 fixes. mirth catches five; three of those needed a fixture addition or a
 new step, made knowing the bug.
 
+Pointed at the unmodified compiler with a wider fixture, it found two
+incremental bugs that look new, where a rebuild after an edit encodes
+different metadata from a clean build, and one known parallel-front-end
+bug.
+
 - [`docs/report.md`](docs/report.md): the experiment, for readers new to it
 - [`docs/results.md`](docs/results.md): each edit and the output that caught it
 - [`docs/regressions.md`](docs/regressions.md): the replayed bugs, caught and missed
+- [`docs/hunt.md`](docs/hunt.md): bugs found in the unmodified compiler
 - [`docs/plan.md`](docs/plan.md): the plan the work followed, with the properties
 
 ## An instrumented compiler
@@ -39,6 +45,7 @@ rustc/build.sh                        # build stage 1 through mirth-watch, then 
 rustc/check.sh chain                  # check fixtures/chain
 rustc/edits.sh chain                  # apply, check and revert each edit in rustc/edits
 EDITS=regressions rustc/edits.sh chain  # the same for the past bugs in rustc/regressions
+rustc/hunt.sh wide                    # repeated threaded builds, and P6 for each of fixtures/wide/edits
 ```
 
 The build takes about an hour on 16 cores. `rustc/rmeta.toml` says what is

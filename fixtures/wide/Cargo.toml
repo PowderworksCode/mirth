@@ -1,0 +1,11 @@
+[workspace]
+
+[package]
+name = "wide"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+core-lib = { path = "core", package = "wide-core" }
+user = { path = "user", package = "wide-user" }

@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# A new enum variant, so every match downstream changes.
+set -euo pipefail
+sed -i 's/    Poly(Vec<Point>),/    Poly(Vec<Point>),\n    Empty,/' core/src/lib.rs
+sed -i 's|            Shape::Poly(points) => format!("poly of {}", points.len()),|            Shape::Poly(points) => format!("poly of {}", points.len()),\n            Shape::Empty => String::new(),|' core/src/lib.rs
+sed -i 's|            Shape::Poly(points) => points.iter().copied().for_each(\&mut f),|            Shape::Poly(points) => points.iter().copied().for_each(\&mut f),\n            Shape::Empty => {}|' user/src/lib.rs

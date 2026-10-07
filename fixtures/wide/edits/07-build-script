@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# The build script generates a different table.
+set -euo pipefail
+sed -i 's/i \* i/i * i * i/' core/build.rs

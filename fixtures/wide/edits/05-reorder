@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Two items swap places.
+set -euo pipefail
+python3 - <<'PY'
+import pathlib
+p = pathlib.Path('core/src/lib.rs'); s = p.read_text()
+a = '#[inline]\npub fn square(i: usize) -> u32 {\n    SQUARES[i % SQUARES.len()]\n}\n'
+b = 'pub const ORIGIN: Point = Point { x: 0, y: 0 };\n'
+assert a in s and b in s
+s = s.replace(a, '@A@').replace(b, a).replace('@A@', b)
+p.write_text(s)
+PY

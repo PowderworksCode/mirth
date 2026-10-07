@@ -1,0 +1,943 @@
+== build_script_build (bin) emit dep-info,link ==
+files
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd-#.rmeta in -
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd_detect-#.rmeta in -
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libcore-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/liballoc-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libcompiler_builtins-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/liblibc-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/librustc_std_workspace_core-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libunwind-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libminiz_oxide-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libadler2-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libhashbrown-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/librustc_std_workspace_alloc-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd_detect-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/librustc_demangle-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libcfg_if-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libaddr2line-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libgimli-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libobject-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libmemchr-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libpanic_unwind-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd-#.rmeta in -
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd_detect-#.rmeta in -
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd-#.rmeta in -
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd_detect-#.rmeta in -
+  create         target/debug/build/wide-core/#/out/rmeta* in fs::encode_and_write_metadata
+  create         target/debug/build/wide-core/#/out/rmeta*/full.rmeta in fs::encode_and_write_metadata
+  open           target/debug/build/wide-core/#/out/rmeta*/full.rmeta in fs::encode_and_write_metadata
+  remove_dir_all target/debug/build/wide-core/#/out/rmeta* in fs::encode_and_write_metadata
+  create         target/debug/build/wide-core/#/out/rustc* in -
+  remove_dir_all target/debug/build/wide-core/#/out/rustc* in -
+read through queries: reads, items, items whose query recorded a dependency on the crate, entries the writer wrote
+    1275    37 items    37 tracked               <sysroot>          adt_def
+      23    19 items    19 tracked               <sysroot>          adt_destructor
+     152    76 items    76 tracked               <sysroot>          anon_const_kind
+    2098   296 items   296 tracked               <sysroot>          associated_item
+     110    55 items    55 tracked               <sysroot>          associated_item_def_ids
+       7     7 items     7 tracked               <sysroot>          asyncness
+     210    78 items    78 tracked               <sysroot>          attrs_for_def
+      19    19 items    19 tracked               <sysroot>          canonical_symbols
+     306   153 items   153 tracked               <sysroot>          codegen_fn_attrs
+      32    16 items    16 tracked               <sysroot>          const_conditions
+      88    88 items    88 tracked               <sysroot>          constness
+       3     3 items     3 tracked               <sysroot>          coroutine_kind
+       3     3 items     3 tracked               <sysroot>          crate_name
+      84    84 items    84 tracked               <sysroot>          cross_crate_inlinable
+      22    11 items    11 tracked               <sysroot>          def_ident_span
+     484   484 items   484 tracked               <sysroot>          def_kind
+     426   193 items   193 tracked               <sysroot>          def_span
+     122   122 items   122 tracked               <sysroot>          defaultness
+      35    19 items    19 tracked               <sysroot>          defined_lang_items
+       7     7 items     7 tracked               <sysroot>          diagnostic_items
+     504   233 items   233 tracked               <sysroot>          explicit_clauses_of
+      72    37 items    37 tracked               <sysroot>          explicit_implied_clauses_of
+      13    10 items    10 tracked               <sysroot>          explicit_implied_const_bounds
+       2     1 items     1 tracked               <sysroot>          explicit_item_bounds
+       2     1 items     1 tracked               <sysroot>          explicit_item_self_bounds
+      14     8 items     8 tracked               <sysroot>          explicit_super_clauses_of
+      40    10 items    10 tracked               <sysroot>          expn_that_defined
+       3     3 items     3 tracked               <sysroot>          exportable_items
+      21    19 items    19 tracked               <sysroot>          exported_generic_symbols
+      19    19 items    19 tracked               <sysroot>          exported_non_generic_symbols
+      19    19 items    19 tracked               <sysroot>          externally_implementable_items
+     250   124 items   124 tracked               <sysroot>          fn_sig
+     616   306 items   306 tracked               <sysroot>          generics_of
+      37    37 items    37 tracked               <sysroot>          impl_parent
+     160    80 items    80 tracked               <sysroot>          impl_trait_header
+     124   124 items   124 tracked               <sysroot>          implementations_of_trait
+     235   233 items   233 tracked               <sysroot>          inferred_outlives_of
+       8     4 items     4 tracked               <sysroot>          inherent_impls
+     115   107 items   107 tracked               <sysroot>          intrinsic_raw
+       2     2 items     2 tracked               <sysroot>          is_doc_hidden
+      59    59 items    59 tracked               <sysroot>          is_mir_available
+      25    25 items    25 tracked               <sysroot>          lookup_deprecation_entry
+      64    32 items    32 tracked               <sysroot>          lookup_stability
+     202    91 items    91 tracked               <sysroot>          mir_for_ctfe
+      19    19 items    19 tracked               <sysroot>          missing_lang_items
+    3913    45 items    45 tracked               <sysroot>          module_children
+      23    19 items    19 tracked               <sysroot>          native_libraries
+     434    59 items    59 tracked               <sysroot>          optimized_mir
+    1468     3 items     3 tracked               <sysroot>          reachable_non_generics
+       3     3 items     3 tracked               <sysroot>          stable_order_of_exportable_impls
+      80    39 items    39 tracked               <sysroot>          trait_def
+     111    94 items    94 tracked               <sysroot>          trivial_const
+     504   252 items   252 tracked               <sysroot>          type_of
+      32    16 items    16 tracked               <sysroot>          variances_of
+     190    95 items    95 tracked               <sysroot>          visibility
+       2     0 items     0 tracked               ?                  crate_incoherent_impls
+read outside a query
+      96  CrateMetadata::def_kind                            in -
+   41843  CrateMetadata::def_path_hash                       in -
+     140  CrateMetadata::get_expn_that_defined               in -
+      10  CrateMetadata::get_item_attrs                      in -
+      15  CrateMetadata::get_macro                           in -
+    2038  CrateMetadata::get_span                            in -
+      10  CrateMetadata::opt_item_ident                      in -
+      19  CrateRoot>::decode_denied_partial_mitigations      in -
+      19  CrateRoot>::decode_target_modifiers                in -
+      15  MetadataBlob::check_compatibility                  in -
+      24  MetadataBlob::get_header                           in -
+       3  MetadataBlob::get_root                             in -
+      28  decode_expn_id::{closure#0}                        in -
+     522  def_key::{closure#0}                               in -
+      45  get_ambig_module_children::{closure#0}             in -
+      50  imported_source_file::{closure#2}                  in -
+      76  CrateMetadata::new                                 in CStore::register_crate
+      19  CrateRoot>::decode_crate_deps                      in CStore::register_crate
+      36  MetadataBlob::check_compatibility                  in CStore::register_crate
+      72  MetadataBlob::get_header                           in CStore::register_crate
+      37  MetadataBlob::get_root                             in CStore::register_crate
+      38  MetadataBlob::get_root_unhashed                    in CStore::register_crate
+      43  new::{closure#1}                                   in CStore::register_crate
+
+== wide (bin) emit dep-info,link ==
+files
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd-#.rmeta in -
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd_detect-#.rmeta in -
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libcore-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/liballoc-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libcompiler_builtins-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/liblibc-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/librustc_std_workspace_core-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libunwind-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libminiz_oxide-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libadler2-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libhashbrown-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/librustc_std_workspace_alloc-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd_detect-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/librustc_demangle-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libcfg_if-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libaddr2line-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libgimli-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libobject-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libmemchr-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libpanic_unwind-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd-#.rmeta in -
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd_detect-#.rmeta in -
+  open           target/debug/build/wide-core/#/out/libwide_core-#.rmeta in -
+  open           target/debug/build/wide-user/#/out/libwide_user-#.rmeta in -
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd-#.rmeta in -
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd_detect-#.rmeta in -
+  open           target/debug/build/wide-core/#/out/libwide_core-#.rmeta in -
+  open           target/debug/build/wide-user/#/out/libwide_user-#.rmeta in -
+  create         target/debug/build/wide/#/out/rmeta*     in fs::encode_and_write_metadata
+  create         target/debug/build/wide/#/out/rmeta*/full.rmeta in fs::encode_and_write_metadata
+  open           target/debug/build/wide/#/out/rmeta*/full.rmeta in fs::encode_and_write_metadata
+  remove_dir_all target/debug/build/wide/#/out/rmeta*     in fs::encode_and_write_metadata
+  create         target/debug/build/wide/#/out/rustc*     in -
+  remove_dir_all target/debug/build/wide/#/out/rustc*     in -
+read through queries: reads, items, items whose query recorded a dependency on the crate, entries the writer wrote
+    1760    70 items    70 tracked               <sysroot>          adt_def
+      61    46 items    46 tracked               <sysroot>          adt_destructor
+     164    82 items    82 tracked               <sysroot>          anon_const_kind
+    5834   859 items   859 tracked               <sysroot>          associated_item
+     308   154 items   154 tracked               <sysroot>          associated_item_def_ids
+       8     8 items     8 tracked               <sysroot>          asyncness
+     348   135 items   135 tracked               <sysroot>          attrs_for_def
+      19    19 items    19 tracked               <sysroot>          canonical_symbols
+      38    19 items    19 tracked               <sysroot>          closure_saved_names_of_captured_variables
+    1406   703 items   703 tracked               <sysroot>          codegen_fn_attrs
+      82    41 items    41 tracked               <sysroot>          const_conditions
+     264   264 items   264 tracked               <sysroot>          constness
+      19    19 items    19 tracked               <sysroot>          coroutine_kind
+       3     3 items     3 tracked               <sysroot>          crate_name
+     613   613 items   613 tracked               <sysroot>          cross_crate_inlinable
+      19    19 items    19 tracked               <sysroot>          debugger_visualizers
+      38    19 items    19 tracked               <sysroot>          def_ident_span
+    1414  1414 items  1414 tracked               <sysroot>          def_kind
+    1792   865 items   865 tracked               <sysroot>          def_span
+     277   277 items   277 tracked               <sysroot>          defaultness
+      35    19 items    19 tracked               <sysroot>          defined_lang_items
+       7     7 items     7 tracked               <sysroot>          diagnostic_items
+     904   390 items   390 tracked               <sysroot>          explicit_clauses_of
+     112    55 items    55 tracked               <sysroot>          explicit_implied_clauses_of
+      20    14 items    14 tracked               <sysroot>          explicit_implied_const_bounds
+       2     1 items     1 tracked               <sysroot>          explicit_item_bounds
+       6     3 items     3 tracked               <sysroot>          explicit_item_self_bounds
+      22    11 items    11 tracked               <sysroot>          explicit_super_clauses_of
+      40    16 items    16 tracked               <sysroot>          expn_that_defined
+       3     3 items     3 tracked               <sysroot>          exportable_items
+      21    19 items    19 tracked               <sysroot>          exported_generic_symbols
+      19    19 items    19 tracked               <sysroot>          exported_non_generic_symbols
+      19    19 items    19 tracked               <sysroot>          externally_implementable_items
+    1352   675 items   675 tracked               <sysroot>          fn_sig
+    2330  1162 items  1162 tracked               <sysroot>          generics_of
+      85    85 items    85 tracked               <sysroot>          impl_parent
+     454   227 items   227 tracked               <sysroot>          impl_trait_header
+     202   202 items   202 tracked               <sysroot>          implementations_of_trait
+     397   390 items   390 tracked               <sysroot>          inferred_outlives_of
+      18     9 items     9 tracked               <sysroot>          inherent_impls
+     329   308 items   308 tracked               <sysroot>          intrinsic_raw
+       2     2 items     2 tracked               <sysroot>          is_doc_hidden
+     215   215 items   215 tracked               <sysroot>          is_mir_available
+       2     1 items     1 tracked               <sysroot>          lookup_const_stability
+      31    31 items    31 tracked               <sysroot>          lookup_deprecation_entry
+      80    40 items    40 tracked               <sysroot>          lookup_stability
+     324   134 items   134 tracked               <sysroot>          mir_for_ctfe
+      19    19 items    19 tracked               <sysroot>          missing_lang_items
+    3431    44 items    44 tracked               <sysroot>          module_children
+      23    19 items    19 tracked               <sysroot>          native_libraries
+       2     1 items     1 tracked               <sysroot>          object_lifetime_default
+    1578   215 items   215 tracked               <sysroot>          optimized_mir
+       8     4 items     4 tracked               <sysroot>          promoted_mir
+    1468     3 items     3 tracked               <sysroot>          reachable_non_generics
+       3     3 items     3 tracked               <sysroot>          stable_order_of_exportable_impls
+     120    59 items    59 tracked               <sysroot>          trait_def
+     157   133 items   133 tracked               <sysroot>          trivial_const
+    2272  1136 items  1136 tracked               <sysroot>          type_of
+      54    27 items    27 tracked               <sysroot>          variances_of
+     628   314 items   314 tracked               <sysroot>          visibility
+       4     0 items     0 tracked               ?                  crate_incoherent_impls
+     116     4 items     4 tracked               core_lib           adt_def
+       4     4 items     4 tracked               core_lib           adt_destructor
+      42     8 items     8 tracked               core_lib           associated_item
+       8     4 items     4 tracked               core_lib           associated_item_def_ids
+      21    10 items    10 tracked               core_lib           attrs_for_def
+       1     1 items     1 tracked               core_lib           canonical_symbols
+       4     2 items     2 tracked               core_lib           closure_saved_names_of_captured_variables
+      10     5 items     5 tracked               core_lib           codegen_fn_attrs
+       4     2 items     2 tracked               core_lib           const_of_item
+       3     3 items     3 tracked               core_lib           constness
+       2     2 items     2 tracked               core_lib           coroutine_kind
+       1     1 items     1 tracked               core_lib           crate_name
+       4     4 items     4 tracked               core_lib           cross_crate_inlinable
+       1     1 items     1 tracked               core_lib           debugger_visualizers
+       8     4 items     4 tracked               core_lib           def_ident_span
+      20    20 items    20 tracked               core_lib           def_kind
+      20    10 items    10 tracked               core_lib           def_span
+       5     5 items     5 tracked               core_lib           defaultness
+       1     1 items     1 tracked               core_lib           defined_lang_items
+       1     1 items     1 tracked               core_lib           diagnostic_items
+      34    17 items    17 tracked               core_lib           explicit_clauses_of
+       4     2 items     2 tracked               core_lib           explicit_implied_clauses_of
+       2     1 items     1 tracked               core_lib           explicit_item_bounds
+       8     1 items     1 tracked               core_lib           explicit_item_self_bounds
+      12     4 items     4 tracked               core_lib           expn_that_defined
+       1     1 items     1 tracked               core_lib           exportable_items
+       1     1 items     1 tracked               core_lib           exported_generic_symbols
+       1     1 items     1 tracked               core_lib           exported_non_generic_symbols
+       1     1 items     1 tracked               core_lib           externally_implementable_items
+       8     4 items     4 tracked               core_lib           fn_sig
+      32    16 items    16 tracked               core_lib           generics_of
+       1     1 items     1 tracked               core_lib           impl_parent
+       4     2 items     2 tracked               core_lib           impl_trait_header
+      10    10 items    10 tracked               core_lib           implementations_of_trait
+      17    17 items    17 tracked               core_lib           inferred_outlives_of
+       4     2 items     2 tracked               core_lib           inherent_impls
+       2     2 items     2 tracked               core_lib           intrinsic_raw
+       3     3 items     3 tracked               core_lib           is_mir_available
+       8     8 items     8 tracked               core_lib           lookup_deprecation_entry
+       5     5 items     5 tracked               core_lib           lookup_stability
+       2     1 items     1 tracked               core_lib           mir_const_qualif
+       2     1 items     1 tracked               core_lib           mir_for_ctfe
+       1     1 items     1 tracked               core_lib           missing_lang_items
+     137     3 items     3 tracked               core_lib           module_children
+       1     1 items     1 tracked               core_lib           native_libraries
+      24     3 items     3 tracked               core_lib           optimized_mir
+       4     1 items     1 tracked               core_lib           reachable_non_generics
+       1     1 items     1 tracked               core_lib           stable_order_of_exportable_impls
+       4     2 items     2 tracked               core_lib           trait_def
+       1     1 items     1 tracked               core_lib           trivial_const
+      44    22 items    22 tracked               core_lib           type_of
+       6     3 items     3 tracked               core_lib           variances_of
+      32    16 items    16 tracked               core_lib           visibility
+      39     2 items     2 tracked               user               adt_def
+       2     2 items     2 tracked               user               adt_destructor
+      70     8 items     8 tracked               user               associated_item
+      12     6 items     6 tracked               user               associated_item_def_ids
+      10     5 items     5 tracked               user               attrs_for_def
+       1     1 items     1 tracked               user               canonical_symbols
+       2     1 items     1 tracked               user               closure_saved_names_of_captured_variables
+      20    10 items    10 tracked               user               codegen_fn_attrs
+      10    10 items    10 tracked               user               constness
+       1     1 items     1 tracked               user               coroutine_kind
+       1     1 items     1 tracked               user               crate_name
+      10    10 items    10 tracked               user               cross_crate_inlinable
+       1     1 items     1 tracked               user               debugger_visualizers
+      14     3 items     3 tracked               user               def_ident_span
+      25    25 items    25 tracked               user               def_kind
+      32    16 items    16 tracked               user               def_span
+      11    11 items    11 tracked               user               defaultness
+       1     1 items     1 tracked               user               defined_lang_items
+       1     1 items     1 tracked               user               diagnostic_items
+      34    17 items    17 tracked               user               explicit_clauses_of
+       2     1 items     1 tracked               user               explicit_item_bounds
+       8     1 items     1 tracked               user               explicit_item_self_bounds
+       2     1 items     1 tracked               user               expn_that_defined
+       1     1 items     1 tracked               user               exportable_items
+       1     1 items     1 tracked               user               exported_generic_symbols
+       1     1 items     1 tracked               user               exported_non_generic_symbols
+       1     1 items     1 tracked               user               externally_implementable_items
+      18     9 items     9 tracked               user               fn_sig
+      46    23 items    23 tracked               user               generics_of
+       5     5 items     5 tracked               user               impl_parent
+      12     6 items     6 tracked               user               impl_trait_header
+       9     9 items     9 tracked               user               implementations_of_trait
+      17    17 items    17 tracked               user               inferred_outlives_of
+       2     1 items     1 tracked               user               inherent_impls
+       9     9 items     9 tracked               user               intrinsic_raw
+       3     3 items     3 tracked               user               is_doc_hidden
+       5     5 items     5 tracked               user               is_mir_available
+      10    10 items    10 tracked               user               lookup_deprecation_entry
+       8     8 items     8 tracked               user               lookup_stability
+       1     1 items     1 tracked               user               missing_lang_items
+      97     2 items     2 tracked               user               module_children
+       1     1 items     1 tracked               user               native_libraries
+      16     5 items     5 tracked               user               optimized_mir
+       6     1 items     1 tracked               user               reachable_non_generics
+       1     1 items     1 tracked               user               stable_order_of_exportable_impls
+       4     2 items     2 tracked               user               trivial_const
+       1     1 items     1 tracked               user               type_alias_is_checked
+      44    22 items    22 tracked               user               type_of
+       4     2 items     2 tracked               user               variances_of
+      20    10 items    10 tracked               user               visibility
+       1     1 items     1 tracked               wide_derive        canonical_symbols
+       2     1 items     1 tracked               wide_derive        defined_lang_items
+       1     1 items     1 tracked               wide_derive        diagnostic_items
+       1     1 items     1 tracked               wide_derive        exported_generic_symbols
+       1     1 items     1 tracked               wide_derive        externally_implementable_items
+       1     1 items     1 tracked               wide_derive        missing_lang_items
+       1     1 items     1 tracked               wide_derive        native_libraries
+read outside a query
+      89  CrateMetadata::def_kind                            in -
+   86011  CrateMetadata::def_path_hash                       in -
+     148  CrateMetadata::get_expn_that_defined               in -
+       6  CrateMetadata::get_item_attrs                      in -
+       9  CrateMetadata::get_macro                           in -
+    1970  CrateMetadata::get_span                            in -
+       6  CrateMetadata::opt_item_ident                      in -
+      21  CrateRoot>::decode_denied_partial_mitigations      in -
+      21  CrateRoot>::decode_target_modifiers                in -
+      23  MetadataBlob::check_compatibility                  in -
+      40  MetadataBlob::get_header                           in -
+       7  MetadataBlob::get_root                             in -
+      36  decode_expn_id::{closure#0}                        in -
+    2076  def_key::{closure#0}                               in -
+      49  get_ambig_module_children::{closure#0}             in -
+      50  imported_source_file::{closure#2}                  in -
+      88  CrateMetadata::new                                 in CStore::register_crate
+      21  CrateRoot>::decode_crate_deps                      in CStore::register_crate
+      38  MetadataBlob::check_compatibility                  in CStore::register_crate
+      75  MetadataBlob::get_header                           in CStore::register_crate
+      41  MetadataBlob::get_root                             in CStore::register_crate
+      43  MetadataBlob::get_root_unhashed                    in CStore::register_crate
+      43  new::{closure#1}                                   in CStore::register_crate
+
+== wide_core (lib) emit dep-info,metadata,link ==
+files
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd-#.rmeta in -
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd_detect-#.rmeta in -
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libcore-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/liballoc-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libcompiler_builtins-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/liblibc-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/librustc_std_workspace_core-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libunwind-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libminiz_oxide-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libadler2-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libhashbrown-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/librustc_std_workspace_alloc-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd_detect-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/librustc_demangle-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libcfg_if-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libaddr2line-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libgimli-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libobject-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libmemchr-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libpanic_unwind-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd-#.rmeta in -
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd_detect-#.rmeta in -
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd-#.rmeta in -
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd_detect-#.rmeta in -
+  create         target/debug/build/wide-core/#/out/rmeta* in fs::encode_and_write_metadata
+  encode-to      target/debug/build/wide-core/#/out/rmeta*/full.rmeta in encoder::encode_metadata
+  finished                                                in encoder::encode_metadata
+  encode-to      target/debug/build/wide-core/#/out/rmeta*/stub.rmeta in encoder::encode_metadata
+  finished                                                in encoder::encode_metadata
+  remove_file    target/debug/build/wide-core/#/out/libwide_core-#.rmeta in fs::encode_and_write_metadata
+  rename         target/debug/build/wide-core/#/out/rmeta*/full.rmeta -> target/debug/build/wide-core/#/out/libwide_core-#.rmeta in fs::encode_and_write_metadata
+  open           target/debug/build/wide-core/#/out/libwide_core-#.rmeta in fs::encode_and_write_metadata
+  create         target/debug/build/wide-core/#/out/rustc* in -
+  write          target/debug/build/wide-core/#/out/rustc*/lib.rmeta-link in -
+  write          target/debug/build/wide-core/#/out/rustc*/lib.rmeta in -
+  create         target/debug/build/wide-core/#/out/.tmp*.temp-archive in -
+  remove_dir_all target/debug/build/wide-core/#/out/.tmp*.temp-archive in -
+  remove_dir_all target/debug/build/wide-core/#/out/rustc* in -
+  remove_dir_all target/debug/build/wide-core/#/out/rmeta* in -
+encoded
+       2     2 items  adapted.set_some(on_disk_index, self.lazy(adapted_source_file))
+      29    29 items  expn_data_table .set_some(index.as_raw(), this.lazy(expn_data.expect("local expn")))
+      29    29 items  expn_hash_table.set_some(index.as_raw(), this.lazy(hash))
+       2     2 items  record_array!( self.tables.assumed_wf_types_for_rpitit[def_id] <- self.tcx.assumed_wf_types_for_rpitit(def_id) )
+      27    27 items  record_array!(self.tables.associated_item_or_field_def_ids[def_id] <- associated_item_def_ids.iter().map(|&def_id| { assert!(def_id.is_local()); def_id.index })
+       6     6 items  record_array!(self.tables.associated_item_or_field_def_ids[variant.def_id] <- variant.fields.iter().map(|f| { assert!(f.did.is_local()); f.did.index }))
+      95    95 items  record_array!(self.tables.attributes[def_id.to_def_id()] <- attr_iter)
+      26    26 items  record_array!(self.tables.fn_arg_idents[def_id] <- tcx.fn_arg_idents(def_id))
+       2     1 items  record_array!(self.tables.module_children_non_reexports[def_id] <- module_children.iter().filter(|child| child.reexport_chain.is_empty()) .map(|child| child.res
+       5     5 items  record_array!(self.tables.module_children_non_reexports[def_id] <- module_children.iter().map(|child| child.res.def_id().index))
+      39    39 items  record_array!(self.tables.variances_of[def_id] <- v)
+       2     1 items  record_defaulted_array!(self.tables.ambig_module_children[def_id] <- ambig_module_children)
+       4     4 items  record_defaulted_array!(self.tables.explicit_implied_clauses_of[def_id] <- self.tcx.explicit_implied_clauses_of(def_id).skip_binder())
+       7     7 items  record_defaulted_array!(self.tables.explicit_item_bounds[def_id] <- bounds)
+       7     7 items  record_defaulted_array!(self.tables.explicit_item_self_bounds[def_id] <- bounds)
+       4     4 items  record_defaulted_array!(self.tables.explicit_super_clauses_of[def_id] <- self.tcx.explicit_super_clauses_of(def_id).skip_binder())
+      97    97 items  record_defaulted_array!(self.tables.inferred_outlives_of[def_id] <- inferred_outlives)
+       1     1 items  record_defaulted_array!(self.tables.inherent_impls[def_id.to_def_id()] <- impls.iter().map(|def_id| { assert!(def_id.is_local()); def_id.index }))
+       2     1 items  record_defaulted_array!(self.tables.module_children_reexports[def_id] <- module_children.iter().filter(|child| !child.reexport_chain.is_empty()))
+     164   164 items  record_some!(self.tables.def_kind[def_id] <- def_kind)
+       8     8 items  record_some_lazy!( self.tables.mut_restriction[field.did] <- field.mut_restriction )
+       1     1 items  record_some_lazy!(self.tables.anon_const_kind[def_id] <- self.tcx.anon_const_kind(def_id))
+       7     7 items  record_some_lazy!(self.tables.args_known_to_outlive_alias_params[def_id] <- tcx.args_known_to_outlive_alias_params(def_id))
+      32    32 items  record_some_lazy!(self.tables.assoc_container[def_id] <- item.container)
+      27    27 items  record_some_lazy!(self.tables.associated_types_for_impl_traits_in_trait_or_impl[def_id] <- table)
+      23    23 items  record_some_lazy!(self.tables.closure_saved_names_of_captured_variables[def_id.to_def_id()] <- tcx.closure_saved_names_of_captured_variables(def_id))
+      32    32 items  record_some_lazy!(self.tables.codegen_fn_attrs[def_id] <- self.tcx.codegen_fn_attrs(def_id))
+       2     2 items  record_some_lazy!(self.tables.collect_return_position_impl_trait_in_trait_tys[def_id] <- table)
+       3     3 items  record_some_lazy!(self.tables.const_conditions[def_id] <- self.tcx.const_conditions(def_id))
+       4     4 items  record_some_lazy!(self.tables.const_of_item[def_id] <- self.tcx.const_of_item(def_id))
+     124   124 items  record_some_lazy!(self.tables.def_ident_span[def_id] <- ident_span)
+     164   164 items  record_some_lazy!(self.tables.def_keys[def_id] <- def_key)
+     156   156 items  record_some_lazy!(self.tables.def_span[def_id] <- def_span)
+       1     1 items  record_some_lazy!(self.tables.eval_static_initializer[def_id] <- data)
+      97    97 items  record_some_lazy!(self.tables.explicit_clauses_of[def_id] <- self.tcx.explicit_clauses_of(def_id))
+      35    35 items  record_some_lazy!(self.tables.expn_that_defined[def_id] <- self.tcx.expn_that_defined(def_id))
+      29    29 items  record_some_lazy!(self.tables.fn_sig[def_id] <- tcx.fn_sig(def_id))
+       3     3 items  record_some_lazy!(self.tables.fn_sig[variant.def_id] <- fn_sig)
+      97    97 items  record_some_lazy!(self.tables.generics_of[def_id] <- g)
+      22    22 items  record_some_lazy!(self.tables.impl_trait_header[def_id] <- header)
+       1     1 items  record_some_lazy!(self.tables.macro_definition[def_id.to_def_id()] <- &*macro_def.body)
+       4     4 items  record_some_lazy!(self.tables.mir_const_qualif[def_id.to_def_id()] <- qualifs)
+       2     1 items  record_some_lazy!(self.tables.mir_coroutine_witnesses[def_id.to_def_id()] <- witnesses)
+       6     6 items  record_some_lazy!(self.tables.mir_for_ctfe[def_id.to_def_id()] <- tcx.mir_for_ctfe(def_id))
+      12    12 items  record_some_lazy!(self.tables.object_lifetime_default[def_id] <- default)
+       4     4 items  record_some_lazy!(self.tables.opaque_ty_origin[def_id] <- self.tcx.opaque_ty_origin(def_id))
+       4     4 items  record_some_lazy!(self.tables.opt_rpitit_info[def_id] <- rpitit_info)
+      23    23 items  record_some_lazy!(self.tables.optimized_mir[def_id.to_def_id()] <- tcx.optimized_mir(def_id))
+       4     4 items  record_some_lazy!(self.tables.params_in_repr[def_id] <- params_in_repr)
+      29    29 items  record_some_lazy!(self.tables.promoted_mir[def_id.to_def_id()] <- tcx.promoted_mir(def_id))
+       4     4 items  record_some_lazy!(self.tables.rendered_const[def_id.to_def_id()] <- const_data)
+       4     4 items  record_some_lazy!(self.tables.repr_options[def_id] <- adt_def.repr())
+       4     4 items  record_some_lazy!(self.tables.trait_def[def_id] <- self.tcx.trait_def(def_id))
+       1     1 items  record_some_lazy!(self.tables.trivial_const[def_id.to_def_id()] <- (val, ty))
+      88    88 items  record_some_lazy!(self.tables.type_of[def_id] <- self.tcx.type_of(def_id))
+       6     6 items  record_some_lazy!(self.tables.variant_data[variant.def_id] <- data)
+      61    61 items  record_some_lazy!(self.tables.visibility[def_id] <- vis)
+      26    26 items  record_value!(self.tables.asyncness[def_id] <- asyncness)
+      95    95 items  record_value!(self.tables.attr_flags[def_id.to_def_id()] <- attr_flags)
+      32    32 items  record_value!(self.tables.constness[def_id] <- constness)
+       1     1 items  record_value!(self.tables.coroutine_kind[def_id] <- Some(coroutine_kind))
+      23    23 items  record_value!(self.tables.cross_crate_inlinable[def_id.to_def_id()] <- self.tcx.cross_crate_inlinable(def_id))
+     164   164 items  record_value!(self.tables.def_path_hashes[def_id] <- def_path_hash.local_hash().as_u64())
+      30    30 items  record_value!(self.tables.defaultness[def_id] <- item.defaultness(tcx))
+      22    22 items  record_value!(self.tables.defaultness[def_id] <- tcx.defaultness(def_id))
+      22    22 items  record_value!(self.tables.impl_is_fully_generic_for_reflection[def_id] <- impl_is_fully_generic_for_reflection)
+       1     1 items  record_value!(self.tables.is_macro_rules[def_id.to_def_id()] <- macro_def.macro_rules)
+       8     8 items  record_value!(self.tables.safety[field.did] <- field.safety)
+    1576     0 items  self.set(i, Some(value))
+      26    26 items  syntax_contexts.set_some(index, this.lazy(ctxt_data))
+read through queries: reads, items, items whose query recorded a dependency on the crate, entries the writer wrote
+     930    37 items    37 tracked               <sysroot>          adt_def
+      23    20 items    20 tracked               <sysroot>          adt_destructor
+     164    82 items    82 tracked               <sysroot>          anon_const_kind
+    7892  1149 items  1149 tracked               <sysroot>          associated_item
+     254   127 items   127 tracked               <sysroot>          associated_item_def_ids
+      22    11 items    11 tracked               <sysroot>          associated_types_for_impl_traits_in_trait_or_impl
+       5     5 items     5 tracked               <sysroot>          asyncness
+     263    85 items    85 tracked               <sysroot>          attrs_for_def
+      19    19 items    19 tracked               <sysroot>          canonical_symbols
+       2     1 items     1 tracked               <sysroot>          closure_saved_names_of_captured_variables
+     282   141 items   141 tracked               <sysroot>          codegen_fn_attrs
+      58    29 items    29 tracked               <sysroot>          const_conditions
+       4     2 items     2 tracked               <sysroot>          const_of_item
+      78    78 items    78 tracked               <sysroot>          constness
+       1     1 items     1 tracked               <sysroot>          coroutine_kind
+       3     3 items     3 tracked               <sysroot>          crate_name
+      93    93 items    93 tracked               <sysroot>          cross_crate_inlinable
+      92    46 items    46 tracked               <sysroot>          def_ident_span
+     574   574 items   574 tracked               <sysroot>          def_kind
+     578   270 items   270 tracked               <sysroot>          def_span
+     155   155 items   155 tracked               <sysroot>          defaultness
+      35    19 items    19 tracked               <sysroot>          defined_lang_items
+       7     7 items     7 tracked               <sysroot>          diagnostic_items
+     706   310 items   310 tracked               <sysroot>          explicit_clauses_of
+      89    47 items    47 tracked               <sysroot>          explicit_implied_clauses_of
+      16    13 items    13 tracked               <sysroot>          explicit_implied_const_bounds
+       2     1 items     1 tracked               <sysroot>          explicit_item_bounds
+       6     3 items     3 tracked               <sysroot>          explicit_item_self_bounds
+      18    11 items    11 tracked               <sysroot>          explicit_super_clauses_of
+      94    35 items    35 tracked               <sysroot>          expn_that_defined
+       2     2 items     2 tracked               <sysroot>          exportable_items
+      20    18 items    18 tracked               <sysroot>          exported_generic_symbols
+       2     2 items     2 tracked               <sysroot>          exported_non_generic_symbols
+      19    19 items    19 tracked               <sysroot>          externally_implementable_items
+     300   150 items   150 tracked               <sysroot>          fn_sig
+     844   422 items   422 tracked               <sysroot>          generics_of
+      25    25 items    25 tracked               <sysroot>          impl_parent
+     258   129 items   129 tracked               <sysroot>          impl_trait_header
+     212   212 items   212 tracked               <sysroot>          implementations_of_trait
+     311   310 items   310 tracked               <sysroot>          inferred_outlives_of
+      16     8 items     8 tracked               <sysroot>          inherent_impls
+      79    73 items    73 tracked               <sysroot>          intrinsic_raw
+       3     3 items     3 tracked               <sysroot>          is_doc_hidden
+      22    22 items    22 tracked               <sysroot>          is_mir_available
+       2     1 items     1 tracked               <sysroot>          lookup_const_stability
+      16    16 items    16 tracked               <sysroot>          lookup_default_body_stability
+      65    65 items    65 tracked               <sysroot>          lookup_deprecation_entry
+     172    86 items    86 tracked               <sysroot>          lookup_stability
+     216    98 items    98 tracked               <sysroot>          mir_for_ctfe
+      19    19 items    19 tracked               <sysroot>          missing_lang_items
+    6365    59 items    59 tracked               <sysroot>          module_children
+      23    19 items    19 tracked               <sysroot>          native_libraries
+      24    12 items    12 tracked               <sysroot>          object_lifetime_default
+     182    21 items    21 tracked               <sysroot>          optimized_mir
+       6     3 items     3 tracked               <sysroot>          params_in_repr
+     642     2 items     2 tracked               <sysroot>          reachable_non_generics
+       2     2 items     2 tracked               <sysroot>          stable_order_of_exportable_impls
+     108    52 items    52 tracked               <sysroot>          trait_def
+     111    97 items    97 tracked               <sysroot>          trivial_const
+       2     2 items     2 tracked               <sysroot>          type_alias_is_checked
+     630   315 items   315 tracked               <sysroot>          type_of
+      66    33 items    33 tracked               <sysroot>          variances_of
+     438   219 items   219 tracked               <sysroot>          visibility
+       4     0 items     0 tracked               ?                  crate_incoherent_impls
+read outside a query
+     462  CrateMetadata::def_kind                            in -
+   55745  CrateMetadata::def_path_hash                       in -
+     168  CrateMetadata::get_expn_that_defined               in -
+      30  CrateMetadata::get_item_attrs                      in -
+      45  CrateMetadata::get_macro                           in -
+    2896  CrateMetadata::get_span                            in -
+      30  CrateMetadata::opt_item_ident                      in -
+      19  CrateRoot>::decode_denied_partial_mitigations      in -
+      19  CrateRoot>::decode_target_modifiers                in -
+       9  MetadataBlob::check_compatibility                  in -
+      12  MetadataBlob::get_header                           in -
+       3  MetadataBlob::get_root                             in -
+     124  decode_expn_id::{closure#0}                        in -
+      38  decode_syntax_context::{closure#0}                 in -
+     340  def_key::{closure#0}                               in -
+      59  get_ambig_module_children::{closure#0}             in -
+      60  imported_source_file::{closure#2}                  in -
+      76  CrateMetadata::new                                 in CStore::register_crate
+      19  CrateRoot>::decode_crate_deps                      in CStore::register_crate
+      18  MetadataBlob::check_compatibility                  in CStore::register_crate
+      36  MetadataBlob::get_header                           in CStore::register_crate
+      37  MetadataBlob::get_root                             in CStore::register_crate
+      38  MetadataBlob::get_root_unhashed                    in CStore::register_crate
+      43  new::{closure#1}                                   in CStore::register_crate
+    6230  CrateMetadata::def_path_hash                       in encoder::encode_metadata
+     126  def_key::{closure#0}                               in encoder::encode_metadata
+
+== wide_derive (proc-macro) emit dep-info,link ==
+files
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd-#.rmeta in -
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd_detect-#.rmeta in -
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libcore-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/liballoc-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libcompiler_builtins-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/liblibc-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/librustc_std_workspace_core-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libunwind-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libminiz_oxide-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libadler2-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libhashbrown-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/librustc_std_workspace_alloc-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd_detect-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/librustc_demangle-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libcfg_if-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libaddr2line-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libgimli-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libobject-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libmemchr-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libpanic_unwind-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libproc_macro-#.rmeta in -
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/librustc_literal_escaper-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libproc_macro-#.rmeta in -
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libproc_macro-#.rmeta in -
+  create         target/debug/build/wide-derive/#/out/rmeta* in fs::encode_and_write_metadata
+  encode-to      target/debug/build/wide-derive/#/out/rmeta*/full.rmeta in encoder::encode_metadata
+  finished                                                in encoder::encode_metadata
+  open           target/debug/build/wide-derive/#/out/rmeta*/full.rmeta in fs::encode_and_write_metadata
+  create         target/debug/build/wide-derive/#/out/rustc* in -
+  write          target/debug/build/wide-derive/#/out/rustc*/rmeta.o in -
+  remove_dir_all target/debug/build/wide-derive/#/out/rustc* in -
+  remove_dir_all target/debug/build/wide-derive/#/out/rmeta* in -
+encoded
+       1     1 items  adapted.set_some(on_disk_index, self.lazy(adapted_source_file))
+       1     1 items  expn_data_table .set_some(index.as_raw(), this.lazy(expn_data.expect("local expn")))
+       1     1 items  expn_hash_table.set_some(index.as_raw(), this.lazy(hash))
+       3     3 items  record_array!(self.tables.attributes[def_id.to_def_id()] <- attr_iter)
+       1     1 items  record_some!(self.tables.def_kind[LOCAL_CRATE.as_def_id()] <- DefKind::Mod)
+       2     2 items  record_some!(self.tables.def_kind[def_id] <- DefKind::Macro(macro_kind.into()))
+       2     2 items  record_some_lazy!(self.tables.def_ident_span[def_id] <- span)
+       5     3 items  record_some_lazy!(self.tables.def_keys[def_id] <- def_key)
+       1     1 items  record_some_lazy!(self.tables.def_span[LOCAL_CRATE.as_def_id()] <- tcx.def_span(LOCAL_CRATE.as_def_id()))
+       2     2 items  record_some_lazy!(self.tables.def_span[def_id] <- span)
+       1     1 items  record_some_lazy!(self.tables.expn_that_defined[def_id] <- tcx.expn_that_defined(local_def_id))
+       1     1 items  record_some_lazy!(self.tables.visibility[LOCAL_CRATE.as_def_id()] <- vis)
+       2     2 items  record_some_lazy!(self.tables.visibility[def_id] <- ty::Visibility::Public)
+       3     3 items  record_value!(self.tables.attr_flags[def_id.to_def_id()] <- attr_flags)
+       3     3 items  record_value!(self.tables.def_path_hashes[def_id] <- def_path_hash.local_hash().as_u64())
+      23     0 items  self.set(i, Some(value))
+read through queries: reads, items, items whose query recorded a dependency on the crate, entries the writer wrote
+    1763    63 items    63 tracked               <sysroot>          adt_def
+      54    46 items    46 tracked               <sysroot>          adt_destructor
+     154    77 items    77 tracked               <sysroot>          anon_const_kind
+    3120   469 items   469 tracked               <sysroot>          associated_item
+     188    94 items    94 tracked               <sysroot>          associated_item_def_ids
+       5     5 items     5 tracked               <sysroot>          asyncness
+     288   116 items   116 tracked               <sysroot>          attrs_for_def
+      21    21 items    21 tracked               <sysroot>          canonical_symbols
+     474   237 items   237 tracked               <sysroot>          codegen_fn_attrs
+      42    21 items    21 tracked               <sysroot>          const_conditions
+     132   132 items   132 tracked               <sysroot>          constness
+       8     8 items     8 tracked               <sysroot>          coroutine_kind
+       4     4 items     4 tracked               <sysroot>          crate_name
+     137   137 items   137 tracked               <sysroot>          cross_crate_inlinable
+      34    17 items    17 tracked               <sysroot>          def_ident_span
+     680   680 items   680 tracked               <sysroot>          def_kind
+     588   259 items   259 tracked               <sysroot>          def_span
+     184   184 items   184 tracked               <sysroot>          defaultness
+      38    21 items    21 tracked               <sysroot>          defined_lang_items
+       9     9 items     9 tracked               <sysroot>          diagnostic_items
+     696   303 items   303 tracked               <sysroot>          explicit_clauses_of
+      75    38 items    38 tracked               <sysroot>          explicit_implied_clauses_of
+       9     8 items     8 tracked               <sysroot>          explicit_implied_const_bounds
+       2     1 items     1 tracked               <sysroot>          explicit_item_self_bounds
+      13     8 items     8 tracked               <sysroot>          explicit_super_clauses_of
+      22    11 items    11 tracked               <sysroot>          expn_that_defined
+       4     4 items     4 tracked               <sysroot>          exportable_items
+      23    21 items    21 tracked               <sysroot>          exported_generic_symbols
+      21    21 items    21 tracked               <sysroot>          exported_non_generic_symbols
+      21    21 items    21 tracked               <sysroot>          externally_implementable_items
+     398   199 items   199 tracked               <sysroot>          fn_sig
+     830   413 items   413 tracked               <sysroot>          generics_of
+      62    62 items    62 tracked               <sysroot>          impl_parent
+     220   110 items   110 tracked               <sysroot>          impl_trait_header
+     155   155 items   155 tracked               <sysroot>          implementations_of_trait
+     306   303 items   303 tracked               <sysroot>          inferred_outlives_of
+      20    10 items    10 tracked               <sysroot>          inherent_impls
+     182   169 items   169 tracked               <sysroot>          intrinsic_raw
+       6     6 items     6 tracked               <sysroot>          is_doc_hidden
+      97    97 items    97 tracked               <sysroot>          is_mir_available
+       4     2 items     2 tracked               <sysroot>          lookup_const_stability
+      26    26 items    26 tracked               <sysroot>          lookup_deprecation_entry
+      78    39 items    39 tracked               <sysroot>          lookup_stability
+     308   119 items   119 tracked               <sysroot>          mir_for_ctfe
+      21    21 items    21 tracked               <sysroot>          missing_lang_items
+    2975    44 items    44 tracked               <sysroot>          module_children
+      25    21 items    21 tracked               <sysroot>          native_libraries
+     670    96 items    96 tracked               <sysroot>          optimized_mir
+       4     2 items     2 tracked               <sysroot>          promoted_mir
+    1634     4 items     4 tracked               <sysroot>          reachable_non_generics
+       4     4 items     4 tracked               <sysroot>          stable_order_of_exportable_impls
+      86    42 items    42 tracked               <sysroot>          trait_def
+     130   113 items   113 tracked               <sysroot>          trivial_const
+     892   446 items   446 tracked               <sysroot>          type_of
+      34    17 items    17 tracked               <sysroot>          variances_of
+     198    99 items    99 tracked               <sysroot>          visibility
+       2     0 items     0 tracked               ?                  crate_incoherent_impls
+read outside a query
+      86  CrateMetadata::def_kind                            in -
+   51069  CrateMetadata::def_path_hash                       in -
+     136  CrateMetadata::get_expn_that_defined               in -
+       4  CrateMetadata::get_item_attrs                      in -
+       6  CrateMetadata::get_macro                           in -
+    1556  CrateMetadata::get_span                            in -
+       4  CrateMetadata::opt_item_ident                      in -
+      21  CrateRoot>::decode_denied_partial_mitigations      in -
+      21  CrateRoot>::decode_target_modifiers                in -
+      11  MetadataBlob::check_compatibility                  in -
+      20  MetadataBlob::get_header                           in -
+       4  MetadataBlob::get_root                             in -
+      32  decode_expn_id::{closure#0}                        in -
+     764  def_key::{closure#0}                               in -
+      44  get_ambig_module_children::{closure#0}             in -
+      52  imported_source_file::{closure#2}                  in -
+      84  CrateMetadata::new                                 in CStore::register_crate
+      21  CrateRoot>::decode_crate_deps                      in CStore::register_crate
+      38  MetadataBlob::check_compatibility                  in CStore::register_crate
+      76  MetadataBlob::get_header                           in CStore::register_crate
+      40  MetadataBlob::get_root                             in CStore::register_crate
+      42  MetadataBlob::get_root_unhashed                    in CStore::register_crate
+      43  new::{closure#1}                                   in CStore::register_crate
+       4  CrateMetadata::def_path_hash                       in encoder::encode_metadata
+
+== wide_user (lib) emit dep-info,metadata,link ==
+files
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd-#.rmeta in -
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd_detect-#.rmeta in -
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libcore-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/liballoc-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libcompiler_builtins-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/liblibc-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/librustc_std_workspace_core-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libunwind-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libminiz_oxide-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libadler2-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libhashbrown-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/librustc_std_workspace_alloc-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd_detect-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/librustc_demangle-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libcfg_if-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libaddr2line-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libgimli-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libobject-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libmemchr-#.rmeta in CStore::register_crate
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libpanic_unwind-#.rmeta in CStore::register_crate
+  open           target/debug/build/wide-core/#/out/libwide_core-#.rmeta in -
+  open           target/debug/build/wide-core/#/out/libwide_core-#.rmeta in -
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd-#.rmeta in -
+  open           <sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd_detect-#.rmeta in -
+  create         target/debug/build/wide-user/#/out/rmeta* in fs::encode_and_write_metadata
+  encode-to      target/debug/build/wide-user/#/out/rmeta*/full.rmeta in encoder::encode_metadata
+  finished                                                in encoder::encode_metadata
+  encode-to      target/debug/build/wide-user/#/out/rmeta*/stub.rmeta in encoder::encode_metadata
+  finished                                                in encoder::encode_metadata
+  remove_file    target/debug/build/wide-user/#/out/libwide_user-#.rmeta in fs::encode_and_write_metadata
+  rename         target/debug/build/wide-user/#/out/rmeta*/full.rmeta -> target/debug/build/wide-user/#/out/libwide_user-#.rmeta in fs::encode_and_write_metadata
+  open           target/debug/build/wide-user/#/out/libwide_user-#.rmeta in fs::encode_and_write_metadata
+  create         target/debug/build/wide-user/#/out/rustc* in -
+  write          target/debug/build/wide-user/#/out/rustc*/lib.rmeta-link in -
+  write          target/debug/build/wide-user/#/out/rustc*/lib.rmeta in -
+  create         target/debug/build/wide-user/#/out/.tmp*.temp-archive in -
+  remove_dir_all target/debug/build/wide-user/#/out/.tmp*.temp-archive in -
+  remove_dir_all target/debug/build/wide-user/#/out/rustc* in -
+  remove_dir_all target/debug/build/wide-user/#/out/rmeta* in -
+encoded
+       1     1 items  adapted.set_some(on_disk_index, self.lazy(adapted_source_file))
+      20    20 items  expn_data_table .set_some(index.as_raw(), this.lazy(expn_data.expect("local expn")))
+      20    20 items  expn_hash_table.set_some(index.as_raw(), this.lazy(hash))
+      17    17 items  record_array!(self.tables.associated_item_or_field_def_ids[def_id] <- associated_item_def_ids.iter().map(|&def_id| { assert!(def_id.is_local()); def_id.index })
+       4     4 items  record_array!(self.tables.associated_item_or_field_def_ids[variant.def_id] <- variant.fields.iter().map(|f| { assert!(f.did.is_local()); f.did.index }))
+      58    58 items  record_array!(self.tables.attributes[def_id.to_def_id()] <- attr_iter)
+      15    15 items  record_array!(self.tables.fn_arg_idents[def_id] <- tcx.fn_arg_idents(def_id))
+       2     1 items  record_array!(self.tables.module_children_non_reexports[def_id] <- module_children.iter().filter(|child| child.reexport_chain.is_empty()) .map(|child| child.res
+       1     1 items  record_array!(self.tables.module_children_non_reexports[def_id] <- module_children.iter().map(|child| child.res.def_id().index))
+      21    21 items  record_array!(self.tables.variances_of[def_id] <- v)
+       2     1 items  record_defaulted_array!(self.tables.ambig_module_children[def_id] <- ambig_module_children)
+       1     1 items  record_defaulted_array!(self.tables.explicit_item_bounds[def_id] <- bounds)
+       1     1 items  record_defaulted_array!(self.tables.explicit_item_self_bounds[def_id] <- bounds)
+      53    53 items  record_defaulted_array!(self.tables.inferred_outlives_of[def_id] <- inferred_outlives)
+       1     1 items  record_defaulted_array!(self.tables.inherent_impls[def_id.to_def_id()] <- impls.iter().map(|def_id| { assert!(def_id.is_local()); def_id.index }))
+       2     1 items  record_defaulted_array!(self.tables.module_children_reexports[def_id] <- module_children.iter().filter(|child| !child.reexport_chain.is_empty()))
+      88    88 items  record_some!(self.tables.def_kind[def_id] <- def_kind)
+       1     1 items  record_some_lazy!( self.tables.mut_restriction[field.did] <- field.mut_restriction )
+       2     2 items  record_some_lazy!(self.tables.anon_const_kind[def_id] <- self.tcx.anon_const_kind(def_id))
+       1     1 items  record_some_lazy!(self.tables.args_known_to_outlive_alias_params[def_id] <- tcx.args_known_to_outlive_alias_params(def_id))
+      14    14 items  record_some_lazy!(self.tables.assoc_container[def_id] <- item.container)
+      17    17 items  record_some_lazy!(self.tables.associated_types_for_impl_traits_in_trait_or_impl[def_id] <- table)
+      11    11 items  record_some_lazy!(self.tables.closure_saved_names_of_captured_variables[def_id.to_def_id()] <- tcx.closure_saved_names_of_captured_variables(def_id))
+      22    22 items  record_some_lazy!(self.tables.codegen_fn_attrs[def_id] <- self.tcx.codegen_fn_attrs(def_id))
+       2     2 items  record_some_lazy!(self.tables.const_of_item[def_id] <- self.tcx.const_of_item(def_id))
+      59    59 items  record_some_lazy!(self.tables.def_ident_span[def_id] <- ident_span)
+      88    88 items  record_some_lazy!(self.tables.def_keys[def_id] <- def_key)
+      88    88 items  record_some_lazy!(self.tables.def_span[def_id] <- def_span)
+      53    53 items  record_some_lazy!(self.tables.explicit_clauses_of[def_id] <- self.tcx.explicit_clauses_of(def_id))
+      23    23 items  record_some_lazy!(self.tables.expn_that_defined[def_id] <- self.tcx.expn_that_defined(def_id))
+      15    15 items  record_some_lazy!(self.tables.fn_sig[def_id] <- tcx.fn_sig(def_id))
+      53    53 items  record_some_lazy!(self.tables.generics_of[def_id] <- g)
+      16    16 items  record_some_lazy!(self.tables.impl_trait_header[def_id] <- header)
+       4     4 items  record_some_lazy!(self.tables.mir_const_qualif[def_id.to_def_id()] <- qualifs)
+       2     2 items  record_some_lazy!(self.tables.object_lifetime_default[def_id] <- default)
+       1     1 items  record_some_lazy!(self.tables.opaque_ty_origin[def_id] <- self.tcx.opaque_ty_origin(def_id))
+      11    11 items  record_some_lazy!(self.tables.optimized_mir[def_id.to_def_id()] <- tcx.optimized_mir(def_id))
+       2     2 items  record_some_lazy!(self.tables.params_in_repr[def_id] <- params_in_repr)
+      11    11 items  record_some_lazy!(self.tables.promoted_mir[def_id.to_def_id()] <- tcx.promoted_mir(def_id))
+       4     4 items  record_some_lazy!(self.tables.rendered_const[def_id.to_def_id()] <- const_data)
+       2     2 items  record_some_lazy!(self.tables.repr_options[def_id] <- adt_def.repr())
+       4     4 items  record_some_lazy!(self.tables.trivial_const[def_id.to_def_id()] <- (val, ty))
+      51    51 items  record_some_lazy!(self.tables.type_of[def_id] <- self.tcx.type_of(def_id))
+       4     4 items  record_some_lazy!(self.tables.variant_data[variant.def_id] <- data)
+      28    28 items  record_some_lazy!(self.tables.visibility[def_id] <- vis)
+      15    15 items  record_value!(self.tables.asyncness[def_id] <- asyncness)
+      58    58 items  record_value!(self.tables.attr_flags[def_id.to_def_id()] <- attr_flags)
+      20    20 items  record_value!(self.tables.constness[def_id] <- constness)
+      11    11 items  record_value!(self.tables.cross_crate_inlinable[def_id.to_def_id()] <- self.tcx.cross_crate_inlinable(def_id))
+      88    88 items  record_value!(self.tables.def_path_hashes[def_id] <- def_path_hash.local_hash().as_u64())
+      11    11 items  record_value!(self.tables.defaultness[def_id] <- item.defaultness(tcx))
+      16    16 items  record_value!(self.tables.defaultness[def_id] <- tcx.defaultness(def_id))
+      16    16 items  record_value!(self.tables.impl_is_fully_generic_for_reflection[def_id] <- impl_is_fully_generic_for_reflection)
+       1     1 items  record_value!(self.tables.safety[field.did] <- field.safety)
+       1     1 items  record_value!(self.tables.type_alias_is_checked[def_id] <- self.tcx.type_alias_is_checked(def_id))
+     854     0 items  self.set(i, Some(value))
+      18    18 items  syntax_contexts.set_some(index, this.lazy(ctxt_data))
+read through queries: reads, items, items whose query recorded a dependency on the crate, entries the writer wrote
+     827    36 items    36 tracked               <sysroot>          adt_def
+      28    23 items    23 tracked               <sysroot>          adt_destructor
+     158    79 items    79 tracked               <sysroot>          anon_const_kind
+    6674   978 items   978 tracked               <sysroot>          associated_item
+     246   123 items   123 tracked               <sysroot>          associated_item_def_ids
+      20    10 items    10 tracked               <sysroot>          associated_types_for_impl_traits_in_trait_or_impl
+       4     4 items     4 tracked               <sysroot>          asyncness
+     249    92 items    92 tracked               <sysroot>          attrs_for_def
+      19    19 items    19 tracked               <sysroot>          canonical_symbols
+      12     6 items     6 tracked               <sysroot>          closure_saved_names_of_captured_variables
+     508   254 items   254 tracked               <sysroot>          codegen_fn_attrs
+      60    30 items    30 tracked               <sysroot>          const_conditions
+     103   103 items   103 tracked               <sysroot>          constness
+       6     6 items     6 tracked               <sysroot>          coroutine_kind
+       3     3 items     3 tracked               <sysroot>          crate_name
+     193   193 items   193 tracked               <sysroot>          cross_crate_inlinable
+      66    33 items    33 tracked               <sysroot>          def_ident_span
+     705   705 items   705 tracked               <sysroot>          def_kind
+     772   364 items   364 tracked               <sysroot>          def_span
+     196   196 items   196 tracked               <sysroot>          defaultness
+      35    19 items    19 tracked               <sysroot>          defined_lang_items
+       7     7 items     7 tracked               <sysroot>          diagnostic_items
+     842   300 items   300 tracked               <sysroot>          explicit_clauses_of
+      98    51 items    51 tracked               <sysroot>          explicit_implied_clauses_of
+      17    12 items    12 tracked               <sysroot>          explicit_implied_const_bounds
+       2     1 items     1 tracked               <sysroot>          explicit_item_bounds
+       4     2 items     2 tracked               <sysroot>          explicit_item_self_bounds
+      15     9 items     9 tracked               <sysroot>          explicit_super_clauses_of
+      56    24 items    24 tracked               <sysroot>          expn_that_defined
+       2     2 items     2 tracked               <sysroot>          exportable_items
+      20    18 items    18 tracked               <sysroot>          exported_generic_symbols
+       2     2 items     2 tracked               <sysroot>          exported_non_generic_symbols
+      19    19 items    19 tracked               <sysroot>          externally_implementable_items
+     520   260 items   260 tracked               <sysroot>          fn_sig
+    1150   575 items   575 tracked               <sysroot>          generics_of
+      45    45 items    45 tracked               <sysroot>          impl_parent
+     296   148 items   148 tracked               <sysroot>          impl_trait_header
+     202   202 items   202 tracked               <sysroot>          implementations_of_trait
+     302   300 items   300 tracked               <sysroot>          inferred_outlives_of
+      20    10 items    10 tracked               <sysroot>          inherent_impls
+     127   118 items   118 tracked               <sysroot>          intrinsic_raw
+       2     2 items     2 tracked               <sysroot>          is_doc_hidden
+      58    58 items    58 tracked               <sysroot>          is_mir_available
+      17    17 items    17 tracked               <sysroot>          lookup_default_body_stability
+      52    52 items    52 tracked               <sysroot>          lookup_deprecation_entry
+     138    69 items    69 tracked               <sysroot>          lookup_stability
+     210    93 items    93 tracked               <sysroot>          mir_for_ctfe
+      19    19 items    19 tracked               <sysroot>          missing_lang_items
+    6392    56 items    56 tracked               <sysroot>          module_children
+      23    19 items    19 tracked               <sysroot>          native_libraries
+       8     4 items     4 tracked               <sysroot>          object_lifetime_default
+     390    57 items    57 tracked               <sysroot>          optimized_mir
+       4     2 items     2 tracked               <sysroot>          params_in_repr
+       2     1 items     1 tracked               <sysroot>          promoted_mir
+     642     2 items     2 tracked               <sysroot>          reachable_non_generics
+       2     2 items     2 tracked               <sysroot>          stable_order_of_exportable_impls
+     114    55 items    55 tracked               <sysroot>          trait_def
+     105    92 items    92 tracked               <sysroot>          trivial_const
+       1     1 items     1 tracked               <sysroot>          type_alias_is_checked
+     914   457 items   457 tracked               <sysroot>          type_of
+      76    38 items    38 tracked               <sysroot>          variances_of
+     420   210 items   210 tracked               <sysroot>          visibility
+       3     0 items     0 tracked               ?                  crate_incoherent_impls
+      94     3 items     3 tracked               wide_core          adt_def
+       3     3 items     3 tracked               wide_core          adt_destructor
+       2     1 items     1 tracked    1 written  wide_core          args_known_to_outlive_alias_params
+      69    13 items    13 tracked               wide_core          associated_item
+      12     6 items     6 tracked               wide_core          associated_item_def_ids
+       2     1 items     1 tracked    1 written  wide_core          associated_types_for_impl_traits_in_trait_or_impl
+      28    13 items    13 tracked               wide_core          attrs_for_def
+       1     1 items     1 tracked               wide_core          canonical_symbols
+      16     8 items     8 tracked    8 written  wide_core          codegen_fn_attrs
+       4     2 items     2 tracked    2 written  wide_core          const_of_item
+       8     8 items     8 tracked    8 written  wide_core          constness
+       1     1 items     1 tracked               wide_core          crate_name
+       5     5 items     5 tracked    4 written  wide_core          cross_crate_inlinable
+      18     9 items     9 tracked    9 written  wide_core          def_ident_span
+      33    33 items    33 tracked   33 written  wide_core          def_kind
+      24    12 items    12 tracked   12 written  wide_core          def_span
+      13    13 items    13 tracked   13 written  wide_core          defaultness
+       1     1 items     1 tracked               wide_core          defined_lang_items
+       1     1 items     1 tracked               wide_core          diagnostic_items
+      54    27 items    27 tracked   27 written  wide_core          explicit_clauses_of
+       6     3 items     3 tracked    3 written  wide_core          explicit_implied_clauses_of
+       2     1 items     1 tracked    1 written  wide_core          explicit_item_bounds
+       8     1 items     1 tracked    1 written  wide_core          explicit_item_self_bounds
+      16     6 items     6 tracked    6 written  wide_core          expn_that_defined
+       1     1 items     1 tracked               wide_core          exportable_items
+       1     1 items     1 tracked               wide_core          exported_generic_symbols
+       1     1 items     1 tracked               wide_core          exported_non_generic_symbols
+       1     1 items     1 tracked               wide_core          externally_implementable_items
+      18     9 items     9 tracked    9 written  wide_core          fn_sig
+      58    29 items    29 tracked   29 written  wide_core          generics_of
+       2     2 items     2 tracked               wide_core          impl_parent
+      12     6 items     6 tracked    6 written  wide_core          impl_trait_header
+      13    13 items    13 tracked               wide_core          implementations_of_trait
+      27    27 items    27 tracked   27 written  wide_core          inferred_outlives_of
+       4     2 items     2 tracked    1 written  wide_core          inherent_impls
+       6     6 items     6 tracked               wide_core          intrinsic_raw
+       3     3 items     3 tracked               wide_core          is_doc_hidden
+       4     4 items     4 tracked               wide_core          is_mir_available
+      24    24 items    24 tracked               wide_core          lookup_deprecation_entry
+      14    14 items    14 tracked               wide_core          lookup_stability
+       4     2 items     2 tracked    2 written  wide_core          mir_for_ctfe
+       1     1 items     1 tracked               wide_core          missing_lang_items
+     199     5 items     5 tracked               wide_core          module_children
+       1     1 items     1 tracked               wide_core          native_libraries
+      14     4 items     4 tracked    4 written  wide_core          optimized_mir
+       2     1 items     1 tracked    1 written  wide_core          promoted_mir
+       4     1 items     1 tracked               wide_core          reachable_non_generics
+       1     1 items     1 tracked               wide_core          stable_order_of_exportable_impls
+       6     3 items     3 tracked    3 written  wide_core          trait_def
+       3     3 items     3 tracked    0 written  wide_core          trivial_const
+      60    30 items    30 tracked   30 written  wide_core          type_of
+      10     5 items     5 tracked    5 written  wide_core          variances_of
+      42    21 items    21 tracked   21 written  wide_core          visibility
+       1     1 items     1 tracked               wide_derive        canonical_symbols
+       1     1 items     1 tracked               wide_derive        crate_name
+       1     1 items     1 tracked               wide_derive        defined_lang_items
+       1     1 items     1 tracked               wide_derive        diagnostic_items
+       1     1 items     1 tracked               wide_derive        exported_generic_symbols
+       1     1 items     1 tracked               wide_derive        externally_implementable_items
+       2     2 items     2 tracked               wide_derive        lookup_deprecation_entry
+       3     3 items     3 tracked               wide_derive        lookup_stability
+      15     1 items     1 tracked               wide_derive        module_children
+       1     1 items     1 tracked               wide_derive        native_libraries
+       2     1 items     1 tracked    1 written  wide_derive        visibility
+read outside a query
+     289  CrateMetadata::def_kind                            in -
+   53513  CrateMetadata::def_path_hash                       in -
+     174  CrateMetadata::get_expn_that_defined               in -
+      26  CrateMetadata::get_item_attrs                      in -
+      33  CrateMetadata::get_macro                           in -
+    2976  CrateMetadata::get_span                            in -
+      22  CrateMetadata::opt_item_ident                      in -
+       4  CrateMetadata::raw_proc_macro                      in -
+      20  CrateRoot>::decode_denied_partial_mitigations      in -
+      20  CrateRoot>::decode_target_modifiers                in -
+      12  MetadataBlob::check_compatibility                  in -
+      18  MetadataBlob::get_header                           in -
+       6  MetadataBlob::get_root                             in -
+     124  decode_expn_id::{closure#0}                        in -
+      34  decode_syntax_context::{closure#0}                 in -
+     490  def_key::{closure#0}                               in -
+      62  get_ambig_module_children::{closure#0}             in -
+      62  imported_source_file::{closure#2}                  in -
+      84  CrateMetadata::new                                 in CStore::register_crate
+      20  CrateRoot>::decode_crate_deps                      in CStore::register_crate
+      18  MetadataBlob::check_compatibility                  in CStore::register_crate
+      36  MetadataBlob::get_header                           in CStore::register_crate
+      39  MetadataBlob::get_root                             in CStore::register_crate
+      41  MetadataBlob::get_root_unhashed                    in CStore::register_crate
+      43  new::{closure#1}                                   in CStore::register_crate
+   12229  CrateMetadata::def_path_hash                       in encoder::encode_metadata
+     290  def_key::{closure#0}                               in encoder::encode_metadata
+
