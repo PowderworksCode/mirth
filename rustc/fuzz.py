@@ -16,6 +16,8 @@ Each worker keeps one copy of the fixture and repeats:
        run    the binaries' output and exit status
        reuse  the compiler's own check of what it reused (RUSTC_VERIFY_REUSE,
               docs/hunt/verify-reuse.patch) found nothing stale
+       P5     when anything differs, a second clean build is made; if the two
+              clean builds differ, that is reported instead (nondeterminism)
        ICE    neither build crashed the compiler
        split  both builds succeed or both fail
 
@@ -56,6 +58,8 @@ p.add_argument("--toolchain", default="nightly-2026-10-06")
 p.add_argument("--rustflags", default="-Zincremental-verify-ich")
 p.add_argument("--seed", type=int, default=0)
 p.add_argument("--timeout", type=int, default=180, help="seconds before a build counts as hung")
+p.add_argument("--check", action="store_true",
+               help="cargo check instead of cargo build: metadata only, no code or binaries")
 p.add_argument("--no-verify-reuse", action="store_true",
                help="do not set RUSTC_VERIFY_REUSE (needs a compiler with docs/hunt/verify-reuse.patch)")
 args = p.parse_args()
@@ -281,7 +285,7 @@ def build(src, target):
     if a rustc was still running (a looping build script is the fixture's problem)."""
     t = time.time()
     proc = subprocess.Popen(
-        ["cargo", f"+{args.toolchain}", "build", "--workspace", "--offline", "-j", "4",
+        ["cargo", f"+{args.toolchain}", "check" if args.check else "build", "--workspace", "--offline", "-j", "4",
          "--target-dir", str(target), "--message-format=json-render-diagnostics"],
         cwd=src, env=env(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
         start_new_session=True)
@@ -464,6 +468,19 @@ def worker(k):
             stats["compared"] += 1
             a, b = inc["rmetas"], clean["rmetas"]
             differ = sorted(r for r in set(a) | set(b) if a.get(r) != b.get(r))
+            others = {k: v for k, v in artifacts.compare(inc["art"], clean["art"]).items() if k != "rmeta"}
+            if differ or others:
+                # Build clean once more: if two clean builds differ, the difference is
+                # nondeterminism (P5), not incremental reuse.
+                shutil.rmtree(target)
+                again = build(src, target)
+                c = again["rmetas"]
+                p5 = sorted(r for r in set(b) | set(c) if b.get(r) != c.get(r))
+                p5 += [f"{k}: {v[0]}" for k, v in artifacts.compare(clean["art"], again["art"]).items()
+                       if k != "rmeta"]
+                if again["ok"] and p5:
+                    report("P5", p5[:10], clean, again)
+                    differ, others = [], {}
             # Known: metadata reused unchanged from the previous session although a source
             # file changed (its hash and length in the source map are stale).
             stale = [r for r in differ if r in previous and previous[r] == a.get(r)]
@@ -472,9 +489,8 @@ def worker(k):
             elif differ:
                 report("P6", differ, inc, clean)
             # More oracles: object code in the rlibs, the binary, and the diagnostics.
-            for kind, detail in artifacts.compare(inc["art"], clean["art"]).items():
-                if kind != "rmeta":
-                    report(kind, detail[:10], inc, clean)
+            for kind, detail in others.items():
+                report(kind, detail[:10], inc, clean)
             ra = run_exe(str(inc["exe"]).replace(str(target), str(inc_target)) if inc["exe"] else None)
             rb = run_exe(clean["exe"])
             if ra != rb:
