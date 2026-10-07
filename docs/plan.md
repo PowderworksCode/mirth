@@ -95,9 +95,9 @@ what happened.
 
 For each edit, the relevant existing rustc suites (`tests/incremental` and
 part of `tests/ui`) also run against the same patched compiler, to show
-which edits they catch. The metadata `run-make` tests were planned too, but
-could not run: they need `rustdoc`, which does not build with the pinned
-nightly's Cargo.
+which edits they catch, and so do the `run-make` tests that concern
+metadata. Those need `rustdoc`, which bootstrap builds without the wrapper;
+`HACKING.md` says what that takes.
 
 ## Pull requests
 

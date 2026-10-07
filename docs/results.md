@@ -11,21 +11,24 @@ run is in `docs/edits/`, and `rustc/edits.sh` reproduces all of it.
 
 | # | edit | mirth | rustc's tests |
 |---|---|---|---|
-| — | none | P1–P7 hold; the list matches | 180 + 532 pass |
+| — | none | P1–P7 hold; the list matches | 180 + 532 + 46 pass |
 | 1 | encode the `.rmeta` straight into its final path, skipping the temporary file and the rename | **caught**: P1, and the list shows the rename gone | pass |
 | 2 | stop recording deprecations | **caught**: the list shows the table no longer written | **caught**: 5 UI tests |
 | 3 | let an environment variable override a value encoded in the crate root | **caught**: P4 | pass |
 | 4 | group trait impls in a `std` `HashMap` instead of an `FxIndexMap` | **caught**: P4, P5, P6 | pass |
-| 5 | decode every item's `def_kind` when a crate is loaded | **caught**: the list shows 175,644 more reads per process | **caught**: 10 tests hang |
+| 5 | decode every item's `def_kind` when a crate is loaded | **caught**: the list shows 175,644 more reads per process | **caught**: 12 tests hang |
 | 6 | drop the dependency each extern query records on its crate | **caught**: the list shows no read tracked | **caught**: 9 incremental tests |
 | 7 | keep the metadata's temporary directory | **caught**: P7 | pass |
 
-rustc's tests here are all of `tests/incremental` (180) and the UI tests in
+rustc's tests here are all of `tests/incremental` (180), the UI tests in
 `tests/ui/{deprecation,crate-loading,rmeta,extern,cross-crate}` (532, 6
-ignored). `tests/run-make` was not run: it needs `rustdoc`, which bootstrap
-at this commit cannot build with the pinned nightly's Cargo (`HACKING.md`).
-Several run-make tests concern exactly what edits 1 and 7 change, and might
-catch them.
+ignored), and the 46 tests in `tests/run-make` that concern metadata,
+crate loading, incremental compilation or emitted files (`rustc/suites.sh`
+lists them). The run-make tests catch none of the edits on their own: they
+pass under every edit except 5, where two of them hang like the others.
+That includes edits 1 and 7, which change how the `.rmeta` is written and
+published; the run-make tests check the files that result, not how they got
+there.
 
 mirth catches all seven. rustc's tests catch three; four pass them.
 
@@ -80,8 +83,9 @@ from every dependency as it loads it:
 +  175644  CrateMetadata::def_kind                            in CStore::register_crate
 ```
 
-In this fixture that is only slow. In rustc's tests, ten compiles hang, and
-every one of them loads a proc macro; the one inspected was waiting on a
+In this fixture that is only slow. In rustc's tests, twelve compiles hang
+(six incremental, four UI, two run-make), and every one of them loads a
+proc macro; the one inspected was waiting on a
 futex with no CPU use. The fixture has no proc macro, so mirth saw the cost
 and not the hang. The hang was not reproduced without the instrumentation;
 the runtime does nothing in those runs, since nothing sets `MIRTH_OUT`.
@@ -127,7 +131,7 @@ The first run caught five of the seven. Two misses turned into fixes:
 ## Limits
 
 - One fixture of three small crates, no proc macro, no build script.
-- rustc's run-make tests were not run.
+- Only the run-make tests that concern metadata were run, not all 543.
 - Each edit was chosen knowing what mirth watches. They are plausible, but
   they are not a sample of real bugs; replaying past metadata and incremental
   regressions from rustc's history would be the stronger test.

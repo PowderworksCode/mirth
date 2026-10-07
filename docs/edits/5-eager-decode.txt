@@ -35,10 +35,11 @@ P5 holds: 2 .rmeta files identical
 P6 holds: incremental and clean .rmeta files identical
 check.sh exit 1
 
-
-existing tests (tests/incremental; tests/ui/{deprecation,crate-loading,rmeta,extern,cross-crate}):
+existing tests (tests/incremental; tests/ui/{deprecation,crate-loading,rmeta,extern,cross-crate};
+43 metadata-related tests/run-make):
   test result: FAILED. 174 passed; 6 failed; 0 ignored; 0 measured; 0 filtered out
   test result: FAILED. 528 passed; 4 failed; 6 ignored; 0 measured; 21985 filtered out
+  test result: FAILED. 44 passed; 2 failed; 0 ignored; 0 measured; 497 filtered out
   failed:
     [incremental] tests/incremental/derive_macro_expansion/proc_macro_unchanged.rs
     [incremental] tests/incremental/incremental_proc_macro.rs
@@ -46,8 +47,23 @@ existing tests (tests/incremental; tests/ui/{deprecation,crate-loading,rmeta,ext
     [incremental] tests/incremental/issue-49482.rs
     [incremental] tests/incremental/issue-54059.rs
     [incremental] tests/incremental/issue-85197-invalid-span/invalid_span_main.rs
+    [run-make] tests/run-make/incremental-finalize-fail
+    [run-make] tests/run-make/incr-unstable-fingerprint-def-ident-span
     [ui] tests/ui/attributes/use-extern-crate-named-macro-use.rs
     [ui] tests/ui/crate-loading/cross-compiled-proc-macro.rs
     [ui] tests/ui/impl-trait/precise-capturing/external-macro.rs
     [ui] tests/ui/proc-macro/macros-in-extern.rs
-  (the failures under edit 5 are hangs: each test compile waited on a futex with no CPU use and was killed after 5 to 80 minutes)
+  hung for over five minutes, and killed:
+    tests/incremental/auxiliary/issue-49482-reexport.rs
+    tests/incremental/derive_macro_expansion/proc_macro_unchanged.rs
+    tests/incremental/incremental_proc_macro.rs
+    tests/incremental/issue-110457-same-span-closures/main.rs
+    tests/incremental/issue-54059.rs
+    tests/incremental/issue-85197-invalid-span/auxiliary/invalid-span-helper-lib.rs
+    tests/run-make/incr-unstable-fingerprint-def-ident-span
+    tests/run-make/incremental-finalize-fail
+    tests/ui/attributes/use-extern-crate-named-macro-use.rs
+    tests/ui/crate-loading/cross-compiled-proc-macro.rs
+    tests/ui/impl-trait/precise-capturing/external-macro.rs
+    tests/ui/proc-macro/macros-in-extern.rs
+suites.sh exit 1

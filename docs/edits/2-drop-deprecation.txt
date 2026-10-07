@@ -140,13 +140,15 @@ P5 holds: 2 .rmeta files identical
 P6 holds: incremental and clean .rmeta files identical
 check.sh exit 1
 
-
-existing tests (tests/incremental; tests/ui/{deprecation,crate-loading,rmeta,extern,cross-crate}):
+existing tests (tests/incremental; tests/ui/{deprecation,crate-loading,rmeta,extern,cross-crate};
+43 metadata-related tests/run-make):
   test result: ok. 180 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
   test result: FAILED. 527 passed; 5 failed; 6 ignored; 0 measured; 21985 filtered out
+  test result: ok. 46 passed; 0 failed; 0 ignored; 0 measured; 497 filtered out
   failed:
     [ui] tests/ui/deprecation/atomic_initializers.rs
     [ui] tests/ui/deprecation/deprecation-lint-2.rs
     [ui] tests/ui/deprecation/deprecation-lint-3.rs
     [ui] tests/ui/deprecation/deprecation-lint.rs
     [ui] tests/ui/deprecation/issue-84637-deprecated-associated-function.rs
+suites.sh exit 1

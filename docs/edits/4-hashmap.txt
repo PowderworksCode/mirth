@@ -25,22 +25,24 @@ P4  mid (lib) emit dep-info,metadata,link    std::collections::HashMap::<K, V>::
 == P5: a second clean build
 P5 broken: .rmeta files differ between two clean builds
 1,2c1,2
-< b60b671ef77645eb345f9a7210c12a6facfbc786d72816471149fc789e9038e5  ./debug/build/base/df112b7deaca9a22/out/libbase-df112b7deaca9a22.rmeta
-< ec4d335274ed9d875321fd4b7d0820121c0be0d18663d8702f17cddf5f1f7d44  ./debug/build/mid/b728536ffc6a92a7/out/libmid-b728536ffc6a92a7.rmeta
+< 6da55186c1bb728ba195f6f25e0cc3d95ad806b9972654919ce2ba14a0b79547  ./debug/build/base/df112b7deaca9a22/out/libbase-df112b7deaca9a22.rmeta
+< 8f490b3589cc41cfff08f4f82342fa18724ad3f96cc7024e6a11beda8b904c37  ./debug/build/mid/b728536ffc6a92a7/out/libmid-b728536ffc6a92a7.rmeta
 ---
-> 0631cf45c75822873443f55de15e591d4efca53c6461a518115de77b9003575c  ./debug/build/base/df112b7deaca9a22/out/libbase-df112b7deaca9a22.rmeta
-> 5f569b39ebc3516698f884a95ebf23b7afaac55e1007e9d3c7a16e868af9677a  ./debug/build/mid/b728536ffc6a92a7/out/libmid-b728536ffc6a92a7.rmeta
+> d789e654ee55987ee7c0c7a80109d51fd6f567d002871da0775122ec7b36567a  ./debug/build/base/df112b7deaca9a22/out/libbase-df112b7deaca9a22.rmeta
+> 33e72c976e96cc1f474ba87eaf6d7c7e0daf593464fd9da36532476612edf420  ./debug/build/mid/b728536ffc6a92a7/out/libmid-b728536ffc6a92a7.rmeta
 == P6: an incremental rebuild after an edit
 P6 broken: the incremental rebuild's .rmeta files differ from a clean build's
 1,2c1,2
-< f9db13be906f9969c4739c021594f2566417916547328f912fae9eaf9e260bce  ./debug/build/base/df112b7deaca9a22/out/libbase-df112b7deaca9a22.rmeta
-< cd94ab640f471909161fa2c052f1adfdc1c7b0d8930a29a81c19ca887579e244  ./debug/build/mid/b728536ffc6a92a7/out/libmid-b728536ffc6a92a7.rmeta
+< ec1979bbea311badecf70f08747695c6f9e4b3ebea4ccbeb6d30e253db2c188f  ./debug/build/base/df112b7deaca9a22/out/libbase-df112b7deaca9a22.rmeta
+< 9febd0f862ac9169eca60a3cdcd197eff7d2297f479f14785054fdf88f335ab1  ./debug/build/mid/b728536ffc6a92a7/out/libmid-b728536ffc6a92a7.rmeta
 ---
-> 84a55dc26b0d1996ff8d5918346480d78b433bd4f39ba17d1973ce6c027585ff  ./debug/build/base/df112b7deaca9a22/out/libbase-df112b7deaca9a22.rmeta
-> 476087ffde3243d9b4516fc4dcd1805f91024098b251cc6277d25dbbd1c7f24b  ./debug/build/mid/b728536ffc6a92a7/out/libmid-b728536ffc6a92a7.rmeta
+> cf6a19295880aea3c94329cac54ca3a9591678e52ecab91dc5a0c4ab39bddeb9  ./debug/build/base/df112b7deaca9a22/out/libbase-df112b7deaca9a22.rmeta
+> 53caca6de7f20ae3cf68f49a5305bab92f8a89da9db8a809f2dc87e20fd2870c  ./debug/build/mid/b728536ffc6a92a7/out/libmid-b728536ffc6a92a7.rmeta
 check.sh exit 1
 
-
-existing tests (tests/incremental; tests/ui/{deprecation,crate-loading,rmeta,extern,cross-crate}):
+existing tests (tests/incremental; tests/ui/{deprecation,crate-loading,rmeta,extern,cross-crate};
+43 metadata-related tests/run-make):
   test result: ok. 180 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
   test result: ok. 532 passed; 0 failed; 6 ignored; 0 measured; 21985 filtered out
+  test result: ok. 46 passed; 0 failed; 0 ignored; 0 measured; 497 filtered out
+suites.sh exit 0

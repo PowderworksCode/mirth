@@ -8,6 +8,9 @@ P5 holds: 2 .rmeta files identical
 P6 holds: incremental and clean .rmeta files identical
 check.sh exit 0
 
-existing tests (tests/incremental; tests/ui/{deprecation,crate-loading,rmeta,extern,cross-crate}):
+existing tests (tests/incremental; tests/ui/{deprecation,crate-loading,rmeta,extern,cross-crate};
+43 metadata-related tests/run-make):
   test result: ok. 180 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
   test result: ok. 532 passed; 0 failed; 6 ignored; 0 measured; 21985 filtered out
+  test result: ok. 46 passed; 0 failed; 0 ignored; 0 measured; 497 filtered out
+suites.sh exit 0
