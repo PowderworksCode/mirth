@@ -35,6 +35,8 @@ fixture, the third from fuzzing edits and replaying ten crates' git histories.
 - [`docs/scale.md`](docs/scale.md): replaying crates' histories and fuzzing edits at scale
 - [`docs/properties.md`](docs/properties.md): checkable properties surveyed from 1,000 rustc bugs
 - [`docs/motivating.md`](docs/motivating.md): the real rustc bugs behind each property, each reproduced before and after its fix
+- [`docs/ur-queries.md`](docs/ur-queries.md): the bugs' patterns, and closed bugs' patterns, as Ur queries over rustc's source
+- [`docs/shadow-mode.md`](docs/shadow-mode.md): checking reuse inside rustc, and what exists today
 - [`docs/plan.md`](docs/plan.md): the plan the work followed, with the properties
 
 ## An instrumented compiler
@@ -51,6 +53,7 @@ EDITS=regressions rustc/edits.sh chain  # the same for the past bugs in rustc/re
 rustc/hunt.sh wide                    # repeated threaded builds, and P6 for each of fixtures/wide/edits
 rustc/fuzz.py --rustc <rustc> --fixture fixtures/sink --work <dir>       # random edits, P6 on each
 rustc/replay.py --rustc <rustc> --repo <git checkout> --work <dir>      # a crate's history, P6 per commit
+rustc/audit-options.py --rustc <rustc> --source <rust checkout> --crate fixtures/audit/lib.rs  # untracked options
 ```
 
 The build takes about an hour on 16 cores. `rustc/rmeta.toml` says what is

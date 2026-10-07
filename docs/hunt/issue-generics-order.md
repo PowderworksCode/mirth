@@ -101,7 +101,7 @@ With all three changes proposed in this series applied (this one and the two in 
 removed. These rustc tests still pass: `tests/incremental` (180), the UI tests in
 `tests/ui/{deprecation,crate-loading,rmeta,extern,cross-crate}` (532), 46 metadata-related
 `tests/run-make` tests, `tests/ui/{consts,statics,const-generics}` (1844) and
-`tests/codegen-llvm` (1122). The full test suite was not run. FUZZ_NUMBERS The `Generics`
+`tests/codegen-llvm` (1122). The full test suite was not run. A fuzzer making random edits to a 1,200-line test workspace ran 10,717 edits on the patched compiler, 8,936 of which built and were compared with a clean build, and a replay of ten crates' git histories compared 4,862 commits; neither found a difference. The `Generics`
 struct is the only one I found that derives `TyEncodable`/`Encodable`, reaches metadata and
 has a `HashMap` field; the others with such fields (`TypeckResults::used_trait_imports`,
 `CrateInfo`, the on-disk cache footer) do not reach `.rmeta`.

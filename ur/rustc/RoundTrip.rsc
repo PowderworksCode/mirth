@@ -33,7 +33,7 @@ str hashOrderEncoded(FieldDeclaration f) = owner + "." + unparse(f.name) + ": " 
 
 str hashOrderAlias(TypeAlias t) = unparse(t.name) + " = " + kind
   when let ty = unparse(t.type),
-       let found = [k | k <- hashOrdered, startsWith(ty, k + "<")],
+       let found = [k | k <- hashOrdered, contains(ty, k + "<")],
        size(found) > 0,
        let kind = found[0];
 
