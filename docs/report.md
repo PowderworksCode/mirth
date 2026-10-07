@@ -141,7 +141,7 @@ All builds are incremental, as Cargo's debug profile is by default. Extern queri
 
 ## Seven edits and what caught them
 
-Each edit is a small patch to `rustc_metadata` at the pinned commit, the kind a contributor might write with a plausible reason. For each one, the instrumented compiler was rebuilt with the edit and two things were run. First, `rustc/check.sh chain`. Second, rustc's own metadata-related tests: all of `tests/incremental` (180) and the UI tests in `tests/ui/{deprecation,crate-loading,rmeta,extern,cross-crate}` (532, 6 ignored). On the unmodified compiler, P1–P7 hold, the list matches, and all those tests pass. The patches are in [`rustc/edits/`](../rustc/edits); each run's full output is in [`docs/edits/`](edits).
+Each edit is a small patch to `rustc_metadata` at the pinned commit, the kind a contributor might write with a plausible reason. For each one, the instrumented compiler was rebuilt with the edit and two things were run. First, `rustc/check.sh chain`. Second, rustc's own metadata-related tests: all of `tests/incremental` (180), the UI tests in `tests/ui/{deprecation,crate-loading,rmeta,extern,cross-crate}` (532, 6 ignored), and the 46 tests in `tests/run-make` that concern metadata, crate loading, incremental compilation or emitted files. On the unmodified compiler, P1–P7 hold, the list matches, and all those tests pass. The patches are in [`rustc/edits/`](../rustc/edits); each run's full output is in [`docs/edits/`](edits).
 
 | # | Edit | mirth | rustc's tests |
 | --- | --- | --- | --- |
@@ -149,11 +149,11 @@ Each edit is a small patch to `rustc_metadata` at the pinned commit, the kind a 
 | 2 | Stop recording deprecations: the `record_some_lazy!` for `lookup_deprecation_entry` | the list: the table is no longer written | 5 deprecation UI tests fail |
 | 3 | Let `RUSTC_EXTRA_FILENAME` override `extra_filename` in the crate root | P4 | pass |
 | 4 | Group trait impls in a `std::collections::HashMap` instead of an `FxIndexMap` in `encode_impls` | P4, P5, P6 | pass |
-| 5 | Decode every item's `def_kind` when a crate is registered | the list: 175,644 more reads per process | 10 tests hang, all of them loading a proc macro |
+| 5 | Decode every item's `def_kind` when a crate is registered | the list: 175,644 more reads per process | 12 tests hang, all of them loading a proc macro |
 | 6 | Remove the `tcx.ensure_ok().crate_hash(krate)` call from extern providers | the list: every read untracked | 9 cross-crate incremental tests fail |
 | 7 | Keep the metadata's temporary directory | P7 | pass |
 
-mirth catches all seven. rustc's tests catch 2, 5 and 6, and pass 1, 3, 4 and 7.
+mirth catches all seven. rustc's tests catch 2, 5 and 6, and pass 1, 3, 4 and 7. The run-make tests add nothing: they pass under every edit but 5, where two of them hang. That includes edits 1 and 7, which change how the `.rmeta` is published; run-make checks the files that result, not how they got there.
 
 **1. Write in place.** For each library, the encoder's target changes and the rename disappears. P1 then names it: `encoded straight to target/debug/build/base/#/out/libbase-#.rmeta`. Nothing raced in this build, so only a property of the protocol, not the outcome, sees it.
 
@@ -185,7 +185,7 @@ P4  base (lib)  std::env::var(RUSTC_EXTRA_FILENAME) read by encode_crate_root::{
 +  175644  CrateMetadata::def_kind                            in CStore::register_crate
 ```
 
-In the fixture that is only slow. Under rustc's tests, ten compiles hung, and every one of them loads a proc macro. The one inspected was parked in `futex_wait` with no CPU use. The fixture has no proc macro, so mirth saw the cost but not the hang. The hang was not reproduced with an uninstrumented build. The runtime is inert in those test runs, because nothing sets `MIRTH_OUT`.
+In the fixture that is only slow. Under rustc's tests, twelve compiles hung, and every one of them loads a proc macro. The one inspected was parked in `futex_wait` with no CPU use. The fixture has no proc macro, so mirth saw the cost but not the hang. The hang was not reproduced with an uninstrumented build. The runtime is inert in those test runs, because nothing sets `MIRTH_OUT`.
 
 **6. Untracked extern queries.** Without the `crate_hash` read, nothing tells incremental compilation that a result depends on the crate it came from. 285 rows of reads drop to zero tracked, for example:
 
@@ -217,7 +217,6 @@ The edits also show where each kind of test is strong:
 This shows the approach works on one fixture; it does not yet show how much it would catch in practice.
 
 - **One fixture**: three small crates, no proc macro, no build script.
-- **No `tests/run-make`.** It needs `rustdoc`. Bootstrap at this commit cannot build `rustdoc` with the pinned nightly's Cargo, because its per-crate build directories hide the compiler crates `rustdoc` links. Several run-make tests concern what edits 1 and 7 change, and might catch them.
 - **The edits were written knowing what mirth watches.** They are plausible, but they are not a sample of real bugs.
 - **The instrumented compiler has only been built on Linux.** mirth's own tests run on Linux, macOS and Windows.
 - **One pinned nightly.** `rustc_private` changes between nightlies. Each move costs a few small fixes, recorded in `HACKING.md`.
@@ -227,7 +226,6 @@ What would make the case stronger, roughly in order:
 1. **Replay real regressions.** Take past metadata and incremental bugs from rustc's history, revert their fixes on the pinned compiler, and see which ones mirth flags.
 2. **More fixtures**, starting with a proc-macro crate, a build script and a dylib.
 3. **Record reuse decisions** (which query results are marked green) alongside the `tracked` column, for incremental properties beyond metadata.
-4. **Run `tests/run-make`**, by giving bootstrap an older Cargo layout for stage 0.
 
 ## Reproducing
 

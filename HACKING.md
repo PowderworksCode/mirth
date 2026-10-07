@@ -153,16 +153,19 @@ Bootstrap's rustc shim runs `RUSTC_WRAPPER_REAL` as `<wrapper> <rustc>
   build fails with "found possibly newer version of crate". The plugin
   itself needs `rustc-dev`, so `rustc/setup.sh` gives bootstrap a copy of
   the pinned nightly with that component's files removed.
-- **Crates compiled without the plugin need the runtime too.** Bootstrap
-  compiles some crates without `RUSTC_WRAPPER_REAL`, `rustdoc` among them,
-  and they link compiler crates that were instrumented. `rustc/build.sh`
-  copies the runtime into the stage 0 sysroot, which every compile
-  searches.
-- **`rustdoc` does not build with the pinned nightly's Cargo.** Its
-  per-crate build directories hide the compiler crates `rustdoc` links
-  through `rustc_private`, so `tests/run-make`, which needs `rustdoc`, is
-  not run. Bootstrap normally uses beta Cargo, which lays out builds the
-  old way.
+- **Crates compiled without the plugin need the runtime too.** A crate's
+  metadata records its dependencies transitively, and `rustc_data_structures`
+  uses `tempfile`, so instrumenting `tempfile` makes most of the compiler
+  depend on the runtime. Bootstrap compiles some crates without
+  `RUSTC_WRAPPER_REAL`, `rustdoc` among them, and they fail with "can't find
+  crate for `mirth_runtime` which `rustc_abi` depends on". `rustc/build.sh`
+  and `rustc/suites.sh` put the runtime's directory on every compile's search
+  path through `RUSTFLAGS_BOOTSTRAP` and `RUSTFLAGS_NOT_BOOTSTRAP`; at this
+  commit the compiler and `rustdoc` get the second. Copying the runtime into
+  the stage 0 sysroot does not work: bootstrap re-syncs that directory.
+- **Every `x.py` run needs the same flags.** Those variables are part of what
+  Cargo fingerprints. An `x.py` run without them recompiles the compiler,
+  and without the wrapper, so the instrumentation is silently gone.
 - **Cargo does not know about the wrapper.** Changing the plugin or its
   configuration does not rebuild anything. `rustc/build.sh --again` deletes
   the fingerprints of the crates in scope.

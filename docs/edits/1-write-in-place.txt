@@ -9,9 +9,9 @@
    create         target/debug/build/base/#/out/rmeta*     in fs::encode_and_write_metadata
 -  encode-to      target/debug/build/base/#/out/rmeta*/full.rmeta in encoder::encode_metadata
 +  encode-to      target/debug/build/base/#/out/libbase-#.rmeta in encoder::encode_metadata
-   encoded                                                 in encoder::encode_metadata
+   finished                                                in encoder::encode_metadata
    encode-to      target/debug/build/base/#/out/rmeta*/stub.rmeta in encoder::encode_metadata
-   encoded                                                 in encoder::encode_metadata
+   finished                                                in encoder::encode_metadata
 -  remove_file    target/debug/build/base/#/out/libbase-#.rmeta in fs::encode_and_write_metadata
 -  rename         target/debug/build/base/#/out/rmeta*/full.rmeta -> target/debug/build/base/#/out/libbase-#.rmeta in fs::encode_and_write_metadata
    open           target/debug/build/base/#/out/libbase-#.rmeta in fs::encode_and_write_metadata
@@ -23,9 +23,9 @@
    create         target/debug/build/mid/#/out/rmeta*      in fs::encode_and_write_metadata
 -  encode-to      target/debug/build/mid/#/out/rmeta*/full.rmeta in encoder::encode_metadata
 +  encode-to      target/debug/build/mid/#/out/libmid-#.rmeta in encoder::encode_metadata
-   encoded                                                 in encoder::encode_metadata
+   finished                                                in encoder::encode_metadata
    encode-to      target/debug/build/mid/#/out/rmeta*/stub.rmeta in encoder::encode_metadata
-   encoded                                                 in encoder::encode_metadata
+   finished                                                in encoder::encode_metadata
 -  remove_file    target/debug/build/mid/#/out/libmid-#.rmeta in fs::encode_and_write_metadata
 -  rename         target/debug/build/mid/#/out/rmeta*/full.rmeta -> target/debug/build/mid/#/out/libmid-#.rmeta in fs::encode_and_write_metadata
    open           target/debug/build/mid/#/out/libmid-#.rmeta in fs::encode_and_write_metadata
@@ -42,7 +42,9 @@ P5 holds: 2 .rmeta files identical
 P6 holds: incremental and clean .rmeta files identical
 check.sh exit 1
 
-
-existing tests (tests/incremental; tests/ui/{deprecation,crate-loading,rmeta,extern,cross-crate}):
+existing tests (tests/incremental; tests/ui/{deprecation,crate-loading,rmeta,extern,cross-crate};
+43 metadata-related tests/run-make):
   test result: ok. 180 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
   test result: ok. 532 passed; 0 failed; 6 ignored; 0 measured; 21985 filtered out
+  test result: ok. 46 passed; 0 failed; 0 ignored; 0 measured; 497 filtered out
+suites.sh exit 0

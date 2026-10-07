@@ -35,12 +35,15 @@ if [ "${1:-}" = --again ]; then
   done
 fi
 
-# Every crate downstream of an instrumented one needs the runtime, including
-# crates bootstrap compiles without the wrapper, such as rustdoc. They all
-# search the stage 0 sysroot, whose std is the pinned nightly's.
-sysroot_lib=$MIRTH_RUST/build/$host/stage0-sysroot/lib/rustlib/$host/lib
-mkdir -p "$sysroot_lib"
-cp "$out/libmirth_runtime.rlib" "$sysroot_lib/"
+# Every crate downstream of an instrumented one needs the runtime: instrumenting
+# tempfile makes most of the compiler depend on it, and so does rustdoc, which
+# bootstrap compiles without the wrapper. Bootstrap passes RUSTFLAGS_BOOTSTRAP or
+# RUSTFLAGS_NOT_BOOTSTRAP depending on the stage, and at this commit the compiler
+# and rustdoc get the second, so both are set. They must be the same in every
+# x.py run (suites.sh sets them too), or Cargo recompiles the compiler, and
+# without the wrapper.
+export RUSTFLAGS_BOOTSTRAP="-L dependency=$out"
+export RUSTFLAGS_NOT_BOOTSTRAP="-L dependency=$out"
 
 cd "$MIRTH_RUST"
 env RUSTC_WRAPPER_REAL="$out/mirth-watch" \
