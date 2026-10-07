@@ -1,11 +1,49 @@
-# `-Zemit-stack-sizes`, `-Zcodegen-source-order` and `-Zbuild-sdylib-interface` are untracked but change output that incremental compilation reuses
+# Five untracked options change results that incremental compilation reuses; with `-Zno-leak-check`, a rebuild accepts a program a clean build rejects
 
 <!-- Draft comment for rust-lang/rust#84232 ("Audit all UNTRACKED options"). -->
 
-All three are marked `[UNTRACKED]` in `compiler/rustc_session/src/options.rs`, so they're
-left out of the dependency-tracking hash. Adding one between two incremental sessions
-leaves the second session's results as the first's, and the option has no effect. A clean
-build with the option produces something different.
+`-Zno-leak-check`, `-C extra-filename`, `-Zemit-stack-sizes`, `-Zcodegen-source-order` and
+`-Zbuild-sdylib-interface` are marked `[UNTRACKED]` in `compiler/rustc_session/src/options.rs`,
+so they're left out of the dependency-tracking hash. Changing one between two incremental
+sessions leaves the second session's results as the first's. A clean build with the second
+session's options produces something different.
+
+### `-Zno-leak-check`: an incremental rebuild accepts a program a clean build rejects
+
+The leak check is part of type checking and trait selection
+(`rustc_infer/src/infer/relate/higher_ranked.rs`), and whether it runs decides whether some
+programs compile. `tests/ui/lub-glb/old-lub-glb-hr-noteq2.rs` is one: it passes with
+`-Zno-leak-check` and is rejected without it.
+
+```sh
+cp tests/ui/lub-glb/old-lub-glb-hr-noteq2.rs lib.rs
+rustc --crate-type lib -C incremental=incr  -Zno-leak-check lib.rs   # compiles
+rustc --crate-type lib -C incremental=incr                  lib.rs   # compiles: typeck reused
+rustc --crate-type lib -C incremental=clean                 lib.rs   # error[E0308]: `match` arms have incompatible types
+```
+
+On `nightly-2026-10-06`, and on 1.75.0 and 1.90.0 with `RUSTC_BOOTSTRAP=1`, the second
+command succeeds although the program is rejected without the flag. (On 1.60.0 the program
+does not compile either way.)
+
+### `-C extra-filename`: reused metadata keeps the old value
+
+The metadata records the crate's own `-C extra-filename`, and a dependent records each
+dependency's, as a hint for finding transitive dependencies' files (`locator.rs`). Since
+metadata can be reused (#114669, 1.90), a rebuild with a different `-C extra-filename`
+publishes metadata that names the old one:
+
+```sh
+rustc --crate-type lib --emit=metadata -C incremental=incr -C extra-filename=-aaa --out-dir out lib.rs
+rustc --crate-type lib --emit=metadata -C incremental=incr -C extra-filename=-bbb --out-dir out lib.rs
+grep -a -c -- -aaa out/liblib-bbb.rmeta   # 1 on 1.90.0 and the nightly, 0 on 1.89.0
+```
+
+The lookup falls back to any matching file and checks the crate hash, so the stale hint
+costs at most a wrong first guess; Cargo changes `-C metadata` along with
+`-C extra-filename`, which is tracked. It is the same class, found the same way.
+
+### `-Zemit-stack-sizes`, `-Zcodegen-source-order`, `-Zbuild-sdylib-interface`
 
 ### Reproduction
 
@@ -50,14 +88,19 @@ debugging option.
 
 ### Suggested fix
 
-Mark `emit_stack_sizes`, `codegen_source_order` and `build_sdylib_interface` `[TRACKED]`.
+Mark `no_leak_check`, `extra_filename`, `emit_stack_sizes`, `codegen_source_order` and
+`build_sdylib_interface` `[TRACKED]` (`extra_filename` perhaps `[TRACKED_NO_CRATE_HASH]`).
 An audit like the one above could run in CI over every untracked option, so a new option
 marked `[UNTRACKED]` that changes reused output is caught when it is added; that is the
 long tail this issue's discussion worries about.
 
 ### How it was found
 
-[mirth](https://github.com/PowderworksCode/mirth) wrote the pattern behind #66955
-(`--remap-path-prefix` untracked) as a query over rustc's source, reads of options, then
-joined it with the options marked `[UNTRACKED]`. The audit is the differential check this
-issue's third comment suggests.
+[mirth](https://github.com/PowderworksCode/mirth) builds rustc with a check that reports, at
+run time, every read of an `[UNTRACKED]` option (and of other state the dependency graph
+does not track) inside a computation whose result incremental compilation may reuse
+([`report-untracked.patch`](report-untracked.patch)). Leaving out options that only produce
+debugging output, a build of its test workspace reports exactly these five. The first
+three were found earlier by writing #66955's pattern as a query over rustc's source and
+auditing every untracked boolean option differentially, which did not exercise the leak
+check.

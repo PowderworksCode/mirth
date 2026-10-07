@@ -274,6 +274,7 @@ def env():
              RUSTFLAGS=args.rustflags, CARGO_TERM_COLOR="never")
     if not args.no_verify_reuse:
         e["RUSTC_VERIFY_REUSE"] = "1"
+        e["RUSTC_REPORT_UNTRACKED"] = "1"
     return e
 
 
@@ -325,9 +326,25 @@ def build(src, target):
         "ice": "internal compiler error" in log or "the compiler unexpectedly panicked" in log,
         "hang": hang,
         "reuse": reuse_checks(log),
+        "untracked": untracked_reads(log),
         "secs": time.time() - t, "log": log, "rmetas": rmetas, "exe": exe,
         "art": artifacts.collect(r.stdout, target),
     }
+
+
+def untracked_reads(log):
+    """Reads of untracked state the compiler reported (docs/hunt/report-untracked.patch)."""
+    return {line.strip() for line in log.splitlines() if line.startswith("rustc-untracked-read:")}
+
+
+def note_untracked(lines):
+    """Adds new reports of untracked reads to <work>/untracked.txt, which lists each once."""
+    path = WORK / "untracked.txt"
+    known = set(path.read_text().splitlines()) if path.exists() else set()
+    new = sorted(set(lines) - known)
+    if new:
+        with path.open("a") as f:
+            f.write("".join(line + "\n" for line in new))
 
 
 def reuse_checks(log):
@@ -437,6 +454,7 @@ def worker(k):
         rel = str(path.relative_to(src))
         diff = "".join(difflib.unified_diff(old.splitlines(True), new.splitlines(True), "a/" + rel, "b/" + rel))
         inc = build(src, target)
+        note_untracked(inc["untracked"])
         history.append({"edit": fn.__name__, "file": rel, "diff": diff, "before": old, "after": new, "kept": inc["ok"]})
         by = stats["by_edit"].setdefault(fn.__name__, [0, 0])
         by[0] += 1

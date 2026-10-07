@@ -37,6 +37,7 @@ fixture, the third from fuzzing edits and replaying ten crates' git histories.
 - [`docs/motivating.md`](docs/motivating.md): the real rustc bugs behind each property, each reproduced before and after its fix
 - [`docs/ur-queries.md`](docs/ur-queries.md): the bugs' patterns, and closed bugs' patterns, as Ur queries over rustc's source
 - [`docs/shadow-mode.md`](docs/shadow-mode.md): checking reuse inside rustc, and what exists today
+- [`docs/untracked-reads.md`](docs/untracked-reads.md): reporting reads of untracked state inside rustc
 - [`docs/plan.md`](docs/plan.md): the plan the work followed, with the properties
 
 ## An instrumented compiler

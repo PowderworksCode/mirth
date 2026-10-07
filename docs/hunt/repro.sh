@@ -65,3 +65,18 @@ echo "// a comment at the end" >> "$d/w/m.rs"
 n1=$("$rustc" --edition 2024 $wf -Cincremental="$d/i9" -o "$d/w/a" "$d/w/main.rs" 2>&1 | grep -c "from the assembler")
 n2=$("$rustc" --edition 2024 $wf -Cincremental="$d/i10" -o "$d/w/b" "$d/w/main.rs" 2>&1 | grep -c "from the assembler")
 if [ "$n1" = "$n2" ]; then echo same; else echo "DIFFER (the rebuild shows no warning)"; fi
+
+echo -n "no-leak-check, a session with -Zno-leak-check then one without, vs a clean build: "
+mkdir -p "$d/nl"
+cat > "$d/nl/lib.rs" <<'RS'
+fn foo(x: for<'a, 'b> fn(&'a u8, &'b u8) -> &'a u8, y: for<'a> fn(&'a u8, &'a u8) -> &'a u8) {
+    let z = match 22 {
+        0 => y,
+        _ => x,
+    };
+}
+RS
+"$rustc" --crate-type lib -Cincremental="$d/i11" -Zno-leak-check --out-dir "$d/nl" "$d/nl/lib.rs" 2> /dev/null
+r1=$("$rustc" --crate-type lib -Cincremental="$d/i11" --out-dir "$d/nl" "$d/nl/lib.rs" > /dev/null 2>&1; echo $?)
+r2=$("$rustc" --crate-type lib -Cincremental="$d/i12" --out-dir "$d/nl" "$d/nl/lib.rs" > /dev/null 2>&1; echo $?)
+if [ "$r1" = "$r2" ]; then echo same; else echo "DIFFER (the rebuild exits $r1, a clean build $r2)"; fi

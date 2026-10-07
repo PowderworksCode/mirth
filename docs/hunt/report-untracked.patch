@@ -1,0 +1,2972 @@
+diff --git a/compiler/rustc_attr_parsing/src/attributes/rustc_internal.rs b/compiler/rustc_attr_parsing/src/attributes/rustc_internal.rs
+index b9c03883d..d51e6b650 100644
+--- a/compiler/rustc_attr_parsing/src/attributes/rustc_internal.rs
++++ b/compiler/rustc_attr_parsing/src/attributes/rustc_internal.rs
+@@ -784,7 +784,7 @@ fn extend(
+         cx: &mut AcceptContext<'_, '_>,
+         args: &ArgParser,
+     ) -> impl IntoIterator<Item = Self::Item> {
+-        if !cx.cx.sess.opts.unstable_opts.query_dep_graph {
++        if !(*cx.cx.sess.opts.unstable_opts.read_query_dep_graph()) {
+             cx.emit_err(AttributeRequiresOpt { span: cx.attr_span, opt: "-Z query-dep-graph" });
+         }
+         let list = cx.expect_list(args, cx.attr_span)?;
+@@ -877,7 +877,7 @@ impl SingleAttributeParser for RustcIfThisChangedParser {
+     const STABILITY: AttributeStability = unstable!(rustc_attrs);
+ 
+     fn convert(cx: &mut AcceptContext<'_, '_>, args: &ArgParser) -> Option<AttributeKind> {
+-        if !cx.cx.sess.opts.unstable_opts.query_dep_graph {
++        if !(*cx.cx.sess.opts.unstable_opts.read_query_dep_graph()) {
+             cx.emit_err(AttributeRequiresOpt { span: cx.attr_span, opt: "-Z query-dep-graph" });
+         }
+         match args {
+@@ -942,7 +942,7 @@ fn extend(
+         cx: &mut AcceptContext<'_, '_>,
+         args: &ArgParser,
+     ) -> impl IntoIterator<Item = Self::Item> {
+-        if !cx.cx.sess.opts.unstable_opts.query_dep_graph {
++        if !(*cx.cx.sess.opts.unstable_opts.read_query_dep_graph()) {
+             cx.emit_err(AttributeRequiresOpt { span: cx.attr_span, opt: "-Z query-dep-graph" });
+         }
+         let item = cx.expect_single_element_list(args, cx.attr_span)?;
+diff --git a/compiler/rustc_attr_parsing/src/check_cfg.rs b/compiler/rustc_attr_parsing/src/check_cfg.rs
+index fe8a6b91c..11cd97590 100644
+--- a/compiler/rustc_attr_parsing/src/check_cfg.rs
++++ b/compiler/rustc_attr_parsing/src/check_cfg.rs
+@@ -20,7 +20,7 @@ fn sort_and_truncate_possibilities(
+ ) -> (Vec<Symbol>, usize) {
+     let possibilities_len = possibilities.len();
+ 
+-    let n_possibilities = if sess.opts.unstable_opts.check_cfg_all_expected {
++    let n_possibilities = if (*sess.opts.unstable_opts.read_check_cfg_all_expected()) {
+         possibilities.len()
+     } else {
+         match filter_well_known_names {
+@@ -396,7 +396,7 @@ pub(crate) fn unexpected_cfg_value(
+         // basic heuristic, we use the "cheat" unstable feature enable method and the
+         // non-ui-testing enabled option.
+         || (matches!(sess.unstable_features, rustc_feature::UnstableFeatures::Cheat)
+-            && !sess.opts.unstable_opts.ui_testing);
++            && !(*sess.opts.unstable_opts.read_ui_testing()));
+ 
+     let inst = |escape_quotes| {
+         to_check_cfg_arg(Ident::new(name, name_span), value.map(|(v, _s)| v), escape_quotes)
+diff --git a/compiler/rustc_borrowck/src/nll.rs b/compiler/rustc_borrowck/src/nll.rs
+index 62319ce5e..818307d64 100644
+--- a/compiler/rustc_borrowck/src/nll.rs
++++ b/compiler/rustc_borrowck/src/nll.rs
+@@ -164,10 +164,10 @@ pub(crate) fn compute_regions<'tcx>(
+ 
+     // If requested: dump NLL facts, and run legacy polonius analysis.
+     let polonius_output = polonius_facts.as_ref().and_then(|polonius_facts| {
+-        if infcx.tcx.sess.opts.unstable_opts.nll_facts {
++        if (*infcx.tcx.sess.opts.unstable_opts.read_nll_facts()) {
+             let def_id = body.source.def_id();
+             let def_path = infcx.tcx.def_path(def_id);
+-            let dir_path = PathBuf::from(&infcx.tcx.sess.opts.unstable_opts.nll_facts_dir)
++            let dir_path = PathBuf::from(&(*infcx.tcx.sess.opts.unstable_opts.read_nll_facts_dir()))
+                 .join(def_path.to_filename_friendly_no_crate());
+             polonius_facts.write_to_dir(dir_path, location_table).unwrap();
+         }
+@@ -227,7 +227,7 @@ pub(super) fn dump_nll_mir<'tcx>(
+     // they're always disabled in mir-opt tests to make working with blessed dumps easier.
+     let options = PrettyPrintMirOptions {
+         include_extra_comments: matches!(
+-            infcx.tcx.sess.opts.unstable_opts.mir_include_spans,
++            (*infcx.tcx.sess.opts.unstable_opts.read_mir_include_spans()),
+             MirIncludeSpans::On | MirIncludeSpans::Nll
+         ),
+     };
+diff --git a/compiler/rustc_borrowck/src/polonius/dump.rs b/compiler/rustc_borrowck/src/polonius/dump.rs
+index c32b118a9..a4e125446 100644
+--- a/compiler/rustc_borrowck/src/polonius/dump.rs
++++ b/compiler/rustc_borrowck/src/polonius/dump.rs
+@@ -90,7 +90,7 @@ pub(crate) fn dump_polonius_mir<'tcx>(
+     // mir-include-spans` on the CLI still has priority.
+     let options = PrettyPrintMirOptions {
+         include_extra_comments: matches!(
+-            tcx.sess.opts.unstable_opts.mir_include_spans,
++            (*tcx.sess.opts.unstable_opts.read_mir_include_spans()),
+             MirIncludeSpans::On | MirIncludeSpans::Nll
+         ),
+     };
+diff --git a/compiler/rustc_borrowck/src/polonius/legacy/facts.rs b/compiler/rustc_borrowck/src/polonius/legacy/facts.rs
+index 1f8177477..3b51986d6 100644
+--- a/compiler/rustc_borrowck/src/polonius/legacy/facts.rs
++++ b/compiler/rustc_borrowck/src/polonius/legacy/facts.rs
+@@ -56,7 +56,7 @@ impl PoloniusFacts {
+     /// Returns `true` if there is a need to gather `PoloniusFacts` given the
+     /// current `-Z` flags.
+     fn enabled(tcx: TyCtxt<'_>) -> bool {
+-        tcx.sess.opts.unstable_opts.nll_facts
++        (*tcx.sess.opts.unstable_opts.read_nll_facts())
+             || tcx.sess.opts.unstable_opts.polonius.is_legacy_enabled()
+     }
+ 
+diff --git a/compiler/rustc_codegen_llvm/src/back/llvm_backend.rs b/compiler/rustc_codegen_llvm/src/back/llvm_backend.rs
+index 8780af2f6..95628cdcd 100644
+--- a/compiler/rustc_codegen_llvm/src/back/llvm_backend.rs
++++ b/compiler/rustc_codegen_llvm/src/back/llvm_backend.rs
+@@ -74,6 +74,39 @@ fn compile_codegen_unit(
+     ) -> (ModuleCodegen<ModuleLlvm>, u64) {
+         base::compile_codegen_unit(tcx, cgu_name, bitcode_needed)
+     }
++    fn codegen_unit_again(
++        &self,
++        tcx: TyCtxt<'_>,
++        cgu_name: Symbol,
++        bitcode_needed: bool,
++    ) -> Option<ModuleCodegen<ModuleLlvm>> {
++        Some(base::codegen_unit_again(tcx, cgu_name, bitcode_needed))
++    }
++    fn unoptimized_code(&self, module: &ModuleCodegen<ModuleLlvm>) -> Option<Vec<u8>> {
++        // The module as text, without inline assembly's `srcloc` cookies: they are raw byte
++        // positions, which an edit before the code moves without changing it, and they are
++        // only emitted where a reused module never goes through LLVM again (see `asm.rs`).
++        let text = unsafe {
++            let raw = llvm::LLVMPrintModuleToString(module.module_llvm.llmod());
++            let text = CStr::from_ptr(raw).to_string_lossy().into_owned();
++            llvm::LLVMDisposeMessage(raw);
++            text
++        };
++        let srclocs: Vec<&str> = text
++            .lines()
++            .filter_map(|line| line.split_once(", !srcloc ").map(|(_, node)| node))
++            .collect();
++        let mut out = String::with_capacity(text.len());
++        for line in text.lines() {
++            let line = line.split_once(", !srcloc ").map_or(line, |(code, _)| code);
++            if srclocs.iter().any(|node| line.starts_with(&format!("{node} = "))) {
++                continue;
++            }
++            out.push_str(line);
++            out.push('\n');
++        }
++        Some(out.into_bytes())
++    }
+ }
+ 
+ impl WriteBackendMethods for LlvmCodegenBackend {
+@@ -370,7 +403,7 @@ fn join_codegen(
+             .expect("Expected LlvmCodegenBackend's OngoingCodegen, found Box<Any>")
+             .join(sess, incr_comp_session, crate_info);
+ 
+-        if sess.opts.unstable_opts.llvm_time_trace {
++        if (*sess.opts.unstable_opts.read_llvm_time_trace()) {
+             sess.time("llvm_dump_timing_file", || {
+                 let file_name = outputs.with_extension("llvm_timings.json");
+                 llvm_util::time_trace_profiler_finish(&file_name);
+diff --git a/compiler/rustc_codegen_llvm/src/back/write.rs b/compiler/rustc_codegen_llvm/src/back/write.rs
+index a95f25954..746cfd95c 100644
+--- a/compiler/rustc_codegen_llvm/src/back/write.rs
++++ b/compiler/rustc_codegen_llvm/src/back/write.rs
+@@ -204,7 +204,7 @@ pub(crate) fn target_machine_factory(
+     let abi = SmallCStr::new(sess.target.llvm_abiname.desc());
+     let trap_unreachable =
+         sess.opts.unstable_opts.trap_unreachable.unwrap_or(sess.target.trap_unreachable);
+-    let emit_stack_size_section = sess.opts.unstable_opts.emit_stack_sizes;
++    let emit_stack_size_section = (*sess.opts.unstable_opts.read_emit_stack_sizes());
+ 
+     let verbose_asm = sess.opts.unstable_opts.verbose_asm;
+     let relax_elf_relocations =
+diff --git a/compiler/rustc_codegen_llvm/src/base.rs b/compiler/rustc_codegen_llvm/src/base.rs
+index 77cb37ede..4bd2556f3 100644
+--- a/compiler/rustc_codegen_llvm/src/base.rs
++++ b/compiler/rustc_codegen_llvm/src/base.rs
+@@ -80,145 +80,155 @@ pub(crate) fn compile_codegen_unit(
+     // the time we needed for codegenning it.
+     let cost = time_to_codegen.as_nanos() as u64;
+ 
+-    fn module_codegen(
+-        tcx: TyCtxt<'_>,
+-        cgu_name: Symbol,
+-        needs_bitcode: bool,
+-    ) -> ModuleCodegen<ModuleLlvm> {
+-        let cgu = tcx.codegen_unit(cgu_name);
+-        let _prof_timer =
+-            tcx.prof.generic_activity_with_arg_recorder("codegen_module", |recorder| {
+-                recorder.record_arg(cgu_name.to_string());
+-                recorder.record_arg(cgu.size_estimate().to_string());
+-            });
+-        // Instantiate monomorphizations without filling out definitions yet...
+-        let llvm_module = ModuleLlvm::new(tcx, cgu_name.as_str());
+-        {
+-            let mut cx = CodegenCx::new(tcx, cgu, &llvm_module, needs_bitcode);
++    (module, cost)
++}
+ 
+-            // Declare and store globals shared by all offload kernels
+-            //
+-            // These globals are left in the LLVM-IR host module so all kernels can access them.
+-            // They are necessary for correct offload execution. We do this here to simplify the
+-            // `offload` intrinsic, avoiding the need for tracking whether it's the first
+-            // intrinsic call or not.
+-            let has_host_offload = cx
+-                .sess()
+-                .opts
+-                .unstable_opts
+-                .offload
+-                .iter()
+-                .any(|o| matches!(o, Offload::Host(_) | Offload::Test));
+-            if has_host_offload && !cx.sess().target.is_like_gpu {
+-                cx.offload_globals.replace(Some(OffloadGlobals::declare(&cx)));
+-            }
++fn module_codegen(
++    tcx: TyCtxt<'_>,
++    cgu_name: Symbol,
++    needs_bitcode: bool,
++) -> ModuleCodegen<ModuleLlvm> {
++    let cgu = tcx.codegen_unit(cgu_name);
++    let _prof_timer =
++        tcx.prof.generic_activity_with_arg_recorder("codegen_module", |recorder| {
++            recorder.record_arg(cgu_name.to_string());
++            recorder.record_arg(cgu.size_estimate().to_string());
++        });
++    // Instantiate monomorphizations without filling out definitions yet...
++    let llvm_module = ModuleLlvm::new(tcx, cgu_name.as_str());
++    {
++        let mut cx = CodegenCx::new(tcx, cgu, &llvm_module, needs_bitcode);
+ 
+-            let mono_items = cx.codegen_unit.items_in_deterministic_order(cx.tcx);
+-            for &(mono_item, data) in &mono_items {
+-                mono_item.predefine::<Builder<'_, '_, '_>>(
+-                    &mut cx,
+-                    cgu_name.as_str(),
+-                    data.linkage,
+-                    data.visibility,
+-                );
+-            }
++        // Declare and store globals shared by all offload kernels
++        //
++        // These globals are left in the LLVM-IR host module so all kernels can access them.
++        // They are necessary for correct offload execution. We do this here to simplify the
++        // `offload` intrinsic, avoiding the need for tracking whether it's the first
++        // intrinsic call or not.
++        let has_host_offload = cx
++            .sess()
++            .opts
++            .unstable_opts
++            .offload
++            .iter()
++            .any(|o| matches!(o, Offload::Host(_) | Offload::Test));
++        if has_host_offload && !cx.sess().target.is_like_gpu {
++            cx.offload_globals.replace(Some(OffloadGlobals::declare(&cx)));
++        }
+ 
+-            // ... and now that we have everything pre-defined, fill out those definitions.
+-            for &(mono_item, item_data) in &mono_items {
+-                mono_item.define::<Builder<'_, '_, '_>>(&mut cx, cgu_name.as_str(), item_data);
+-            }
++        let mono_items = cx.codegen_unit.items_in_deterministic_order(cx.tcx);
++        for &(mono_item, data) in &mono_items {
++            mono_item.predefine::<Builder<'_, '_, '_>>(
++                &mut cx,
++                cgu_name.as_str(),
++                data.linkage,
++                data.visibility,
++            );
++        }
+ 
+-            // If this codegen unit contains the main function, also create the
+-            // wrapper here
+-            if let Some(entry) =
+-                maybe_create_entry_wrapper::<Builder<'_, '_, '_>>(&cx, cx.codegen_unit)
+-            {
+-                let mut attrs =
+-                    attributes::sanitize_attrs(&cx, tcx, SanitizerFnAttrs::default(), None, None);
+-                // When pointer authentication is enabled, ensure that the ptrauth-* attributes are
+-                // also attached to the entry wrapper.
+-                //
+-                // FIXME(jchlanda) If it ever becomes necessary to ensure that all compiler
+-                // generated functions receive the ptrauth-* attributes, `declare_fn` or
+-                // `declare_raw_fn` could be used to provide those.
+-                if cx.sess().pointer_authentication() {
+-                    let cfg = cx.sess().pointer_auth_config.as_ref().unwrap();
+-                    for ptrauth_attr in cfg.fn_attrs() {
+-                        attrs.push(llvm::CreateAttrString(cx.llcx, ptrauth_attr));
+-                    }
+-                }
+-                attributes::apply_to_llfn(entry, llvm::AttributePlace::Function, &attrs);
+-            }
++        // ... and now that we have everything pre-defined, fill out those definitions.
++        for &(mono_item, item_data) in &mono_items {
++            mono_item.define::<Builder<'_, '_, '_>>(&mut cx, cgu_name.as_str(), item_data);
++        }
+ 
+-            // Define Objective-C module info and module flags. Note, the module info will
+-            // also be added to the `llvm.compiler.used` variable, created later.
++        // If this codegen unit contains the main function, also create the
++        // wrapper here
++        if let Some(entry) =
++            maybe_create_entry_wrapper::<Builder<'_, '_, '_>>(&cx, cx.codegen_unit)
++        {
++            let mut attrs =
++                attributes::sanitize_attrs(&cx, tcx, SanitizerFnAttrs::default(), None, None);
++            // When pointer authentication is enabled, ensure that the ptrauth-* attributes are
++            // also attached to the entry wrapper.
+             //
+-            // These are only necessary when we need the linker to do its Objective-C-specific
+-            // magic. We could theoretically do it unconditionally, but at a slight cost to linker
+-            // performance in the common case where it's unnecessary.
+-            if !cx.objc_classrefs.borrow().is_empty() || !cx.objc_selrefs.borrow().is_empty() {
+-                if cx.objc_abi_version() == 1 {
+-                    cx.define_objc_module_info();
+-                }
+-                cx.add_objc_module_flags();
+-            }
+-
++            // FIXME(jchlanda) If it ever becomes necessary to ensure that all compiler
++            // generated functions receive the ptrauth-* attributes, `declare_fn` or
++            // `declare_raw_fn` could be used to provide those.
+             if cx.sess().pointer_authentication() {
+                 let cfg = cx.sess().pointer_auth_config.as_ref().unwrap();
+-
+-                let aarch64_elf_pauthabi_version =
+-                    cfg.calculate_pauth_abi_version(&cx.sess().target);
+-                if aarch64_elf_pauthabi_version != 0 {
+-                    cx.add_ptrauth_pauthabi_version_and_platform_flags(
+-                        aarch64_elf_pauthabi_version,
+-                    );
+-                }
+-                if cfg.elf_got {
+-                    cx.add_ptrauth_elf_got_flag();
+-                }
+-                if cx.sess().pointer_authentication_functions().is_some() {
+-                    cx.add_ptrauth_sign_personality_flag();
++                for ptrauth_attr in cfg.fn_attrs() {
++                    attrs.push(llvm::CreateAttrString(cx.llcx, ptrauth_attr));
+                 }
+             }
++            attributes::apply_to_llfn(entry, llvm::AttributePlace::Function, &attrs);
++        }
+ 
+-            // Finalize code coverage by injecting the coverage map. Note, the coverage map will
+-            // also be added to the `llvm.compiler.used` variable, created next.
+-            if cx.sess().instrument_coverage() {
+-                cx.coverageinfo_finalize();
++        // Define Objective-C module info and module flags. Note, the module info will
++        // also be added to the `llvm.compiler.used` variable, created later.
++        //
++        // These are only necessary when we need the linker to do its Objective-C-specific
++        // magic. We could theoretically do it unconditionally, but at a slight cost to linker
++        // performance in the common case where it's unnecessary.
++        if !cx.objc_classrefs.borrow().is_empty() || !cx.objc_selrefs.borrow().is_empty() {
++            if cx.objc_abi_version() == 1 {
++                cx.define_objc_module_info();
+             }
++            cx.add_objc_module_flags();
++        }
+ 
+-            // Create the llvm.used variable.
+-            if !cx.used_statics.is_empty() {
+-                cx.create_used_variable_impl(c"llvm.used", &cx.used_statics);
+-            }
++        if cx.sess().pointer_authentication() {
++            let cfg = cx.sess().pointer_auth_config.as_ref().unwrap();
+ 
+-            // Create the llvm.compiler.used variable.
+-            {
+-                let compiler_used_statics = cx.compiler_used_statics.borrow();
+-                if !compiler_used_statics.is_empty() {
+-                    cx.create_used_variable_impl(c"llvm.compiler.used", &compiler_used_statics);
+-                }
++            let aarch64_elf_pauthabi_version =
++                cfg.calculate_pauth_abi_version(&cx.sess().target);
++            if aarch64_elf_pauthabi_version != 0 {
++                cx.add_ptrauth_pauthabi_version_and_platform_flags(
++                    aarch64_elf_pauthabi_version,
++                );
++            }
++            if cfg.elf_got {
++                cx.add_ptrauth_elf_got_flag();
+             }
++            if cx.sess().pointer_authentication_functions().is_some() {
++                cx.add_ptrauth_sign_personality_flag();
++            }
++        }
+ 
+-            // Run replace-all-uses-with for statics that need it. This must
+-            // happen after the llvm.used variables are created.
+-            for &(old_g, new_g) in cx.statics_to_rauw().borrow().iter() {
+-                unsafe {
+-                    llvm::LLVMReplaceAllUsesWith(old_g, new_g);
+-                    llvm::LLVMDeleteGlobal(old_g);
+-                }
++        // Finalize code coverage by injecting the coverage map. Note, the coverage map will
++        // also be added to the `llvm.compiler.used` variable, created next.
++        if cx.sess().instrument_coverage() {
++            cx.coverageinfo_finalize();
++        }
++
++        // Create the llvm.used variable.
++        if !cx.used_statics.is_empty() {
++            cx.create_used_variable_impl(c"llvm.used", &cx.used_statics);
++        }
++
++        // Create the llvm.compiler.used variable.
++        {
++            let compiler_used_statics = cx.compiler_used_statics.borrow();
++            if !compiler_used_statics.is_empty() {
++                cx.create_used_variable_impl(c"llvm.compiler.used", &compiler_used_statics);
+             }
++        }
+ 
+-            // Finalize debuginfo
+-            if cx.sess().opts.debuginfo != DebugInfo::None {
+-                cx.debuginfo_finalize();
++        // Run replace-all-uses-with for statics that need it. This must
++        // happen after the llvm.used variables are created.
++        for &(old_g, new_g) in cx.statics_to_rauw().borrow().iter() {
++            unsafe {
++                llvm::LLVMReplaceAllUsesWith(old_g, new_g);
++                llvm::LLVMDeleteGlobal(old_g);
+             }
+         }
+ 
+-        ModuleCodegen::new_regular(cgu_name.to_string(), llvm_module)
++        // Finalize debuginfo
++        if cx.sess().opts.debuginfo != DebugInfo::None {
++            cx.debuginfo_finalize();
++        }
+     }
+ 
+-    (module, cost)
++    ModuleCodegen::new_regular(cgu_name.to_string(), llvm_module)
++}
++
++/// For testing incremental compilation (`RUSTC_VERIFY_REUSE`): the codegen unit generated
++/// again, outside dependency tracking, as a check of one reused from the incremental cache.
++pub(crate) fn codegen_unit_again(
++    tcx: TyCtxt<'_>,
++    cgu_name: Symbol,
++    bitcode_needed: bool,
++) -> ModuleCodegen<ModuleLlvm> {
++    tcx.dep_graph.with_ignore(|| module_codegen(tcx, cgu_name, bitcode_needed))
+ }
+ 
+ pub(crate) fn set_link_section(llval: &Value, attrs: &CodegenFnAttrs) {
+diff --git a/compiler/rustc_codegen_llvm/src/debuginfo/metadata.rs b/compiler/rustc_codegen_llvm/src/debuginfo/metadata.rs
+index a3bcce345..33eec74df 100644
+--- a/compiler/rustc_codegen_llvm/src/debuginfo/metadata.rs
++++ b/compiler/rustc_codegen_llvm/src/debuginfo/metadata.rs
+@@ -617,11 +617,13 @@ fn alloc_new_file_metadata<'ll>(
+             rustc_span::SourceFileHashAlgorithm::Sha256 => llvm::ChecksumKind::SHA256,
+             rustc_span::SourceFileHashAlgorithm::Blake3 => llvm::ChecksumKind::None,
+         };
++        rustc_data_structures::untracked::untracked_read("source file contents");
+         let hash_value = hex_encode(source_file.src_hash.hash_bytes());
+ 
+         let mut source = None;
+         let external_src;
+         if cx.sess().opts.unstable_opts.embed_source {
++            rustc_data_structures::untracked::untracked_read("source file contents");
+             source = source_file.src.as_deref().map(String::as_str);
+             if source.is_none() {
+                 cx.tcx.sess.source_map().ensure_source_file_source_present(source_file);
+diff --git a/compiler/rustc_codegen_llvm/src/llvm/ffi.rs b/compiler/rustc_codegen_llvm/src/llvm/ffi.rs
+index f576f29a1..bc9ce9580 100644
+--- a/compiler/rustc_codegen_llvm/src/llvm/ffi.rs
++++ b/compiler/rustc_codegen_llvm/src/llvm/ffi.rs
+@@ -1649,6 +1649,7 @@ pub(crate) fn LLVMBuildFence<'a>(
+     pub(crate) fn LLVMGetHostCPUFeatures() -> *mut c_char;
+ 
+     pub(crate) fn LLVMDisposeMessage(message: *mut c_char);
++    pub(crate) fn LLVMPrintModuleToString(M: &Module) -> *mut c_char;
+ 
+     pub(crate) fn LLVMIsMultithreaded() -> Bool;
+ 
+diff --git a/compiler/rustc_codegen_llvm/src/llvm_util.rs b/compiler/rustc_codegen_llvm/src/llvm_util.rs
+index a582e897e..859a2e5c4 100644
+--- a/compiler/rustc_codegen_llvm/src/llvm_util.rs
++++ b/compiler/rustc_codegen_llvm/src/llvm_util.rs
+@@ -108,10 +108,10 @@ fn llvm_arg_to_arg_name(full_arg: &str) -> &str {
+         };
+         // Set the llvm "program name" to make usage and invalid argument messages more clear.
+         add("rustc -Cllvm-args=\"...\" with", true);
+-        if sess.opts.unstable_opts.time_llvm_passes {
++        if (*sess.opts.unstable_opts.read_time_llvm_passes()) {
+             add("-time-passes", false);
+         }
+-        if sess.opts.unstable_opts.print_llvm_passes {
++        if (*sess.opts.unstable_opts.read_print_llvm_passes()) {
+             add("-debug-pass=Structure", false);
+         }
+         if sess.target.generate_arange_section
+@@ -159,7 +159,7 @@ fn llvm_arg_to_arg_name(full_arg: &str) -> &str {
+         };
+     }
+ 
+-    if sess.opts.unstable_opts.llvm_time_trace {
++    if (*sess.opts.unstable_opts.read_llvm_time_trace()) {
+         unsafe { llvm::LLVMRustTimeTraceProfilerInitialize() };
+     }
+ 
+diff --git a/compiler/rustc_codegen_ssa/src/assert_module_sources.rs b/compiler/rustc_codegen_ssa/src/assert_module_sources.rs
+index 431783552..8013ec2bd 100644
+--- a/compiler/rustc_codegen_ssa/src/assert_module_sources.rs
++++ b/compiler/rustc_codegen_ssa/src/assert_module_sources.rs
+@@ -55,7 +55,7 @@ pub fn assert_module_sources(tcx: TyCtxt<'_>, set_reuse: &dyn Fn(&mut CguReuseTr
+         let mut ams = AssertModuleSource {
+             tcx,
+             available_cgus,
+-            cgu_reuse_tracker: if tcx.sess.opts.unstable_opts.query_dep_graph {
++            cgu_reuse_tracker: if (*tcx.sess.opts.unstable_opts.read_query_dep_graph()) {
+                 CguReuseTracker::new()
+             } else {
+                 CguReuseTracker::new_disabled()
+@@ -66,7 +66,7 @@ pub fn assert_module_sources(tcx: TyCtxt<'_>, set_reuse: &dyn Fn(&mut CguReuseTr
+ 
+         set_reuse(&mut ams.cgu_reuse_tracker);
+ 
+-        if tcx.sess.opts.unstable_opts.print_mono_items
++        if (*tcx.sess.opts.unstable_opts.read_print_mono_items())
+             && let Some(data) = &ams.cgu_reuse_tracker.data
+         {
+             data.actual_reuse.items().all(|(cgu, reuse)| {
+@@ -105,7 +105,7 @@ fn check_attrs(&mut self, attrs: &[rustc_attr_ir::Attribute]) {
+             | CguFields::PartitionCodegened { cfg, module }
+             | CguFields::PartitionReused { cfg, module }) = cgu_fields;
+ 
+-            if !self.tcx.sess.opts.unstable_opts.query_dep_graph {
++            if !(*self.tcx.sess.opts.unstable_opts.read_query_dep_graph()) {
+                 self.tcx.dcx().emit_fatal(diagnostics::MissingQueryDepGraph { span });
+             }
+ 
+diff --git a/compiler/rustc_codegen_ssa/src/back/archive.rs b/compiler/rustc_codegen_ssa/src/back/archive.rs
+index 18b5c001f..46e2ccde7 100644
+--- a/compiler/rustc_codegen_ssa/src/back/archive.rs
++++ b/compiler/rustc_codegen_ssa/src/back/archive.rs
+@@ -276,7 +276,7 @@ fn create_mingw_dll_import_lib(
+ 
+ fn find_binutils_dlltool(sess: &Session) -> OsString {
+     assert!(sess.target.options.is_like_windows && !sess.target.options.is_like_msvc);
+-    if let Some(dlltool_path) = &sess.opts.cg.dlltool {
++    if let Some(dlltool_path) = &(*sess.opts.cg.read_dlltool()) {
+         return dlltool_path.clone().into_os_string();
+     }
+ 
+diff --git a/compiler/rustc_codegen_ssa/src/back/link.rs b/compiler/rustc_codegen_ssa/src/back/link.rs
+index 45ab9b8bc..6aaa60461 100644
+--- a/compiler/rustc_codegen_ssa/src/back/link.rs
++++ b/compiler/rustc_codegen_ssa/src/back/link.rs
+@@ -353,7 +353,7 @@ pub fn link_binary(
+                 .unwrap_or_else(|error| {
+                     sess.dcx().emit_fatal(diagnostics::CreateTempDir { error })
+                 });
+-            let path = MaybeTempDir::new(tmpdir, sess.opts.cg.save_temps);
++            let path = MaybeTempDir::new(tmpdir, (*sess.opts.cg.read_save_temps()));
+ 
+             let crate_name = format!("{}", crate_info.local_crate_name);
+             let out_filename = output.file_for_writing(outputs, OutputType::Exe, &crate_name);
+@@ -442,7 +442,7 @@ pub fn link_binary(
+     // Remove the temporary object file and metadata if we aren't saving temps.
+     sess.time("link_binary_remove_temps", || {
+         // If the user requests that temporaries are saved, don't delete any.
+-        if sess.opts.cg.save_temps {
++        if (*sess.opts.cg.read_save_temps()) {
+             return;
+         }
+ 
+@@ -1535,7 +1535,7 @@ fn link_natively(
+         }
+     }
+ 
+-    let strip = sess.opts.cg.strip;
++    let strip = (*sess.opts.cg.read_strip());
+ 
+     if sess.target.is_like_darwin {
+         let stripcmd = "rust-objcopy";
+@@ -1722,7 +1722,7 @@ fn add_sanitizer_libraries(
+         return;
+     }
+ 
+-    if sess.opts.unstable_opts.external_clangrt {
++    if (*sess.opts.unstable_opts.read_external_clangrt()) {
+         // Linking against in-tree sanitizer runtimes is disabled via
+         // `-Z external-clangrt`
+         return;
+@@ -1924,11 +1924,11 @@ fn adjust_flavor_to_features(
+         }
+     }
+ 
+-    let features = sess.opts.cg.linker_features;
++    let features = (*sess.opts.cg.read_linker_features());
+ 
+     // linker and linker flavor specified via command line have precedence over what the target
+     // specification specifies
+-    let linker_flavor = match sess.opts.cg.linker_flavor {
++    let linker_flavor = match (*sess.opts.cg.read_linker_flavor()) {
+         // The linker flavors that are non-target specific can be directly translated to LinkerFlavor
+         Some(LinkerFlavorCli::Llbc) => Some(LinkerFlavor::Llbc),
+         // The linker flavors that corresponds to targets needs logic that keeps the base LinkerFlavor
+@@ -1936,7 +1936,7 @@ fn adjust_flavor_to_features(
+             linker_flavor.map(|flavor| sess.target.linker_flavor.with_cli_hints(flavor))
+         }
+     };
+-    if let Some(ret) = infer_from(sess, sess.opts.cg.linker.clone(), linker_flavor, features) {
++    if let Some(ret) = infer_from(sess, (*sess.opts.cg.read_linker()).clone(), linker_flavor, features) {
+         return ret;
+     }
+ 
+@@ -2317,7 +2317,7 @@ fn self_contained_components(
+     // Turn the backwards compatible bool values for `self_contained` into fully inferred
+     // `LinkSelfContainedComponents`.
+     let self_contained =
+-        if let Some(self_contained) = sess.opts.cg.link_self_contained.explicitly_set {
++        if let Some(self_contained) = (*sess.opts.cg.read_link_self_contained()).explicitly_set {
+             // Emit an error if the user requested self-contained mode on the CLI but the target
+             // explicitly refuses it.
+             if sess.target.link_self_contained.is_disabled() {
+@@ -2401,7 +2401,7 @@ fn add_pre_link_args(cmd: &mut dyn Linker, sess: &Session, flavor: LinkerFlavor)
+         cmd.verbatim_args(args.iter().map(Deref::deref));
+     }
+ 
+-    cmd.verbatim_args(&sess.opts.unstable_opts.pre_link_args);
++    cmd.verbatim_args(&(*sess.opts.unstable_opts.read_pre_link_args()));
+ }
+ 
+ /// Add a link script embedded in the target, if applicable.
+@@ -2428,7 +2428,7 @@ fn add_link_script(cmd: &mut dyn Linker, sess: &Session, tmpdir: &Path, crate_ty
+ /// Add arbitrary "user defined" args defined from command line.
+ /// FIXME: Determine where exactly these args need to be inserted.
+ fn add_user_defined_link_args(cmd: &mut dyn Linker, sess: &Session) {
+-    cmd.verbatim_args(&sess.opts.cg.link_args);
++    cmd.verbatim_args(&(*sess.opts.cg.read_link_args()));
+ }
+ 
+ /// Add arbitrary "late link" args defined by the target spec.
+@@ -2703,7 +2703,7 @@ fn add_library_search_dirs(
+     self_contained_components: LinkSelfContainedComponents,
+     apple_sdk_root: Option<&Path>,
+ ) {
+-    if !sess.opts.unstable_opts.link_native_libraries {
++    if !(*sess.opts.unstable_opts.read_link_native_libraries()) {
+         return;
+     }
+ 
+@@ -2743,7 +2743,7 @@ fn add_rpath_args(
+     // FIXME (#2397): At some point we want to rpath our guesses as to
+     // where extern libraries might live, based on the
+     // add_lib_search_paths
+-    if sess.opts.cg.rpath {
++    if (*sess.opts.cg.read_rpath()) {
+         let libs = crate_info
+             .used_crates
+             .iter()
+@@ -3341,11 +3341,11 @@ fn add_order_independent_options(
+     );
+ 
+     // Pass debuginfo, NatVis debugger visualizers and strip flags down to the linker.
+-    cmd.debuginfo(sess.opts.cg.strip, &natvis_visualizers);
++    cmd.debuginfo((*sess.opts.cg.read_strip()), &natvis_visualizers);
+ 
+     // We want to prevent the compiler from accidentally leaking in any system libraries,
+     // so by default we tell linkers not to link to any default libraries.
+-    if !sess.opts.cg.default_linker_libraries && sess.target.no_default_libraries {
++    if !(*sess.opts.cg.read_default_linker_libraries()) && sess.target.no_default_libraries {
+         cmd.no_default_libraries();
+     }
+ 
+@@ -3409,7 +3409,7 @@ fn add_native_libs_from_crate(
+     link_dynamic: bool,
+     link_output_kind: LinkOutputKind,
+ ) {
+-    if !sess.opts.unstable_opts.link_native_libraries {
++    if !(*sess.opts.unstable_opts.read_link_native_libraries()) {
+         // If `-Zlink-native-libraries=false` is set, then the assumption is that an
+         // external build system already has the native dependencies defined, and it
+         // will provide them to the linker itself.
+@@ -4126,11 +4126,11 @@ fn add_lld_args(
+     // the CLI, and what the target spec enables (as it can't disable components):
+     // - if the self-contained linker is enabled on the CLI or by the target spec,
+     // - and if the self-contained linker is not disabled on the CLI.
+-    let self_contained_cli = sess.opts.cg.link_self_contained.is_linker_enabled();
++    let self_contained_cli = (*sess.opts.cg.read_link_self_contained()).is_linker_enabled();
+     let self_contained_target = self_contained_components.is_linker_enabled();
+ 
+     let self_contained_linker = self_contained_cli || self_contained_target;
+-    if self_contained_linker && !sess.opts.cg.link_self_contained.is_linker_disabled() {
++    if self_contained_linker && !(*sess.opts.cg.read_link_self_contained()).is_linker_disabled() {
+         let mut linker_path_exists = false;
+         for path in sess.get_tools_search_paths(false) {
+             let linker_path = path.join("gcc-ld");
+diff --git a/compiler/rustc_codegen_ssa/src/back/linker.rs b/compiler/rustc_codegen_ssa/src/back/linker.rs
+index ffb9130ed..9e37a7cb7 100644
+--- a/compiler/rustc_codegen_ssa/src/back/linker.rs
++++ b/compiler/rustc_codegen_ssa/src/back/linker.rs
+@@ -73,7 +73,7 @@ pub(crate) fn get_linker<'a>(
+             | LinkerFlavor::WasmLld(Cc::No)
+             | LinkerFlavor::Msvc(Lld::Yes) => Command::lld(linker, flavor.lld_flavor()),
+             LinkerFlavor::Msvc(Lld::No)
+-                if sess.opts.cg.linker.is_none() && sess.target.linker.is_none() =>
++                if (*sess.opts.cg.read_linker()).is_none() && sess.target.linker.is_none() =>
+             {
+                 Command::new(msvc_tool.as_ref().map_or(linker, |t| t.path()))
+             }
+@@ -444,7 +444,7 @@ fn build_dylib(&mut self, crate_type: CrateType, out_filename: &Path) {
+             // purely to support bootstrap right now, we should get a more
+             // principled solution at some point to force the compiler to pass
+             // the right `-Wl,-install_name` with an `@rpath` in it.
+-            if self.sess.opts.cg.rpath || self.sess.opts.unstable_opts.osx_rpath_install_name {
++            if (*self.sess.opts.cg.read_rpath()) || self.sess.opts.unstable_opts.osx_rpath_install_name {
+                 let mut rpath = OsString::from("@rpath/");
+                 rpath.push(out_filename.file_name().unwrap());
+                 self.link_arg("-install_name").link_arg(rpath);
+diff --git a/compiler/rustc_codegen_ssa/src/back/write.rs b/compiler/rustc_codegen_ssa/src/back/write.rs
+index 04be7956e..3d6cdf857 100644
+--- a/compiler/rustc_codegen_ssa/src/back/write.rs
++++ b/compiler/rustc_codegen_ssa/src/back/write.rs
+@@ -126,7 +126,7 @@ macro_rules! if_regular {
+         let sess = tcx.sess;
+         let opt_level_and_size = if_regular!(Some(sess.opts.optimize), None);
+ 
+-        let save_temps = sess.opts.cg.save_temps;
++        let save_temps = (*sess.opts.cg.read_save_temps());
+ 
+         let should_emit_obj = sess.opts.output_types.contains_key(&OutputType::Exe)
+             || match kind {
+@@ -536,7 +536,7 @@ pub fn produce_final_output_artifacts(
+             } else {
+                 copy_gracefully(&path, &output);
+             }
+-            if !sess.opts.cg.save_temps && !keep_numbered {
++            if !(*sess.opts.cg.read_save_temps()) && !keep_numbered {
+                 // The user just wants `foo.x`, not `foo.#module-name#.x`.
+                 ensure_removed(sess.dcx(), &path);
+             }
+@@ -599,7 +599,7 @@ pub fn produce_final_output_artifacts(
+     // We may create additional files if requested by the user (through
+     // `-C save-temps` or `--emit=` flags).
+ 
+-    if !sess.opts.cg.save_temps {
++    if !(*sess.opts.cg.read_save_temps()) {
+         // Remove the temporary .#module-name#.rcgu.o objects. If the user didn't
+         // explicitly request bitcode (with --emit=bc), and the bitcode is not
+         // needed for building an rlib, then we must remove .#module-name#.bc as
+@@ -1242,7 +1242,7 @@ fn start_executing_work<B: WriteBackendMethods>(
+     let opt_level = tcx.backend_optimization_level(());
+     let tm_factory = backend.target_machine_factory(tcx.sess, opt_level);
+ 
+-    let remark_dir = if let Some(ref dir) = sess.opts.unstable_opts.remark_dir {
++    let remark_dir = if let Some(ref dir) = (*sess.opts.unstable_opts.read_remark_dir()) {
+         let result = fs::create_dir_all(dir).and_then(|_| dir.canonicalize());
+         match result {
+             Ok(dir) => Some(dir),
+@@ -1258,12 +1258,12 @@ fn start_executing_work<B: WriteBackendMethods>(
+         crate_types: tcx.crate_types().to_vec(),
+         lto: sess.lto(),
+         use_linker_plugin_lto: sess.opts.cg.linker_plugin_lto.enabled(),
+-        dylib_lto: sess.opts.unstable_opts.dylib_lto,
++        dylib_lto: (*sess.opts.unstable_opts.read_dylib_lto()),
+         prefer_dynamic: sess.opts.cg.prefer_dynamic,
+         fewer_names: sess.fewer_names(),
+-        save_temps: sess.opts.cg.save_temps,
+-        time_trace: sess.opts.unstable_opts.llvm_time_trace,
+-        remark: sess.opts.cg.remark.clone(),
++        save_temps: (*sess.opts.cg.read_save_temps()),
++        time_trace: (*sess.opts.unstable_opts.read_llvm_time_trace()),
++        remark: (*sess.opts.cg.read_remark()).clone(),
+         remark_dir,
+         old_incr_comp_session_dir: tcx
+             .incr_comp_session
+diff --git a/compiler/rustc_codegen_ssa/src/base.rs b/compiler/rustc_codegen_ssa/src/base.rs
+index f9dfd04fa..3d3e17231 100644
+--- a/compiler/rustc_codegen_ssa/src/base.rs
++++ b/compiler/rustc_codegen_ssa/src/base.rs
+@@ -1,4 +1,5 @@
+ use std::collections::BTreeSet;
++use std::path::PathBuf;
+ use std::sync::Arc;
+ use std::time::{Duration, Instant};
+ use std::{cmp, iter};
+@@ -808,7 +809,7 @@ pub fn codegen_crate<
+     });
+ 
+     let mut total_codegen_time = Duration::new(0, 0);
+-    let start_rss = tcx.sess.opts.unstable_opts.time_passes.then(|| get_resident_set_size());
++    let start_rss = (*tcx.sess.opts.unstable_opts.read_time_passes()).then(|| get_resident_set_size());
+ 
+     // The non-parallel compiler can only translate codegen units to LLVM IR
+     // on a single thread, leading to a staircase effect where the N LLVM
+@@ -847,6 +848,7 @@ pub fn codegen_crate<
+         FxHashMap::default()
+     };
+ 
++    let verify_reuse = std::env::var_os("RUSTC_VERIFY_REUSE").is_some();
+     for (i, cgu) in codegen_units.iter().enumerate() {
+         ongoing_codegen.wait_for_signal_to_codegen_item();
+         ongoing_codegen.check_for_errors(tcx.sess);
+@@ -868,9 +870,15 @@ pub fn codegen_crate<
+                 // compilation hang on post-monomorphization errors.
+                 tcx.dcx().abort_if_errors();
+ 
++                if verify_reuse {
++                    record_codegen_unit(&backend, tcx, cgu.name(), &module);
++                }
+                 submit_codegened_module_to_llvm(&ongoing_codegen.coordinator, module, cost);
+             }
+             CguReuse::PreLto => {
++                if verify_reuse {
++                    verify_reused_codegen_unit(&backend, tcx, cgu.name(), bitcode_needed);
++                }
+                 submit_pre_lto_module_to_llvm(
+                     tcx,
+                     &ongoing_codegen.coordinator,
+@@ -885,6 +893,9 @@ pub fn codegen_crate<
+                 tcx.dcx().abort_if_errors();
+             }
+             CguReuse::PostLto => {
++                if verify_reuse {
++                    verify_reused_codegen_unit(&backend, tcx, cgu.name(), bitcode_needed);
++                }
+                 submit_post_lto_module_to_llvm(
+                     &ongoing_codegen.coordinator,
+                     CachedModuleCodegen {
+@@ -900,7 +911,7 @@ pub fn codegen_crate<
+ 
+     // Since the main thread is sometimes blocked during codegen, we keep track
+     // -Ztime-passes output manually.
+-    if tcx.sess.opts.unstable_opts.time_passes {
++    if (*tcx.sess.opts.unstable_opts.read_time_passes()) {
+         let end_rss = get_resident_set_size();
+ 
+         print_time_passes_entry(
+@@ -908,7 +919,7 @@ pub fn codegen_crate<
+             total_codegen_time,
+             start_rss.unwrap(),
+             end_rss,
+-            tcx.sess.opts.unstable_opts.time_passes_format,
++            (*tcx.sess.opts.unstable_opts.read_time_passes_format()),
+         );
+     }
+ 
+@@ -1253,6 +1264,61 @@ pub(crate) fn provide(providers: &mut Providers) {
+     };
+ }
+ 
++/// For testing incremental compilation (`RUSTC_VERIFY_REUSE`): where a codegen unit's
++/// unoptimized code is kept, from the session that generated it, to check the unit when a
++/// later session reuses it. In the crate's incremental directory, outside any one session's.
++fn recorded_codegen_unit(tcx: TyCtxt<'_>, cgu_name: Symbol) -> Option<PathBuf> {
++    let session: &std::path::Path = &tcx.incr_comp_session?.new_session_directory;
++    Some(session.parent()?.join("verify-reuse").join(format!("{cgu_name}.ll")))
++}
++
++fn record_codegen_unit<B: ExtraBackendMethods>(
++    backend: &B,
++    tcx: TyCtxt<'_>,
++    cgu_name: Symbol,
++    module: &ModuleCodegen<B::Module>,
++) {
++    let (Some(path), Some(code)) =
++        (recorded_codegen_unit(tcx, cgu_name), backend.unoptimized_code(module))
++    else {
++        return;
++    };
++    if let Some(dir) = path.parent() {
++        let _ = std::fs::create_dir_all(dir);
++    }
++    let _ = std::fs::write(path, code);
++}
++
++/// Generates a reused codegen unit again and compares its unoptimized code with that of the
++/// session that generated the reused one. A difference prints a line starting
++/// `rustc-verify-reuse:` and keeps the fresh code next to the recorded one.
++fn verify_reused_codegen_unit<B: ExtraBackendMethods>(
++    backend: &B,
++    tcx: TyCtxt<'_>,
++    cgu_name: Symbol,
++    bitcode_needed: bool,
++) {
++    let Some(path) = recorded_codegen_unit(tcx, cgu_name) else { return };
++    let Ok(recorded) = std::fs::read(&path) else { return };
++    let Some(module) = backend.codegen_unit_again(tcx, cgu_name, bitcode_needed) else { return };
++    let Some(fresh) = backend.unoptimized_code(&module) else { return };
++    if std::env::var_os("RUSTC_VERIFY_REUSE").is_some_and(|v| v == "verbose") {
++        eprintln!("rustc-verify-reuse-checked: codegen unit `{cgu_name}`");
++    }
++    if fresh != recorded {
++        let kept = path.with_extension("fresh.ll");
++        let _ = std::fs::write(&kept, &fresh);
++        eprintln!(
++            "rustc-verify-reuse: codegen unit `{cgu_name}` of `{}` reused from the incremental cache differs from a fresh codegen (unoptimized code, {} and {} bytes); kept as {} next to {}",
++            tcx.crate_name(LOCAL_CRATE),
++            recorded.len(),
++            fresh.len(),
++            kept.display(),
++            path.display(),
++        );
++    }
++}
++
+ pub fn determine_cgu_reuse<'tcx>(tcx: TyCtxt<'tcx>, cgu: &CodegenUnit<'tcx>) -> CguReuse {
+     if !tcx.dep_graph.is_fully_enabled()
+         || tcx.sess.opts.unstable_opts.disable_incr_comp_backend_caching
+diff --git a/compiler/rustc_codegen_ssa/src/traits/backend.rs b/compiler/rustc_codegen_ssa/src/traits/backend.rs
+index e06ac36fd..1fea1d7c8 100644
+--- a/compiler/rustc_codegen_ssa/src/traits/backend.rs
++++ b/compiler/rustc_codegen_ssa/src/traits/backend.rs
+@@ -167,4 +167,23 @@ fn compile_codegen_unit(
+         cgu_name: Symbol,
+         bitcode_needed: bool,
+     ) -> (ModuleCodegen<Self::Module>, u64);
++
++    /// For testing incremental compilation (`RUSTC_VERIFY_REUSE`): the codegen unit generated
++    /// again, outside dependency tracking, as a check of one reused from the incremental cache.
++    /// `None` if the backend cannot.
++    fn codegen_unit_again(
++        &self,
++        _tcx: TyCtxt<'_>,
++        _cgu_name: Symbol,
++        _bitcode_needed: bool,
++    ) -> Option<ModuleCodegen<Self::Module>> {
++        None
++    }
++
++    /// For testing incremental compilation (`RUSTC_VERIFY_REUSE`): a generated module's code
++    /// before optimization, as bytes that are equal when the code is. `None` if the backend
++    /// cannot say.
++    fn unoptimized_code(&self, _module: &ModuleCodegen<Self::Module>) -> Option<Vec<u8>> {
++        None
++    }
+ }
+diff --git a/compiler/rustc_data_structures/src/lib.rs b/compiler/rustc_data_structures/src/lib.rs
+index aae378939..dc71d2ae3 100644
+--- a/compiler/rustc_data_structures/src/lib.rs
++++ b/compiler/rustc_data_structures/src/lib.rs
+@@ -84,6 +84,7 @@
+ pub mod unhash;
+ pub mod union_find;
+ pub mod unord;
++pub mod untracked;
+ pub mod vec_cache;
+ 
+ mod atomic_ref;
+diff --git a/compiler/rustc_data_structures/src/untracked.rs b/compiler/rustc_data_structures/src/untracked.rs
+new file mode 100644
+index 000000000..1ee27a720
+--- /dev/null
++++ b/compiler/rustc_data_structures/src/untracked.rs
+@@ -0,0 +1,23 @@
++//! For testing incremental compilation: reports of reads of state that the dependency graph
++//! does not track, such as the contents of source files.
++//!
++//! Code that reads such state calls [`untracked_read`] with what it reads. When enabled
++//! (`RUSTC_REPORT_UNTRACKED`, by `rustc_middle`), a read inside a computation whose result
++//! incremental compilation may reuse, and which has not declared that state as an input it
++//! tracks another way, is reported: the result may be reused after the state changed.
++
++use std::panic::Location;
++use std::sync::OnceLock;
++
++/// The function called on each read, set once when reporting is enabled.
++pub static UNTRACKED_READ_HOOK: OnceLock<fn(&'static str, &'static Location<'static>)> =
++    OnceLock::new();
++
++/// Notes a read of `what`, state the dependency graph does not track.
++#[inline]
++#[track_caller]
++pub fn untracked_read(what: &'static str) {
++    if let Some(hook) = UNTRACKED_READ_HOOK.get() {
++        hook(what, Location::caller());
++    }
++}
+diff --git a/compiler/rustc_driver_impl/src/lib.rs b/compiler/rustc_driver_impl/src/lib.rs
+index 1ba7ce953..3bd2fdb0f 100644
+--- a/compiler/rustc_driver_impl/src/lib.rs
++++ b/compiler/rustc_driver_impl/src/lib.rs
+@@ -162,8 +162,8 @@ fn config(&mut self, config: &mut interface::Config) {
+         // If a --print=... option has been given, we don't print the "total"
+         // time because it will mess up the --print output. See #64339.
+         //
+-        self.time_passes = (config.opts.prints.is_empty() && config.opts.unstable_opts.time_passes)
+-            .then_some(config.opts.unstable_opts.time_passes_format);
++        self.time_passes = (config.opts.prints.is_empty() && (*config.opts.unstable_opts.read_time_passes()))
++            .then_some((*config.opts.unstable_opts.read_time_passes_format()));
+         config.opts.trimmed_def_paths = true;
+     }
+ }
+@@ -263,7 +263,7 @@ pub fn compiler_entrypoint(at_args: &[String], callbacks: &mut (dyn Callbacks +
+             sess.dcx().fatal("no input filename given"); // this is fatal
+         }
+ 
+-        if !sess.opts.unstable_opts.ls.is_empty() {
++        if !(*sess.opts.unstable_opts.read_ls()).is_empty() {
+             list_metadata(sess, &*codegen_backend.metadata_loader());
+             return;
+         }
+@@ -296,7 +296,7 @@ pub fn compiler_entrypoint(at_args: &[String], callbacks: &mut (dyn Callbacks +
+             return;
+         }
+ 
+-        if sess.opts.unstable_opts.parse_crate_root_only {
++        if (*sess.opts.unstable_opts.read_parse_crate_root_only()) {
+             return;
+         }
+ 
+@@ -318,7 +318,7 @@ pub fn compiler_entrypoint(at_args: &[String], callbacks: &mut (dyn Callbacks +
+                 return None;
+             }
+ 
+-            if sess.opts.unstable_opts.no_analysis {
++            if (*sess.opts.unstable_opts.read_no_analysis()) {
+                 return None;
+             }
+ 
+@@ -336,7 +336,7 @@ pub fn compiler_entrypoint(at_args: &[String], callbacks: &mut (dyn Callbacks +
+ 
+             let linker = Linker::codegen_and_build_linker(tcx, codegen_backend);
+ 
+-            if let Some(metrics_dir) = &sess.opts.unstable_opts.metrics_dir {
++            if let Some(metrics_dir) = &(*sess.opts.unstable_opts.read_metrics_dir()) {
+                 dump_feature_usage_metrics(tcx, metrics_dir);
+             }
+ 
+@@ -602,7 +602,7 @@ fn list_metadata(sess: &Session, metadata_loader: &dyn MetadataLoader) {
+                 path,
+                 metadata_loader,
+                 &mut v,
+-                &sess.opts.unstable_opts.ls,
++                &(*sess.opts.unstable_opts.read_ls()),
+                 sess.cfg_version,
+             ) {
+                 if path.extension().is_some_and(|extension| extension == "rs") {
+diff --git a/compiler/rustc_expand/src/base.rs b/compiler/rustc_expand/src/base.rs
+index 01e8cef49..b72b27d7d 100644
+--- a/compiler/rustc_expand/src/base.rs
++++ b/compiler/rustc_expand/src/base.rs
+@@ -896,7 +896,7 @@ pub fn new(
+             None => (None, helper_attrs),
+         };
+         let diagnostic_opaque = builtin_name.is_some()
+-            || (!sess.opts.unstable_opts.macro_backtrace && find_attr!(attrs, Opaque));
++            || (!(*sess.opts.unstable_opts.read_macro_backtrace()) && find_attr!(attrs, Opaque));
+ 
+         let stability = find_attr!(attrs, Stability { stability, .. } => *stability);
+ 
+diff --git a/compiler/rustc_expand/src/expand.rs b/compiler/rustc_expand/src/expand.rs
+index 5a2442fbc..3ec74c962 100644
+--- a/compiler/rustc_expand/src/expand.rs
++++ b/compiler/rustc_expand/src/expand.rs
+@@ -719,7 +719,7 @@ fn expand_invoc(
+             return ExpandResult::Ready(invoc.fragment_kind.dummy(invoc.span(), guar));
+         }
+ 
+-        let macro_stats = self.cx.sess.opts.unstable_opts.macro_stats;
++        let macro_stats = (*self.cx.sess.opts.unstable_opts.read_macro_stats());
+ 
+         let (fragment_kind, span) = (invoc.fragment_kind, invoc.span());
+         ExpandResult::Ready(match invoc.kind {
+diff --git a/compiler/rustc_hir_typeck/src/upvar.rs b/compiler/rustc_hir_typeck/src/upvar.rs
+index 98155d9a8..e729e0537 100644
+--- a/compiler/rustc_hir_typeck/src/upvar.rs
++++ b/compiler/rustc_hir_typeck/src/upvar.rs
+@@ -629,7 +629,7 @@ fn analyze_closure(
+ 
+         self.typeck_results.borrow_mut().closure_fake_reads.insert(closure_def_id, fake_reads);
+ 
+-        if self.tcx.sess.opts.unstable_opts.profile_closures {
++        if (*self.tcx.sess.opts.unstable_opts.read_profile_closures()) {
+             self.typeck_results.borrow_mut().closure_size_eval.insert(
+                 closure_def_id,
+                 ClosureSizeProfileData {
+diff --git a/compiler/rustc_incremental/src/assert_dep_graph.rs b/compiler/rustc_incremental/src/assert_dep_graph.rs
+index 8147e3c3a..12e13a0b4 100644
+--- a/compiler/rustc_incremental/src/assert_dep_graph.rs
++++ b/compiler/rustc_incremental/src/assert_dep_graph.rs
+@@ -59,13 +59,13 @@ pub(crate) fn assert_dep_graph(tcx: TyCtxt<'_>) {
+         // checks below, rather than locking and cloning it separately for each.
+         let retained_dep_graph = tcx.dep_graph.retained_dep_graph();
+ 
+-        if tcx.sess.opts.unstable_opts.dump_dep_graph {
++        if (*tcx.sess.opts.unstable_opts.read_dump_dep_graph()) {
+             if let Some(graph) = &retained_dep_graph {
+                 dump_graph(graph);
+             }
+         }
+ 
+-        if !tcx.sess.opts.unstable_opts.query_dep_graph {
++        if !(*tcx.sess.opts.unstable_opts.read_query_dep_graph()) {
+             return;
+         }
+ 
+@@ -87,7 +87,7 @@ pub(crate) fn assert_dep_graph(tcx: TyCtxt<'_>) {
+ 
+         if !if_this_changed.is_empty() || !then_this_would_need.is_empty() {
+             assert!(
+-                tcx.sess.opts.unstable_opts.query_dep_graph,
++                (*tcx.sess.opts.unstable_opts.read_query_dep_graph()),
+                 "cannot use the `#[{}]` or `#[{}]` annotations \
+                     without supplying `-Z query-dep-graph`",
+                 sym::rustc_if_this_changed,
+diff --git a/compiler/rustc_incremental/src/persist/clean.rs b/compiler/rustc_incremental/src/persist/clean.rs
+index b6402181f..ed1ca5be1 100644
+--- a/compiler/rustc_incremental/src/persist/clean.rs
++++ b/compiler/rustc_incremental/src/persist/clean.rs
+@@ -125,7 +125,7 @@ struct Assertion {
+ }
+ 
+ pub(crate) fn check_clean_annotations(tcx: TyCtxt<'_>) {
+-    if !tcx.sess.opts.unstable_opts.query_dep_graph {
++    if !(*tcx.sess.opts.unstable_opts.read_query_dep_graph()) {
+         return;
+     }
+ 
+diff --git a/compiler/rustc_incremental/src/persist/file_format.rs b/compiler/rustc_incremental/src/persist/file_format.rs
+index 853a5c9ba..c6d38410f 100644
+--- a/compiler/rustc_incremental/src/persist/file_format.rs
++++ b/compiler/rustc_incremental/src/persist/file_format.rs
+@@ -175,7 +175,7 @@ pub(crate) fn open_incremental_file(
+ fn report_format_mismatch(sess: &Session, file: &Path, message: &str) {
+     debug!("read_file: {}", message);
+ 
+-    if sess.opts.unstable_opts.incremental_info {
++    if (*sess.opts.unstable_opts.read_incremental_info()) {
+         eprintln!(
+             "[incremental] ignoring cache artifact `{}`: {}",
+             file.file_name().unwrap().to_string_lossy(),
+diff --git a/compiler/rustc_incremental/src/persist/load.rs b/compiler/rustc_incremental/src/persist/load.rs
+index 76e0bf92c..0caeb2789 100644
+--- a/compiler/rustc_incremental/src/persist/load.rs
++++ b/compiler/rustc_incremental/src/persist/load.rs
+@@ -64,7 +64,7 @@ fn load_dep_graph(sess: &Session, incr_comp_session: &IncrCompSession) -> LoadRe
+         for swp in work_products {
+             let all_files_exist = swp.work_product.saved_files.items().all(|(_, path)| {
+                 let exists = in_old_incr_comp_dir_sess(incr_comp_session, path).unwrap().exists();
+-                if !exists && sess.opts.unstable_opts.incremental_info {
++                if !exists && (*sess.opts.unstable_opts.read_incremental_info()) {
+                     eprintln!("incremental: could not find file for work product: {path}",);
+                 }
+                 exists
+@@ -93,7 +93,7 @@ fn load_dep_graph(sess: &Session, incr_comp_session: &IncrCompSession) -> LoadRe
+             let prev_commandline_args_hash = Hash64::decode(&mut decoder);
+ 
+             if prev_commandline_args_hash != expected_hash {
+-                if sess.opts.unstable_opts.incremental_info {
++                if (*sess.opts.unstable_opts.read_incremental_info()) {
+                     eprintln!(
+                         "[incremental] completely ignoring cache because of \
+                                     differing commandline arguments"
+@@ -150,7 +150,7 @@ pub fn load_query_result_cache(
+ /// the outcome of trying to load previous-session state.
+ fn maybe_assert_incr_state(sess: &Session, load_result: &LoadResult) {
+     // Return immediately if there's nothing to assert.
+-    let Some(assertion) = sess.opts.unstable_opts.assert_incr_state else { return };
++    let Some(assertion) = (*sess.opts.unstable_opts.read_assert_incr_state()) else { return };
+ 
+     // Match exhaustively to make sure we don't miss any cases.
+     let loaded = match load_result {
+diff --git a/compiler/rustc_incremental/src/persist/save.rs b/compiler/rustc_incremental/src/persist/save.rs
+index 46f47d6c8..69ea0af7a 100644
+--- a/compiler/rustc_incremental/src/persist/save.rs
++++ b/compiler/rustc_incremental/src/persist/save.rs
+@@ -41,6 +41,7 @@ pub(crate) fn save_dep_graph(tcx: TyCtxt<'_>) {
+ 
+         sess.time("assert_dep_graph", || assert_dep_graph(tcx));
+         sess.time("check_clean", || clean::check_clean_annotations(tcx));
++        sess.time("verify_reused_values", || tcx.verify_reused_values());
+ 
+         par_join(
+             move || {
+diff --git a/compiler/rustc_infer/src/infer/relate/higher_ranked.rs b/compiler/rustc_infer/src/infer/relate/higher_ranked.rs
+index 324725a07..baa0f2b04 100644
+--- a/compiler/rustc_infer/src/infer/relate/higher_ranked.rs
++++ b/compiler/rustc_infer/src/infer/relate/higher_ranked.rs
+@@ -92,7 +92,7 @@ pub fn leak_check(
+         // subtyping errors that it would have caught will now be
+         // caught later on, during region checking. However, we
+         // continue to use it for a transition period.
+-        if self.tcx.sess.opts.unstable_opts.no_leak_check || self.skip_leak_check {
++        if (*self.tcx.sess.opts.unstable_opts.read_no_leak_check()) || self.skip_leak_check {
+             return Ok(());
+         }
+ 
+diff --git a/compiler/rustc_interface/src/interface.rs b/compiler/rustc_interface/src/interface.rs
+index 7a6a49f37..3df272fa9 100644
+--- a/compiler/rustc_interface/src/interface.rs
++++ b/compiler/rustc_interface/src/interface.rs
+@@ -398,7 +398,7 @@ pub fn run_compiler<R: Send>(config: Config, f: impl FnOnce(&Compiler) -> R + Se
+         &early_dcx,
+         &config.opts.target_triple,
+         config.opts.sysroot.path(),
+-        config.opts.unstable_opts.unstable_options,
++        (*config.opts.unstable_opts.read_unstable_options()),
+     );
+     let file_loader = config.file_loader.unwrap_or_else(|| Box::new(RealFileLoader));
+     let path_mapping = config.opts.file_path_mapping();
+@@ -416,7 +416,7 @@ pub fn run_compiler<R: Send>(config: Config, f: impl FnOnce(&Compiler) -> R + Se
+             // impl `Send`. Creating a new one is fine.
+             let early_dcx = EarlyDiagCtxt::new(config.opts.error_format);
+ 
+-            let temps_dir = config.opts.unstable_opts.temps_dir.as_deref().map(PathBuf::from);
++            let temps_dir = (*config.opts.unstable_opts.read_temps_dir()).as_deref().map(PathBuf::from);
+ 
+             let early_sess =
+                 rustc_session::build_early_session(config.opts, target, config.ice_file);
+diff --git a/compiler/rustc_interface/src/passes.rs b/compiler/rustc_interface/src/passes.rs
+index 8975f01de..9245d5d45 100644
+--- a/compiler/rustc_interface/src/passes.rs
++++ b/compiler/rustc_interface/src/passes.rs
+@@ -204,10 +204,10 @@ fn configure_and_expand(
+             crate_name,
+             features,
+             recursion_limit,
+-            trace_mac: sess.opts.unstable_opts.trace_macros,
++            trace_mac: (*sess.opts.unstable_opts.read_trace_macros()),
+             should_test: sess.is_test_crate(),
+-            span_debug: sess.opts.unstable_opts.span_debug,
+-            proc_macro_backtrace: sess.opts.unstable_opts.proc_macro_backtrace,
++            span_debug: (*sess.opts.unstable_opts.read_span_debug()),
++            proc_macro_backtrace: (*sess.opts.unstable_opts.read_proc_macro_backtrace()),
+         };
+ 
+         let lint_store = LintStoreExpandImpl(lint_store);
+@@ -243,7 +243,7 @@ fn configure_and_expand(
+             }
+         }
+ 
+-        if ecx.sess.opts.unstable_opts.macro_stats {
++        if (*ecx.sess.opts.unstable_opts.read_macro_stats()) {
+             print_macro_stats(&ecx);
+         }
+ 
+@@ -413,7 +413,7 @@ fn early_lint_checks(tcx: TyCtxt<'_>, (): ()) {
+     let krate = &*krate.borrow();
+     let mut lint_buffer = resolver.lint_buffer.steal();
+ 
+-    if sess.opts.unstable_opts.input_stats {
++    if (*sess.opts.unstable_opts.read_input_stats()) {
+         input_stats::print_ast_stats(tcx, krate);
+     }
+ 
+@@ -933,6 +933,7 @@ pub fn create_and_enter_global_ctxt<T, F: for<'tcx> FnOnce(TyCtxt<'tcx>) -> T>(
+     f: F,
+ ) -> (T, Option<IncrCompSession>) {
+     let sess = &compiler.sess;
++    rustc_middle::dep_graph::enable_untracked_read_reports();
+ 
+     let pre_configured_attrs = rustc_expand::config::pre_configure_attrs(sess, &krate.attrs);
+ 
+@@ -1091,7 +1092,7 @@ pub fn emit_delayed_lints(tcx: TyCtxt<'_>) {
+ /// Runs all analyses that we guarantee to run, even if errors were reported in earlier analyses.
+ /// This function never fails.
+ fn run_required_analyses(tcx: TyCtxt<'_>) {
+-    if tcx.sess.opts.unstable_opts.input_stats {
++    if (*tcx.sess.opts.unstable_opts.read_input_stats()) {
+         rustc_passes::input_stats::print_hir_stats(tcx);
+     }
+     // When using rustdoc's "jump to def" feature, it enters this code and `check_crate`
+@@ -1272,7 +1273,7 @@ fn analysis(tcx: TyCtxt<'_>, (): ()) {
+     // that requires the optimized/ctfe MIR, coroutine bodies, or evaluating consts.
+     // Nevertheless, wait after type checking is finished, as optimizing code that does not
+     // type-check is very prone to ICEs.
+-    if tcx.sess.opts.unstable_opts.validate_mir {
++    if (*tcx.sess.opts.unstable_opts.read_validate_mir()) {
+         sess.time("ensuring_final_MIR_is_computable", || {
+             tcx.par_hir_body_owners(|def_id| {
+                 if !tcx.is_trivial_const(def_id) {
+@@ -1348,7 +1349,7 @@ pub(crate) fn start_codegen<'tcx>(
+ 
+     // This must run after monomorphization so that all generic types
+     // have been instantiated.
+-    if tcx.sess.opts.unstable_opts.print_type_sizes {
++    if (*tcx.sess.opts.unstable_opts.read_print_type_sizes()) {
+         tcx.sess.code_stats.print_type_sizes();
+     }
+ 
+@@ -1447,7 +1448,7 @@ pub fn collect_crate_types(
+     }
+ 
+     // Shadow `sdylib` crate type in interface build.
+-    if session.opts.unstable_opts.build_sdylib_interface {
++    if (*session.opts.unstable_opts.read_build_sdylib_interface()) {
+         return vec![CrateType::Rlib];
+     }
+ 
+diff --git a/compiler/rustc_interface/src/queries.rs b/compiler/rustc_interface/src/queries.rs
+index 759297bc6..60516087d 100644
+--- a/compiler/rustc_interface/src/queries.rs
++++ b/compiler/rustc_interface/src/queries.rs
+@@ -67,7 +67,7 @@ pub fn link(
+             }
+         });
+ 
+-        if sess.codegen_units().as_usize() == 1 && sess.opts.unstable_opts.time_llvm_passes {
++        if sess.codegen_units().as_usize() == 1 && (*sess.opts.unstable_opts.read_time_llvm_passes()) {
+             codegen_backend.print_pass_timings()
+         }
+ 
+diff --git a/compiler/rustc_interface/src/tests.rs b/compiler/rustc_interface/src/tests.rs
+index 34ac92fae..f0a43672b 100644
+--- a/compiler/rustc_interface/src/tests.rs
++++ b/compiler/rustc_interface/src/tests.rs
+@@ -47,7 +47,7 @@ fn sess_and_cfg<F>(args: &[&'static str], f: F)
+         &early_dcx,
+         &sessopts.target_triple,
+         sessopts.sysroot.path(),
+-        sessopts.unstable_opts.unstable_options,
++        (*sessopts.unstable_opts.read_unstable_options()),
+     );
+     let hash_kind = sessopts.unstable_opts.src_hash_algorithm(&target);
+     let checksum_hash_kind = sessopts.unstable_opts.checksum_hash_algorithm();
+@@ -59,7 +59,7 @@ fn sess_and_cfg<F>(args: &[&'static str], f: F)
+     });
+ 
+     rustc_span::create_session_globals_then(DEFAULT_EDITION, &[], sm_inputs, || {
+-        let temps_dir = sessopts.unstable_opts.temps_dir.as_deref().map(PathBuf::from);
++        let temps_dir = (*sessopts.unstable_opts.read_temps_dir()).as_deref().map(PathBuf::from);
+         let io = CompilerIO {
+             input: Input::Str { name: FileName::Custom(String::new()), input: String::new() },
+             output_dir: None,
+diff --git a/compiler/rustc_interface/src/util.rs b/compiler/rustc_interface/src/util.rs
+index d58b7bfdd..6e8f6570c 100644
+--- a/compiler/rustc_interface/src/util.rs
++++ b/compiler/rustc_interface/src/util.rs
+@@ -675,7 +675,7 @@ pub fn build_output_filenames(attrs: &[ast::Attribute], sess: &Session) -> Outpu
+                 sess.io.temps_dir.clone(),
+                 invocation_temp,
+                 sess.opts.unstable_opts.split_dwarf_out_dir.clone(),
+-                sess.opts.cg.extra_filename.clone(),
++                (*sess.opts.cg.read_extra_filename()).clone(),
+                 sess.opts.output_types.clone(),
+             )
+         }
+@@ -687,7 +687,7 @@ pub fn build_output_filenames(attrs: &[ast::Attribute], sess: &Session) -> Outpu
+                 sess.dcx().emit_warn(diagnostics::MultipleOutputTypesAdaption);
+                 None
+             } else {
+-                if !sess.opts.cg.extra_filename.is_empty() {
++                if !(*sess.opts.cg.read_extra_filename()).is_empty() {
+                     sess.dcx().emit_warn(diagnostics::IgnoringExtraFilename);
+                 }
+                 Some(out_file.clone())
+@@ -706,7 +706,7 @@ pub fn build_output_filenames(attrs: &[ast::Attribute], sess: &Session) -> Outpu
+                 sess.io.temps_dir.clone(),
+                 invocation_temp,
+                 sess.opts.unstable_opts.split_dwarf_out_dir.clone(),
+-                sess.opts.cg.extra_filename.clone(),
++                (*sess.opts.cg.read_extra_filename()).clone(),
+                 sess.opts.output_types.clone(),
+             )
+         }
+diff --git a/compiler/rustc_metadata/src/creader.rs b/compiler/rustc_metadata/src/creader.rs
+index 10693448e..70fa9ba41 100644
+--- a/compiler/rustc_metadata/src/creader.rs
++++ b/compiler/rustc_metadata/src/creader.rs
+@@ -299,23 +299,33 @@ pub(crate) fn crate_dependencies_in_postorder(&self, cnum: CrateNum) -> IndexSet
+         deps
+     }
+ 
++    #[track_caller]
+     pub(crate) fn injected_panic_runtime(&self) -> Option<CrateNum> {
++        rustc_data_structures::untracked::untracked_read("crate store");
+         self.injected_panic_runtime
+     }
+ 
++    #[track_caller]
+     pub(crate) fn allocator_kind(&self) -> Option<AllocatorKind> {
++        rustc_data_structures::untracked::untracked_read("crate store");
+         self.allocator_kind
+     }
+ 
++    #[track_caller]
+     pub(crate) fn alloc_error_handler_kind(&self) -> Option<AllocatorKind> {
++        rustc_data_structures::untracked::untracked_read("crate store");
+         self.alloc_error_handler_kind
+     }
+ 
++    #[track_caller]
+     pub(crate) fn has_global_allocator(&self) -> bool {
++        rustc_data_structures::untracked::untracked_read("crate store");
+         self.has_global_allocator
+     }
+ 
++    #[track_caller]
+     pub(crate) fn has_alloc_error_handler(&self) -> bool {
++        rustc_data_structures::untracked::untracked_read("crate store");
+         self.has_alloc_error_handler
+     }
+ 
+@@ -348,7 +358,7 @@ fn report_target_modifiers_extended(
+         dep_mods: &TargetModifiers,
+         data: &CrateMetadata,
+     ) {
+-        let allowed_flag_mismatches = &tcx.sess.opts.cg.unsafe_allow_abi_mismatch;
++        let allowed_flag_mismatches = &(*tcx.sess.opts.cg.read_unsafe_allow_abi_mismatch());
+         let local_crate = tcx.crate_name(LOCAL_CRATE);
+         let tmod_extender = |tmod: &TargetModifier| (tmod.extend(), tmod.clone());
+         let report_diff = |prefix: &String,
+@@ -454,7 +464,7 @@ pub fn report_session_incompatibilities(&self, tcx: TyCtxt<'_>, krate: &Crate) {
+     }
+ 
+     pub fn report_incompatible_target_modifiers(&self, tcx: TyCtxt<'_>) {
+-        for flag_name in &tcx.sess.opts.cg.unsafe_allow_abi_mismatch {
++        for flag_name in &(*tcx.sess.opts.cg.read_unsafe_allow_abi_mismatch()) {
+             if !OptionsTargetModifiers::is_target_modifier(flag_name) {
+                 tcx.dcx().emit_err(diagnostics::UnknownTargetModifierUnsafeAllowed {
+                     flag_name: flag_name.clone(),
+diff --git a/compiler/rustc_metadata/src/fs.rs b/compiler/rustc_metadata/src/fs.rs
+index ed177708f..fb8b0e57c 100644
+--- a/compiler/rustc_metadata/src/fs.rs
++++ b/compiler/rustc_metadata/src/fs.rs
+@@ -46,7 +46,7 @@ pub fn encode_and_write_metadata(tcx: TyCtxt<'_>) -> Result<EncodedMetadata, Err
+         .prefix("rmeta")
+         .tempdir_in(out_filename.parent().unwrap_or_else(|| Path::new("")))
+         .unwrap_or_else(|err| tcx.dcx().emit_fatal(FailedCreateTempdir { err }));
+-    let metadata_tmpdir = MaybeTempDir::new(metadata_tmpdir, tcx.sess.opts.cg.save_temps);
++    let metadata_tmpdir = MaybeTempDir::new(metadata_tmpdir, (*tcx.sess.opts.cg.read_save_temps()));
+     let metadata_filename = metadata_tmpdir.as_ref().join("full.rmeta");
+     let metadata_stub_filename = if !tcx.sess.opts.unstable_opts.embed_metadata
+         && !tcx.crate_types().contains(&CrateType::ProcMacro)
+diff --git a/compiler/rustc_metadata/src/locator.rs b/compiler/rustc_metadata/src/locator.rs
+index 38da6561e..aed700c2d 100644
+--- a/compiler/rustc_metadata/src/locator.rs
++++ b/compiler/rustc_metadata/src/locator.rs
+@@ -1245,7 +1245,7 @@ pub(crate) fn report(self, sess: &Session, span: Span, missing_core: bool) {
+                         is_nightly_build: sess.is_nightly_build(),
+                         profiler_runtime: Symbol::intern(&sess.opts.unstable_opts.profiler_runtime),
+                         locator_triple: locator.triple,
+-                        is_ui_testing: sess.opts.unstable_opts.ui_testing,
++                        is_ui_testing: (*sess.opts.unstable_opts.read_ui_testing()),
+                         is_tier_3: sess.target.metadata.tier == Some(3),
+                     };
+                     // The diagnostic for missing core is very good, but it is followed by a lot of
+@@ -1271,7 +1271,7 @@ pub(crate) fn report(self, sess: &Session, span: Span, missing_core: bool) {
+                     is_nightly_build: sess.is_nightly_build(),
+                     profiler_runtime: Symbol::intern(&sess.opts.unstable_opts.profiler_runtime),
+                     locator_triple: sess.opts.target_triple.clone(),
+-                    is_ui_testing: sess.opts.unstable_opts.ui_testing,
++                    is_ui_testing: (*sess.opts.unstable_opts.read_ui_testing()),
+                     is_tier_3: sess.target.metadata.tier == Some(3),
+                 };
+                 // The diagnostic for missing core is very good, but it is followed by a lot of
+diff --git a/compiler/rustc_metadata/src/native_libs.rs b/compiler/rustc_metadata/src/native_libs.rs
+index 6cb6ad001..8586b036d 100644
+--- a/compiler/rustc_metadata/src/native_libs.rs
++++ b/compiler/rustc_metadata/src/native_libs.rs
+@@ -31,7 +31,7 @@ pub(crate) fn collect(tcx: TyCtxt<'_>, LocalCrate: LocalCrate) -> Vec<NativeLib>
+         // and enforce pointer authentication constraints.
+         if tcx.sess.target.cfg_abi == CfgAbi::Pauthtest {
+             if let NativeLibKind::Static { .. } = lib.kind {
+-                if !tcx.sess.opts.unstable_opts.ui_testing {
++                if !(*tcx.sess.opts.unstable_opts.read_ui_testing()) {
+                     let diag = if lib.foreign_module.is_none() {
+                         diagnostics::StaticLinkingNotSupported::UserRequested {
+                             lib_name: lib.name,
+diff --git a/compiler/rustc_metadata/src/rmeta/encoder.rs b/compiler/rustc_metadata/src/rmeta/encoder.rs
+index 03493d0e1..6c65d6650 100644
+--- a/compiler/rustc_metadata/src/rmeta/encoder.rs
++++ b/compiler/rustc_metadata/src/rmeta/encoder.rs
+@@ -15,6 +15,7 @@
+ use rustc_data_structures::owned_slice::slice_owned;
+ use rustc_data_structures::stable_hash::{StableHash, StableHasher};
+ use rustc_data_structures::sync::{par_for_each_in, par_join};
++use rustc_data_structures::svh::Svh;
+ use rustc_data_structures::temp_dir::MaybeTempDir;
+ use rustc_data_structures::thousands::usize_with_underscores;
+ use rustc_hir as hir;
+@@ -52,6 +53,9 @@
+ pub(super) struct EncodeContext<'a, 'tcx> {
+     opaque: FileEncoder<'a>,
+     metadata_hasher: Arc<Mutex<XxHash3_128>>,
++    /// Set for a shadow encoding (see `verify_reused_metadata`), which keeps the crate hash it
++    /// computes here instead of setting the session's, which the reused metadata already set.
++    shadow_hash: Option<Option<Svh>>,
+     tcx: TyCtxt<'tcx>,
+     feat: &'tcx rustc_feature::Features,
+     tables: TableBuilders,
+@@ -585,6 +589,8 @@ fn encode_source_map(
+             //
+             // At this point we also erase the actual on-disk path and only keep
+             // the remapped version -- as is necessary for reproducible builds.
++            // Its length, line table and content hash are read from the session.
++            rustc_data_structures::untracked::untracked_read("source file contents");
+             let mut adapted_source_file = (**source_file).clone();
+ 
+             match source_file.name {
+@@ -817,7 +823,11 @@ macro_rules! stat {
+         } else {
+             tcx.crate_hash(LOCAL_CRATE)
+         };
+-        tcx.untracked().local_crate_hash.set(hash).expect("local_crate_hash set twice");
++        if let Some(shadow_hash) = &mut self.shadow_hash {
++            *shadow_hash = Some(hash);
++        } else {
++            tcx.untracked().local_crate_hash.set(hash).expect("local_crate_hash set twice");
++        }
+ 
+         let unhashed = stat!("final", || {
+             // Indexed by dependency `CrateNum`, matching the numbering `encode_crate_deps` uses.
+@@ -831,7 +841,7 @@ macro_rules! stat {
+             }
+ 
+             self.lazy(CrateRootUnhashed {
+-                extra_filename: self.tcx.sess.opts.cg.extra_filename.clone(),
++                extra_filename: (*self.tcx.sess.opts.cg.read_extra_filename()).clone(),
+                 dep_extra_filenames,
+             })
+         });
+@@ -841,7 +851,7 @@ macro_rules! stat {
+         let computed_total_bytes: usize = stats.iter().map(|(_, size)| size).sum();
+         assert_eq!(total_bytes, computed_total_bytes);
+ 
+-        if tcx.sess.opts.unstable_opts.meta_stats {
++        if (*tcx.sess.opts.unstable_opts.read_meta_stats()) {
+             use std::fmt::Write;
+ 
+             self.opaque.flush();
+@@ -2561,6 +2571,10 @@ pub fn encode_metadata(tcx: TyCtxt<'_>, path: &Path, ref_path: Option<&Path>) {
+         let hash = blob.expect("file already created").get_crate_hash();
+         tcx.untracked().local_crate_hash.set(hash).expect("local_crate_hash set twice");
+ 
++        if std::env::var_os("RUSTC_VERIFY_REUSE").is_some() {
++            verify_reused_metadata(tcx, path);
++        }
++
+         // Generate the metadata stub manually, as that is a small file compared to full metadata.
+         if let Some(ref_path) = ref_path {
+             let _prof_timer = tcx.prof.verbose_generic_activity("generate_crate_metadata_stub");
+@@ -2598,6 +2612,9 @@ pub fn encode_metadata(tcx: TyCtxt<'_>, path: &Path, ref_path: Option<&Path>) {
+         dep_node,
+         tcx,
+         || {
++            // Make the metadata depend on the source files it describes.
++            let _ = tcx.local_source_files_fingerprint(());
++            rustc_middle::dep_graph::declare_untracked_input("source file contents");
+             with_encode_metadata_header(tcx, path, |ecx| {
+                 // Encode all the entries and extra information in the crate,
+                 // culminating in the `CrateRoot` which points to all of it.
+@@ -2638,6 +2655,15 @@ fn with_encode_metadata_header(
+     tcx: TyCtxt<'_>,
+     path: &Path,
+     f: impl FnOnce(&mut EncodeContext<'_, '_>) -> (usize, usize),
++) {
++    with_encode_metadata_header_shadow(tcx, path, false, f)
++}
++
++fn with_encode_metadata_header_shadow(
++    tcx: TyCtxt<'_>,
++    path: &Path,
++    shadow: bool,
++    f: impl FnOnce(&mut EncodeContext<'_, '_>) -> (usize, usize),
+ ) {
+     // By default the crate hash (SVH) is computed from the bytes of the encoded metadata,
+     // Under `-Z metadata-crate-hash=no` the SVH comes from the legacy `crate_hash` query instead and
+@@ -2694,6 +2720,7 @@ fn with_encode_metadata_header(
+     let mut ecx = EncodeContext {
+         opaque: encoder,
+         metadata_hasher: Arc::clone(&metadata_hasher),
++        shadow_hash: shadow.then_some(None),
+         tcx,
+         feat: tcx.features(),
+         tables: Default::default(),
+@@ -2733,12 +2760,15 @@ fn with_encode_metadata_header(
+         tcx.dcx().emit_fatal(FailWriteFile { path: ecx.opaque.path(), err });
+     }
+ 
+-    let hash = tcx
+-        .untracked()
+-        .local_crate_hash
+-        .get()
+-        .copied()
+-        .expect("local_crate_hash set during encoding");
++    let hash = match ecx.shadow_hash {
++        Some(shadow_hash) => shadow_hash.expect("crate hash computed during the shadow encoding"),
++        None => tcx
++            .untracked()
++            .local_crate_hash
++            .get()
++            .copied()
++            .expect("local_crate_hash set during encoding"),
++    };
+     if let Err(err) = encode_crate_hash(file, hash) {
+         tcx.dcx().emit_fatal(FailWriteFile { path: ecx.opaque.path(), err });
+     }
+@@ -2748,6 +2778,50 @@ fn with_encode_metadata_header(
+     }
+ }
+ 
++/// Shadow verification, for testing incremental compilation: metadata was just reused from the
++/// incremental cache because its dep-node is green. Encode it again from this session's
++/// queries, outside dependency tracking, and check that the bytes are the same. A difference
++/// means the reuse was wrong: something the metadata depends on is not tracked.
++///
++/// On a difference this prints a line starting `rustc-verify-reuse:` and keeps the fresh
++/// encoding beside the reused file, as `<file>.fresh`; otherwise it removes it.
++fn verify_reused_metadata(tcx: TyCtxt<'_>, path: &Path) {
++    let fresh = path.with_extension("rmeta.fresh");
++    // `encode_metadata` already runs with dependency tracking ignored.
++    with_encode_metadata_header_shadow(tcx, &fresh, true, |ecx| {
++        let (root, unhashed) = ecx.encode_crate_root();
++        ecx.opaque.flush();
++        (root.position.get(), unhashed.position.get())
++    });
++    let reused = std::fs::read(path).unwrap_or_default();
++    let encoded = std::fs::read(&fresh).unwrap_or_default();
++    if std::env::var_os("RUSTC_VERIFY_REUSE").is_some_and(|v| v == "verbose") {
++        eprintln!("rustc-verify-reuse-checked: metadata of `{}`", tcx.crate_name(LOCAL_CRATE));
++    }
++    if reused == encoded {
++        let _ = std::fs::remove_file(&fresh);
++    } else {
++        // Keep it next to the output, outside the temporary directory.
++        let fresh = match tcx.output_filenames(()).path(rustc_session::config::OutputType::Metadata) {
++            rustc_session::config::OutFileName::Real(out)
++                if std::fs::rename(&fresh, out.with_extension("rmeta.fresh")).is_ok() =>
++            {
++                out.with_extension("rmeta.fresh")
++            }
++            _ => fresh,
++        };
++        let at = reused.iter().zip(&encoded).position(|(a, b)| a != b).unwrap_or(reused.len().min(encoded.len()));
++        eprintln!(
++            "rustc-verify-reuse: metadata of `{}` reused from the incremental cache differs from a fresh encoding ({} and {} bytes, first difference at byte {}); kept as {}",
++            tcx.crate_name(LOCAL_CRATE),
++            reused.len(),
++            encoded.len(),
++            at,
++            fresh.display(),
++        );
++    }
++}
++
+ fn encode_root_position(mut file: &File, pos: usize) -> Result<(), std::io::Error> {
+     file.seek(SeekFrom::Start(ROOT_POS_OFFSET as u64))?;
+     file.write_all(&pos.to_le_bytes())?;
+@@ -2768,6 +2842,18 @@ fn encode_crate_hash(mut file: &File, hash: Svh) -> Result<(), std::io::Error> {
+ 
+ pub(crate) fn provide(providers: &mut Providers) {
+     *providers = Providers {
++        local_source_files_fingerprint: |tcx, ()| {
++            let mut hasher = StableHasher::new();
++            for file in tcx.sess.source_map().files().iter() {
++                if file.is_imported() {
++                    continue;
++                }
++                std::hash::Hash::hash(&file.name, &mut hasher);
++                std::hash::Hash::hash(&file.unnormalized_source_len, &mut hasher);
++                std::hash::Hash::hash(&file.src_hash, &mut hasher);
++            }
++            Svh::new(hasher.finish())
++        },
+         doc_link_resolutions: |tcx, def_id| {
+             tcx.resolutions(())
+                 .doc_link_resolutions
+diff --git a/compiler/rustc_middle/src/dep_graph/graph.rs b/compiler/rustc_middle/src/dep_graph/graph.rs
+index dcb5775f2..711ef1b99 100644
+--- a/compiler/rustc_middle/src/dep_graph/graph.rs
++++ b/compiler/rustc_middle/src/dep_graph/graph.rs
+@@ -390,6 +390,7 @@ pub fn with_task<'tcx, OP, R>(
+             let task_deps = Lock::new(TaskDeps::new(
+                 #[cfg(debug_assertions)]
+                 Some(dep_node),
++                Some(dep_node.kind),
+             ));
+             (with_deps(TaskDepsRef::Allow(&task_deps), op), Some(task_deps.into_inner()))
+         };
+@@ -428,6 +429,7 @@ fn with_anon_task_inner<'tcx, OP, R>(
+         let task_deps = Lock::new(TaskDeps::new(
+             #[cfg(debug_assertions)]
+             None,
++            Some(dep_kind),
+         ));
+         let result = with_deps(TaskDepsRef::Allow(&task_deps), op);
+         let task_deps = task_deps.into_inner();
+@@ -1311,15 +1313,22 @@ pub struct TaskDeps {
+     node: Option<DepNode>,
+ 
+     reads: TaskReads,
++
++    /// For reports of untracked reads (`rustc_data_structures::untracked`): the kind of the
++    /// task, and the untracked state it has declared as an input it tracks another way.
++    pub(super) kind: Option<DepKind>,
++    pub(super) declared: Vec<&'static str>,
+ }
+ 
+ impl TaskDeps {
+     #[inline]
+-    fn new(#[cfg(debug_assertions)] node: Option<DepNode>) -> Self {
++    fn new(#[cfg(debug_assertions)] node: Option<DepNode>, kind: Option<DepKind>) -> Self {
+         TaskDeps {
+             #[cfg(debug_assertions)]
+             node,
+             reads: TaskReads::new(),
++            kind,
++            declared: Vec::new(),
+         }
+     }
+ 
+diff --git a/compiler/rustc_middle/src/dep_graph/mod.rs b/compiler/rustc_middle/src/dep_graph/mod.rs
+index e63a28100..f531e5e71 100644
+--- a/compiler/rustc_middle/src/dep_graph/mod.rs
++++ b/compiler/rustc_middle/src/dep_graph/mod.rs
+@@ -77,6 +77,56 @@ fn read_deps<OP>(op: OP)
+     })
+ }
+ 
++/// Declares that the current task tracks `what` another way (through a query that fingerprints
++/// it, say), where `what` is state that [`rustc_data_structures::untracked::untracked_read`]
++/// reports reading. Reads of it in this task are then not reported.
++pub fn declare_untracked_input(what: &'static str) {
++    read_deps(|task_deps| {
++        if let TaskDepsRef::Allow(deps) = task_deps {
++            deps.lock().declared.push(what);
++        }
++    })
++}
++
++/// For testing incremental compilation: under `RUSTC_REPORT_UNTRACKED`, report each read of
++/// untracked state inside a task whose result may be reused, unless the task declared it.
++/// With `RUSTC_REPORT_UNTRACKED=all`, declared reads are reported too, marked as declared.
++pub fn enable_untracked_read_reports() {
++    if std::env::var_os("RUSTC_REPORT_UNTRACKED").is_some() {
++        let _ = rustc_data_structures::untracked::UNTRACKED_READ_HOOK.set(report_untracked_read);
++    }
++}
++
++fn report_untracked_read(what: &'static str, at: &'static panic::Location<'static>) {
++    static SEEN: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
++    static ALL: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| {
++        std::env::var_os("RUSTC_REPORT_UNTRACKED").is_some_and(|v| v == "all")
++    });
++    let mut found = None;
++    read_deps(|task_deps| {
++        if let TaskDepsRef::Allow(deps) = task_deps {
++            let deps = deps.lock();
++            let declared = deps.declared.contains(&what);
++            if !declared || *ALL {
++                found = deps.kind.map(|kind| (kind, declared));
++            }
++        }
++    });
++    let Some((kind, declared)) = found else { return };
++    let line = if declared {
++        format!("rustc-untracked-read-declared: {what}, read at {at}, while computing `{kind:?}`")
++    } else {
++        format!(
++            "rustc-untracked-read: {what}, read at {at}, while computing `{kind:?}`, whose result incremental compilation may reuse"
++        )
++    };
++    let mut seen = SEEN.lock().unwrap();
++    if !seen.contains(&line) {
++        eprintln!("{line}");
++        seen.push(line);
++    }
++}
++
+ impl<'tcx> TyCtxt<'tcx> {
+     #[inline]
+     pub fn dep_kind_vtable(self, dk: DepKind) -> &'tcx DepKindVTable<'tcx> {
+diff --git a/compiler/rustc_middle/src/dep_graph/serialized.rs b/compiler/rustc_middle/src/dep_graph/serialized.rs
+index 1c476fc91..4a76764f4 100644
+--- a/compiler/rustc_middle/src/dep_graph/serialized.rs
++++ b/compiler/rustc_middle/src/dep_graph/serialized.rs
+@@ -911,7 +911,7 @@ pub(crate) fn new(
+             .unstable_opts
+             .query_dep_graph
+             .then(|| Lock::new(RetainedDepGraph::new(prev_index_space_len)));
+-        let status = EncoderState::new(encoder, sess.opts.unstable_opts.incremental_info, previous);
++        let status = EncoderState::new(encoder, (*sess.opts.unstable_opts.read_incremental_info()), previous);
+         GraphEncoder { status, retained_graph, profiler: sess.prof.clone() }
+     }
+ 
+diff --git a/compiler/rustc_middle/src/hooks.rs b/compiler/rustc_middle/src/hooks.rs
+index 7bccc34db..71f2341b1 100644
+--- a/compiler/rustc_middle/src/hooks.rs
++++ b/compiler/rustc_middle/src/hooks.rs
+@@ -106,6 +106,10 @@ fn clone(&self) -> Self { *self }
+ 
+     hook verify_query_key_hashes() -> ();
+ 
++    /// Under `RUSTC_VERIFY_REUSE`, computes reused query values again and reports any that
++    /// differ. For testing incremental compilation.
++    hook verify_reused_values() -> ();
++
+     /// Ensure the given scalar is valid for the given type.
+     /// This checks non-recursive runtime validity.
+     hook validate_scalar_in_layout(scalar: crate::ty::ScalarInt, ty: Ty<'tcx>) -> bool;
+diff --git a/compiler/rustc_middle/src/lint.rs b/compiler/rustc_middle/src/lint.rs
+index 8822ffee6..2cccc2a36 100644
+--- a/compiler/rustc_middle/src/lint.rs
++++ b/compiler/rustc_middle/src/lint.rs
+@@ -408,7 +408,7 @@ fn emit_lint_base_impl<'a>(
+ 
+         let has_future_breakage = future_incompatible.map_or(
+             // Default allow lints trigger too often for testing.
+-            sess.opts.unstable_opts.future_incompat_test && lint.default_level != Level::Allow,
++            (*sess.opts.unstable_opts.read_future_incompat_test()) && lint.default_level != Level::Allow,
+             |incompat| incompat.report_in_deps,
+         );
+ 
+diff --git a/compiler/rustc_middle/src/mir/generic_graph.rs b/compiler/rustc_middle/src/mir/generic_graph.rs
+index 3fd73712b..d7012b88f 100644
+--- a/compiler/rustc_middle/src/mir/generic_graph.rs
++++ b/compiler/rustc_middle/src/mir/generic_graph.rs
+@@ -7,7 +7,7 @@ pub(crate) fn mir_fn_to_generic_graph<'tcx>(tcx: TyCtxt<'tcx>, body: &Body<'_>)
+     let def_id = body.source.def_id();
+     let def_name = graphviz_safe_def_name(def_id);
+     let graph_name = format!("Mir_{def_name}");
+-    let dark_mode = tcx.sess.opts.unstable_opts.graphviz_dark_mode;
++    let dark_mode = (*tcx.sess.opts.unstable_opts.read_graphviz_dark_mode());
+ 
+     // Nodes
+     let nodes: Vec<Node> = body
+diff --git a/compiler/rustc_middle/src/mir/generic_graphviz.rs b/compiler/rustc_middle/src/mir/generic_graphviz.rs
+index bce7beb52..684df020d 100644
+--- a/compiler/rustc_middle/src/mir/generic_graphviz.rs
++++ b/compiler/rustc_middle/src/mir/generic_graphviz.rs
+@@ -58,11 +58,11 @@ pub fn write_graphviz<'tcx, W>(&self, tcx: TyCtxt<'tcx>, w: &mut W) -> io::Resul
+         writeln!(w, "{} {}{} {{", kind, cluster, self.graphviz_name)?;
+ 
+         // Global graph properties
+-        let font = format!(r#"fontname="{}""#, tcx.sess.opts.unstable_opts.graphviz_font);
++        let font = format!(r#"fontname="{}""#, (*tcx.sess.opts.unstable_opts.read_graphviz_font()));
+         let mut graph_attrs = vec![&font[..]];
+         let mut content_attrs = vec![&font[..]];
+ 
+-        let dark_mode = tcx.sess.opts.unstable_opts.graphviz_dark_mode;
++        let dark_mode = (*tcx.sess.opts.unstable_opts.read_graphviz_dark_mode());
+         if dark_mode {
+             graph_attrs.push(r#"bgcolor="black""#);
+             graph_attrs.push(r#"fontcolor="white""#);
+diff --git a/compiler/rustc_middle/src/mir/graphviz.rs b/compiler/rustc_middle/src/mir/graphviz.rs
+index 1cd34c35b..05d476384 100644
+--- a/compiler/rustc_middle/src/mir/graphviz.rs
++++ b/compiler/rustc_middle/src/mir/graphviz.rs
+@@ -51,11 +51,11 @@ pub fn write_mir_fn_graphviz<'tcx, W>(
+     W: Write,
+ {
+     // Global graph properties
+-    let font = format!(r#"fontname="{}""#, tcx.sess.opts.unstable_opts.graphviz_font);
++    let font = format!(r#"fontname="{}""#, (*tcx.sess.opts.unstable_opts.read_graphviz_font()));
+     let mut graph_attrs = vec![&font[..]];
+     let mut content_attrs = vec![&font[..]];
+ 
+-    let dark_mode = tcx.sess.opts.unstable_opts.graphviz_dark_mode;
++    let dark_mode = (*tcx.sess.opts.unstable_opts.read_graphviz_dark_mode());
+     if dark_mode {
+         graph_attrs.push(r#"bgcolor="black""#);
+         graph_attrs.push(r#"fontcolor="white""#);
+diff --git a/compiler/rustc_middle/src/mir/interpret/mod.rs b/compiler/rustc_middle/src/mir/interpret/mod.rs
+index 10aa9532b..6ff5cb4fa 100644
+--- a/compiler/rustc_middle/src/mir/interpret/mod.rs
++++ b/compiler/rustc_middle/src/mir/interpret/mod.rs
+@@ -99,6 +99,10 @@ enum AllocDiscriminant {
+     VTable,
+     Static,
+     Type,
++    /// Memory that was deduplicated when it was created (string literals, for instance), and
++    /// must be deduplicated again when decoded: otherwise the same allocation decoded from the
++    /// incremental cache and created afresh would get two `AllocId`s.
++    DedupAlloc,
+ }
+ 
+ pub fn specialized_encode_alloc_id<'tcx, E: TyEncoder<'tcx>>(
+@@ -109,7 +113,13 @@ pub fn specialized_encode_alloc_id<'tcx, E: TyEncoder<'tcx>>(
+     match tcx.global_alloc(alloc_id) {
+         GlobalAlloc::Memory(alloc) => {
+             trace!("encoding {:?} with {:#?}", alloc_id, alloc);
+-            AllocDiscriminant::Alloc.encode(encoder);
++            let deduplicated = tcx.alloc_map.dedup.lock().get(&(GlobalAlloc::Memory(alloc), CTFE_ALLOC_SALT))
++                == Some(&alloc_id);
++            if deduplicated {
++                AllocDiscriminant::DedupAlloc.encode(encoder);
++            } else {
++                AllocDiscriminant::Alloc.encode(encoder);
++            }
+             alloc.encode(encoder);
+         }
+         GlobalAlloc::Function { instance } => {
+@@ -216,6 +226,12 @@ pub fn decode_alloc_id<'tcx, D>(&self, decoder: &mut D) -> AllocId
+                 trace!("decoded alloc {:?}", alloc);
+                 decoder.interner().reserve_and_set_memory_alloc(alloc)
+             }
++            AllocDiscriminant::DedupAlloc => {
++                trace!("creating deduplicated memory alloc ID");
++                let alloc = <ConstAllocation<'tcx> as Decodable<_>>::decode(decoder);
++                trace!("decoded alloc {:?}", alloc);
++                decoder.interner().reserve_and_set_memory_dedup(alloc, CTFE_ALLOC_SALT)
++            }
+             AllocDiscriminant::Fn => {
+                 trace!("creating fn alloc ID");
+                 let instance = ty::Instance::decode(decoder);
+diff --git a/compiler/rustc_middle/src/mir/pretty.rs b/compiler/rustc_middle/src/mir/pretty.rs
+index ae30093b1..5ceeb0c88 100644
+--- a/compiler/rustc_middle/src/mir/pretty.rs
++++ b/compiler/rustc_middle/src/mir/pretty.rs
+@@ -58,7 +58,7 @@ pub struct PrettyPrintMirOptions {
+ impl PrettyPrintMirOptions {
+     /// Create the default set of MIR pretty-printing options from the CLI flags.
+     pub fn from_cli(tcx: TyCtxt<'_>) -> Self {
+-        Self { include_extra_comments: tcx.sess.opts.unstable_opts.mir_include_spans.is_enabled() }
++        Self { include_extra_comments: (*tcx.sess.opts.unstable_opts.read_mir_include_spans()).is_enabled() }
+     }
+ }
+ 
+@@ -80,7 +80,7 @@ impl<'a, 'tcx> MirDumper<'a, 'tcx> {
+     // - `writer.extra_data`: a no-op
+     // - `writer.options`: default options derived from CLI flags
+     pub fn new(tcx: TyCtxt<'tcx>, pass_name: &'static str, body: &Body<'tcx>) -> Option<Self> {
+-        let dump_enabled = if let Some(ref filters) = tcx.sess.opts.unstable_opts.dump_mir {
++        let dump_enabled = if let Some(ref filters) = (*tcx.sess.opts.unstable_opts.read_dump_mir()) {
+             // see notes on #41697 below
+             let node_path = ty::print::with_no_trimmed_paths!(
+                 ty::print::with_forced_impl_filename_line!(tcx.def_path_str(body.source.def_id()))
+@@ -166,7 +166,7 @@ pub fn dump_mir(&self, body: &Body<'tcx>) {
+             self.dump_mir_to_writer(body, &mut file)?;
+         };
+ 
+-        if self.tcx().sess.opts.unstable_opts.dump_mir_graphviz {
++        if (*self.tcx().sess.opts.unstable_opts.read_dump_mir_graphviz()) {
+             let _ = try {
+                 let mut file = self.create_dump_file("dot", body)?;
+                 write_mir_fn_graphviz(self.tcx(), body, false, &mut file)?;
+@@ -207,7 +207,7 @@ fn dump_path(&self, extension: &str, body: &Body<'tcx>) -> PathBuf {
+             None => String::new(),
+         };
+ 
+-        let pass_num = if tcx.sess.opts.unstable_opts.dump_mir_exclude_pass_number {
++        let pass_num = if (*tcx.sess.opts.unstable_opts.read_dump_mir_exclude_pass_number()) {
+             String::new()
+         } else if self.show_pass_num {
+             let (dialect_index, phase_index) = body.phase.index();
+@@ -273,7 +273,7 @@ fn dump_path(&self, extension: &str, body: &Body<'tcx>) -> PathBuf {
+         };
+ 
+         let mut file_path = PathBuf::new();
+-        file_path.push(Path::new(&tcx.sess.opts.unstable_opts.dump_mir_dir));
++        file_path.push(Path::new(&(*tcx.sess.opts.unstable_opts.read_dump_mir_dir())));
+ 
+         let pass_name = self.pass_name;
+         let disambiguator = self.disambiguator;
+@@ -1179,7 +1179,7 @@ fn fmt(&self, fmt: &mut Formatter<'_>) -> fmt::Result {
+ 
+                 // When printing regions, add trailing space if necessary.
+                 let print_region = ty::tls::with(|tcx| {
+-                    tcx.sess.verbose_internals() || tcx.sess.opts.unstable_opts.identify_regions
++                    tcx.sess.verbose_internals() || (*tcx.sess.opts.unstable_opts.read_identify_regions())
+                 });
+                 let region = if print_region {
+                     let mut region = region.to_string();
+@@ -1252,7 +1252,7 @@ fn fmt(&self, fmt: &mut Formatter<'_>) -> fmt::Result {
+ 
+                     AggregateKind::Closure(def_id, args)
+                     | AggregateKind::CoroutineClosure(def_id, args) => ty::tls::with(|tcx| {
+-                        let name = if tcx.sess.opts.unstable_opts.span_free_formats {
++                        let name = if (*tcx.sess.opts.unstable_opts.read_span_free_formats()) {
+                             let args = tcx.lift(args);
+                             format!("{{closure@{}}}", tcx.def_path_str_with_args(def_id, args),)
+                         } else {
+@@ -1724,7 +1724,7 @@ fn fmt(&self, w: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+             // We are done.
+             return write!(w, " {{}}");
+         }
+-        if tcx.sess.opts.unstable_opts.dump_mir_exclude_alloc_bytes {
++        if (*tcx.sess.opts.unstable_opts.read_dump_mir_exclude_alloc_bytes()) {
+             return write!(w, " {{ .. }}");
+         }
+         // Write allocation bytes.
+diff --git a/compiler/rustc_middle/src/mono.rs b/compiler/rustc_middle/src/mono.rs
+index cf567fa1c..82b2c8ef3 100644
+--- a/compiler/rustc_middle/src/mono.rs
++++ b/compiler/rustc_middle/src/mono.rs
+@@ -568,7 +568,7 @@ fn item_sort_key<'tcx>(tcx: TyCtxt<'tcx>, item: MonoItem<'tcx>) -> ItemSortKey<'
+         }
+ 
+         let mut items: Vec<_> = self.items().iter().map(|(&i, &data)| (i, data)).collect();
+-        if !tcx.sess.opts.unstable_opts.codegen_source_order {
++        if !(*tcx.sess.opts.unstable_opts.read_codegen_source_order()) {
+             // In this case, we do not need to keep the items in any specific order, as the input
+             // is already deterministic.
+             //
+diff --git a/compiler/rustc_middle/src/queries.rs b/compiler/rustc_middle/src/queries.rs
+index d9d618519..b9c94ce6b 100644
+--- a/compiler/rustc_middle/src/queries.rs
++++ b/compiler/rustc_middle/src/queries.rs
+@@ -190,6 +190,15 @@ fn describe_as_module(def_id: impl Into<LocalDefId>, tcx: TyCtxt<'_>) -> String
+         desc { "get the value of an environment variable" }
+     }
+ 
++    /// A fingerprint of every local source file's name, length and contents. Metadata
++    /// encodes all three in its source map, so reusing metadata from the incremental
++    /// cache has to depend on them; nothing else that metadata reads does.
++    query local_source_files_fingerprint(_: ()) -> Svh {
++        // The source map is global state
++        eval_always
++        desc { "fingerprinting the local source files" }
++    }
++
+     query resolutions(_: ()) -> &'tcx ResolverGlobalCtxt {
+         desc { "getting the resolver outputs" }
+     }
+diff --git a/compiler/rustc_middle/src/query/on_disk_cache.rs b/compiler/rustc_middle/src/query/on_disk_cache.rs
+index 956c59012..957ddcb20 100644
+--- a/compiler/rustc_middle/src/query/on_disk_cache.rs
++++ b/compiler/rustc_middle/src/query/on_disk_cache.rs
+@@ -756,6 +756,51 @@ pub struct CacheEncoder<'tcx> {
+     side_effects_index: Vec<(SerializedDepNodeIndex, AbsoluteBytePos)>,
+ }
+ 
++/// For testing incremental compilation (`RUSTC_VERIFY_REUSE`): `value` as the cache would
++/// encode it, alone, in a fresh encoder, so that two values can be compared by the bytes a later
++/// session would read, and the allocations it refers to in the order it first refers to them.
++/// `path` is a scratch file.
++pub fn encode_alone<'tcx, V: Encodable<CacheEncoder<'tcx>>>(
++    tcx: TyCtxt<'tcx>,
++    path: &std::path::Path,
++    value: &V,
++) -> (Vec<u8>, Vec<interpret::AllocId>) {
++    let file_to_file_index = tcx
++        .sess
++        .source_map()
++        .files()
++        .iter()
++        .enumerate()
++        .map(|(index, file)| (&raw const **file, SourceFileIndex(index as u32)))
++        .collect();
++    let Ok(file) = FileEncoder::new(path) else { return Default::default() };
++    let mut encoder = CacheEncoder {
++        tcx,
++        encoder: file,
++        type_shorthands: Default::default(),
++        predicate_shorthands: Default::default(),
++        interpret_allocs: Default::default(),
++        caching_source_map_view: CachingSourceMapView::new(tcx.sess.source_map()),
++        file_to_file_index,
++        hygiene_context: Default::default(),
++        symbol_index_table: Default::default(),
++        source_span_cache: Default::default(),
++        query_values_index: Default::default(),
++        side_effects_index: Default::default(),
++    };
++    value.encode(&mut encoder);
++    // The allocations it refers to, as `serialize` encodes them, so that their contents are
++    // compared too.
++    let mut n = 0;
++    while n < encoder.interpret_allocs.len() {
++        let id = encoder.interpret_allocs[n];
++        interpret::specialized_encode_alloc_id(&mut encoder, tcx, id);
++        n += 1;
++    }
++    let _ = encoder.encoder.finish();
++    (std::fs::read(path).unwrap_or_default(), encoder.interpret_allocs.into_iter().collect())
++}
++
+ impl<'tcx> fmt::Debug for CacheEncoder<'tcx> {
+     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+         // Add more details here if/when necessary.
+diff --git a/compiler/rustc_middle/src/ty/context.rs b/compiler/rustc_middle/src/ty/context.rs
+index aa7fe0872..e56a7d587 100644
+--- a/compiler/rustc_middle/src/ty/context.rs
++++ b/compiler/rustc_middle/src/ty/context.rs
+@@ -1155,7 +1155,7 @@ pub fn needs_hir_hash(self) -> bool {
+             || self.sess.opts.incremental.is_some()
+             || self.needs_metadata()
+             || self.sess.instrument_coverage()
+-            || self.sess.opts.unstable_opts.metrics_dir.is_some()
++            || (*self.sess.opts.unstable_opts.read_metrics_dir()).is_some()
+     }
+ 
+     /// Whether the combined per-owner HIR hash (`OwnerInfo::opt_hash`, which folds `parenting`,
+@@ -2805,7 +2805,7 @@ pub fn is_const_trait_impl(self, def_id: DefId) -> bool {
+     }
+ 
+     pub fn is_sdylib_interface_build(self) -> bool {
+-        self.sess.opts.unstable_opts.build_sdylib_interface
++        (*self.sess.opts.unstable_opts.read_build_sdylib_interface())
+     }
+ 
+     pub fn intrinsic(self, def_id: impl IntoQueryKey<DefId>) -> Option<ty::IntrinsicDef> {
+diff --git a/compiler/rustc_middle/src/ty/error.rs b/compiler/rustc_middle/src/ty/error.rs
+index fb4e30b16..c6a883286 100644
+--- a/compiler/rustc_middle/src/ty/error.rs
++++ b/compiler/rustc_middle/src/ty/error.rs
+@@ -286,7 +286,7 @@ pub fn short_string_namespace<T>(
+         let regular = FmtPrinter::print_string(self, namespace, |p| t.print(p))
+             .expect("could not write to `String`");
+ 
+-        if !self.sess.opts.unstable_opts.write_long_types_to_disk || self.sess.opts.verbose {
++        if !(*self.sess.opts.unstable_opts.read_write_long_types_to_disk()) || self.sess.opts.verbose {
+             return regular;
+         }
+ 
+diff --git a/compiler/rustc_middle/src/ty/generics.rs b/compiler/rustc_middle/src/ty/generics.rs
+index 353ac74bd..5c52883cf 100644
+--- a/compiler/rustc_middle/src/ty/generics.rs
++++ b/compiler/rustc_middle/src/ty/generics.rs
+@@ -1,7 +1,7 @@
+ use std::ops::ControlFlow;
+ 
+ use rustc_ast as ast;
+-use rustc_data_structures::fx::FxHashMap;
++use rustc_data_structures::fx::FxIndexMap;
+ use rustc_hir::def_id::DefId;
+ use rustc_macros::{StableHash, TyDecodable, TyEncodable};
+ use rustc_span::{Span, Symbol, bug, kw};
+@@ -124,7 +124,7 @@ pub struct Generics {
+ 
+     /// Reverse map to the `index` field of each `GenericParamDef`.
+     #[stable_hash(ignore)]
+-    pub param_def_id_to_index: FxHashMap<DefId, u32>,
++    pub param_def_id_to_index: FxIndexMap<DefId, u32>,
+ 
+     pub has_self: bool,
+     pub has_late_bound_regions: Option<Span>,
+@@ -132,8 +132,6 @@ pub struct Generics {
+ 
+ impl std::fmt::Debug for Generics {
+     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+-        // ironically, we get this warning because of what we're trying to fix.
+-        #[expect(rustc::potential_query_instability)]
+         let mut stabilized_hashmap = self.param_def_id_to_index.iter().collect::<Vec<_>>();
+         stabilized_hashmap.sort_by_key(|(_, v)| **v);
+         f.debug_struct("Generics")
+diff --git a/compiler/rustc_middle/src/ty/print/pretty.rs b/compiler/rustc_middle/src/ty/print/pretty.rs
+index cafe93c59..5da0ec74c 100644
+--- a/compiler/rustc_middle/src/ty/print/pretty.rs
++++ b/compiler/rustc_middle/src/ty/print/pretty.rs
+@@ -453,7 +453,7 @@ fn try_print_trimmed_def_path(&mut self, def_id: DefId) -> Result<bool, PrintErr
+         if with_forced_trimmed_paths() && self.force_print_trimmed_def_path(def_id)? {
+             return Ok(true);
+         }
+-        if self.tcx().sess.opts.unstable_opts.trim_diagnostic_paths
++        if (*self.tcx().sess.opts.unstable_opts.read_trim_diagnostic_paths())
+             && self.tcx().sess.opts.trimmed_def_paths
+             && !with_no_trimmed_paths()
+             && !with_crate_prefix()
+@@ -721,7 +721,7 @@ fn pretty_print_closure_inner(
+     ) -> Result<(), PrintError> {
+         if self.should_truncate() {
+             write!(self, "@...")
+-        } else if self.tcx().sess.opts.unstable_opts.span_free_formats {
++        } else if (*self.tcx().sess.opts.unstable_opts.read_span_free_formats()) {
+             write!(self, "@")?;
+             self.print_def_path(did, args)
+         } else if let Some(did) = did.as_local() {
+@@ -2585,7 +2585,7 @@ fn should_print_optional_region(&self, region: ty::Region<'tcx>) -> bool {
+             return false;
+         }
+ 
+-        let identify_regions = self.tcx.sess.opts.unstable_opts.identify_regions;
++        let identify_regions = (*self.tcx.sess.opts.unstable_opts.read_identify_regions());
+ 
+         match region.kind() {
+             ty::ReEarlyParam(ref data) => data.is_named(),
+@@ -2648,7 +2648,7 @@ pub fn pretty_print_region(&mut self, region: ty::Region<'tcx>) -> Result<(), fm
+             return Ok(());
+         }
+ 
+-        let identify_regions = self.tcx.sess.opts.unstable_opts.identify_regions;
++        let identify_regions = (*self.tcx.sess.opts.unstable_opts.read_identify_regions());
+ 
+         // These printouts are concise. They do not contain all the information
+         // the user might want to diagnose an error, but there is basically no way
+diff --git a/compiler/rustc_mir_build/src/check_unsafety.rs b/compiler/rustc_mir_build/src/check_unsafety.rs
+index e83c3560a..134b4f41d 100644
+--- a/compiler/rustc_mir_build/src/check_unsafety.rs
++++ b/compiler/rustc_mir_build/src/check_unsafety.rs
+@@ -182,7 +182,7 @@ fn visit_inner_body(&mut self, def: LocalDefId) {
+         if let Ok((inner_thir, expr)) = self.tcx.thir_body(def) {
+             // Run all other queries that depend on THIR.
+             self.tcx.ensure_done().mir_built(def);
+-            let inner_thir = if self.tcx.sess.opts.unstable_opts.no_steal_thir {
++            let inner_thir = if (*self.tcx.sess.opts.unstable_opts.read_no_steal_thir()) {
+                 &inner_thir.borrow()
+             } else {
+                 // We don't have other use for the THIR. Steal it to reduce memory usage.
+@@ -1061,7 +1061,7 @@ pub(crate) fn check_unsafety(tcx: TyCtxt<'_>, def: LocalDefId) {
+     let Ok((thir, expr)) = tcx.thir_body(def) else { return };
+     // Runs all other queries that depend on THIR.
+     tcx.ensure_done().mir_built(def);
+-    let thir = if tcx.sess.opts.unstable_opts.no_steal_thir {
++    let thir = if (*tcx.sess.opts.unstable_opts.read_no_steal_thir()) {
+         &thir.borrow()
+     } else {
+         // We don't have other use for the THIR. Steal it to reduce memory usage.
+diff --git a/compiler/rustc_mir_dataflow/src/framework/graphviz.rs b/compiler/rustc_mir_dataflow/src/framework/graphviz.rs
+index b1e4bbe98..dc7407ce0 100644
+--- a/compiler/rustc_mir_dataflow/src/framework/graphviz.rs
++++ b/compiler/rustc_mir_dataflow/src/framework/graphviz.rs
+@@ -64,8 +64,8 @@ pub(super) fn write_graphviz_results<'tcx, A>(
+ 
+     let graphviz = Formatter::new(body, results, style);
+     let mut render_opts =
+-        vec![dot::RenderOption::Fontname(tcx.sess.opts.unstable_opts.graphviz_font.clone())];
+-    if tcx.sess.opts.unstable_opts.graphviz_dark_mode {
++        vec![dot::RenderOption::Fontname((*tcx.sess.opts.unstable_opts.read_graphviz_font()).clone())];
++    if (*tcx.sess.opts.unstable_opts.read_graphviz_dark_mode()) {
+         render_opts.push(dot::RenderOption::DarkTheme);
+     }
+     with_no_trimmed_paths!(dot::render_opts(&graphviz, &mut buf, &render_opts))?;
+diff --git a/compiler/rustc_mir_dataflow/src/framework/mod.rs b/compiler/rustc_mir_dataflow/src/framework/mod.rs
+index 8bb5e7458..a795ee8cb 100644
+--- a/compiler/rustc_mir_dataflow/src/framework/mod.rs
++++ b/compiler/rustc_mir_dataflow/src/framework/mod.rs
+@@ -383,7 +383,7 @@ struct BasicBlockRank {}
+ 
+         let results = Results { analysis: self, entry_states };
+ 
+-        if tcx.sess.opts.unstable_opts.dump_mir_dataflow {
++        if (*tcx.sess.opts.unstable_opts.read_dump_mir_dataflow()) {
+             let res = write_graphviz_results(tcx, body, &results, pass_name);
+             if let Err(e) = res {
+                 error!("Failed to write graphviz dataflow results: {}", e);
+diff --git a/compiler/rustc_mir_transform/src/coroutine/mod.rs b/compiler/rustc_mir_transform/src/coroutine/mod.rs
+index 1e63dca78..e42069318 100644
+--- a/compiler/rustc_mir_transform/src/coroutine/mod.rs
++++ b/compiler/rustc_mir_transform/src/coroutine/mod.rs
+@@ -1106,7 +1106,7 @@ fn run_pass(&self, tcx: TyCtxt<'tcx>, body: &mut Body<'tcx>) {
+         let liveness_info =
+             locals_live_across_suspend_points(tcx, body, &always_live_locals, movable);
+ 
+-        if tcx.sess.opts.unstable_opts.validate_mir {
++        if (*tcx.sess.opts.unstable_opts.read_validate_mir()) {
+             let mut vis = EnsureCoroutineFieldAssignmentsNeverAlias {
+                 assigned_local: None,
+                 saved_locals: &liveness_info.saved_locals,
+diff --git a/compiler/rustc_mir_transform/src/pass_manager.rs b/compiler/rustc_mir_transform/src/pass_manager.rs
+index f3f65a070..8ecc26910 100644
+--- a/compiler/rustc_mir_transform/src/pass_manager.rs
++++ b/compiler/rustc_mir_transform/src/pass_manager.rs
+@@ -321,8 +321,8 @@ fn run_passes_inner<'tcx>(
+     let prof_arg = tcx.sess.prof.enabled().then(|| format!("{:?}", body.source.def_id()));
+ 
+     if !body.should_skip() {
+-        let validate = validate_each & tcx.sess.opts.unstable_opts.validate_mir;
+-        let lint = tcx.sess.opts.unstable_opts.lint_mir;
++        let validate = validate_each & (*tcx.sess.opts.unstable_opts.read_validate_mir());
++        let lint = (*tcx.sess.opts.unstable_opts.read_lint_mir());
+ 
+         let ctx = PassCtx::for_body(tcx, body.source.def_id());
+ 
+@@ -394,9 +394,9 @@ fn run_passes_inner<'tcx>(
+         dump_mir_for_phase_change(tcx, body);
+ 
+         let validate =
+-            (validate_each & tcx.sess.opts.unstable_opts.validate_mir & !body.should_skip())
++            (validate_each & (*tcx.sess.opts.unstable_opts.read_validate_mir()) & !body.should_skip())
+                 || new_phase == MirPhase::Runtime(RuntimePhase::Optimized);
+-        let lint = tcx.sess.opts.unstable_opts.lint_mir & !body.should_skip();
++        let lint = (*tcx.sess.opts.unstable_opts.read_lint_mir()) & !body.should_skip();
+         if validate {
+             validate_body(tcx, body, format!("after phase change to {}", new_phase.name()));
+         }
+diff --git a/compiler/rustc_mir_transform/src/validate.rs b/compiler/rustc_mir_transform/src/validate.rs
+index 28a508bde..a456c9d50 100644
+--- a/compiler/rustc_mir_transform/src/validate.rs
++++ b/compiler/rustc_mir_transform/src/validate.rs
+@@ -433,7 +433,7 @@ fn visit_terminator(&mut self, terminator: &Terminator<'tcx>, location: Location
+ 
+                         // Call arguments are moved by reference, so they must be plain locals
+                         // or the contents of a box; other moved places violate MIR invariants.
+-                        if self.tcx.sess.opts.unstable_opts.validate_mir
++                        if (*self.tcx.sess.opts.unstable_opts.read_validate_mir())
+                             && self.body.phase < MirPhase::Runtime(RuntimePhase::Initial)
+                         {
+                             let is_plain_local = place.projection.is_empty();
+@@ -648,7 +648,7 @@ fn predicate_must_hold_modulo_regions(
+ impl<'a, 'tcx> Visitor<'tcx> for TypeChecker<'a, 'tcx> {
+     fn visit_operand(&mut self, operand: &Operand<'tcx>, location: Location) {
+         // This check is somewhat expensive, so only run it when -Zvalidate-mir is passed.
+-        if self.tcx.sess.opts.unstable_opts.validate_mir
++        if (*self.tcx.sess.opts.unstable_opts.read_validate_mir())
+             && self.body.phase < MirPhase::Runtime(RuntimePhase::Initial)
+         {
+             // `Operand::Copy` is only supposed to be used with `Copy` types.
+diff --git a/compiler/rustc_monomorphize/src/collector.rs b/compiler/rustc_monomorphize/src/collector.rs
+index bfe3ba91b..7b204f959 100644
+--- a/compiler/rustc_monomorphize/src/collector.rs
++++ b/compiler/rustc_monomorphize/src/collector.rs
+@@ -1223,7 +1223,7 @@ fn create_fn_mono_item<'tcx>(
+     source: Span,
+ ) -> Spanned<MonoItem<'tcx>> {
+     let def_id = instance.def_id();
+-    if tcx.sess.opts.unstable_opts.profile_closures
++    if (*tcx.sess.opts.unstable_opts.read_profile_closures())
+         && def_id.is_local()
+         && tcx.is_closure_like(def_id)
+     {
+diff --git a/compiler/rustc_monomorphize/src/partitioning.rs b/compiler/rustc_monomorphize/src/partitioning.rs
+index 16df895b0..75376ac08 100644
+--- a/compiler/rustc_monomorphize/src/partitioning.rs
++++ b/compiler/rustc_monomorphize/src/partitioning.rs
+@@ -1221,7 +1221,7 @@ fn collect_and_partition_mono_items(tcx: TyCtxt<'_>, (): ()) -> MonoItemPartitio
+         tcx.dcx().emit_fatal(CouldntDumpMonoStats { error: err.to_string() });
+     }
+ 
+-    if tcx.sess.opts.unstable_opts.print_mono_items {
++    if (*tcx.sess.opts.unstable_opts.read_print_mono_items()) {
+         let mut item_to_cgus: UnordMap<_, Vec<_>> = Default::default();
+ 
+         for cgu in codegen_units {
+@@ -1287,7 +1287,7 @@ fn dump_mono_items_stats<'tcx>(
+         Path::new(".")
+     };
+ 
+-    let format = tcx.sess.opts.unstable_opts.dump_mono_stats_format;
++    let format = (*tcx.sess.opts.unstable_opts.read_dump_mono_stats_format());
+     let ext = format.extension();
+     let filename = format!("{crate_name}.mono_items.{ext}");
+     let output_path = output_directory.join(&filename);
+diff --git a/compiler/rustc_query_impl/src/execution.rs b/compiler/rustc_query_impl/src/execution.rs
+index ca60614ba..e3bf3285f 100644
+--- a/compiler/rustc_query_impl/src/execution.rs
++++ b/compiler/rustc_query_impl/src/execution.rs
+@@ -543,7 +543,7 @@ fn load_from_disk_or_invoke_provider_green<'tcx, C: QueryCache>(
+     };
+     let (value, verify) = match try_value {
+         Some(value) => {
+-            if std::intrinsics::unlikely(tcx.sess.opts.unstable_opts.query_dep_graph) {
++            if std::intrinsics::unlikely((*tcx.sess.opts.unstable_opts.read_query_dep_graph())) {
+                 dep_graph_data.mark_debug_loaded_from_disk(*dep_node)
+             }
+ 
+diff --git a/compiler/rustc_query_impl/src/incremental.rs b/compiler/rustc_query_impl/src/incremental.rs
+index a030fe71e..0cfa01b39 100644
+--- a/compiler/rustc_query_impl/src/incremental.rs
++++ b/compiler/rustc_query_impl/src/incremental.rs
+@@ -1,17 +1,20 @@
+ use rustc_data_structures::fingerprint::{Fingerprint, PackedFingerprint};
++use rustc_data_structures::fx::FxHashMap;
+ use rustc_data_structures::unord::UnordMap;
+ #[expect(unused_imports, reason = "used by doc comments")]
+ use rustc_middle::dep_graph::DepKindVTable;
+ use rustc_middle::dep_graph::{
+     DepGraphData, DepNode, DepNodeIndex, DepNodeKey, SerializedDepNodeIndex,
+ };
++use rustc_middle::mir::interpret::AllocId;
+ use rustc_middle::query::erase::{Erasable, Erased};
+-use rustc_middle::query::on_disk_cache::{CacheDecoder, CacheEncoder};
+-use rustc_middle::query::{QueryCache, QueryState, QueryVTable, erase};
++use rustc_middle::query::on_disk_cache::{self, CacheDecoder, CacheEncoder};
++use rustc_middle::query::{QueryCache, QueryKey, QueryState, QueryVTable, erase};
+ use rustc_middle::ty::TyCtxt;
+ use rustc_middle::verify_ich::incremental_verify_ich;
+ use rustc_serialize::{Decodable, Encodable};
+ use rustc_span::bug;
++use rustc_span::def_id::LocalDefId;
+ 
+ use crate::query_vtables::for_each_query_vtable;
+ 
+@@ -25,6 +28,319 @@ pub(crate) fn encode_query_values<'tcx>(tcx: TyCtxt<'tcx>, encoder: &mut CacheEn
+     });
+ }
+ 
++/// Shadow verification, for testing incremental compilation, under `RUSTC_VERIFY_REUSE`: at
++/// the end of the session, before the dependency graph and the cache are saved, compute every
++/// green value of a cached query again with its provider, outside dependency tracking, and
++/// compare: by stable hash; by `Debug` text, which also sees fields the stable hash ignores;
++/// and by the bytes the cache would encode, which also see the order of hash maps. A green
++/// value was reused from the previous session; a difference means it was stale (its
++/// computation read something that is not tracked), or that it did not survive the round trip
++/// through the cache.
++///
++/// It runs here because no query is executing, so recomputing cannot cycle back into the
++/// query being checked, and the previous session's cache is still readable. A difference
++/// prints a line starting `rustc-verify-reuse:`. `RUSTC_VERIFY_REUSE_SKIP` lists more queries, comma-separated, not to recompute.
++pub(crate) fn verify_reused_values<'tcx>(tcx: TyCtxt<'tcx>) {
++    if std::env::var_os("RUSTC_VERIFY_REUSE").is_none() {
++        return;
++    }
++    // Load every green value that was not used this session, so it is checked too.
++    tcx.dep_graph.exec_cache_promotions(tcx);
++    // Printing values must not use trimmed paths, which assume a diagnostic is emitted.
++    let mut allocs = Allocs::default();
++    rustc_middle::ty::print::with_no_trimmed_paths!(for_each_query_vtable!(
++        CACHE_ON_DISK,
++        tcx,
++        |query| verify_reused_values_inner(tcx, query, &mut allocs)
++    ));
++}
++
++/// `Debug` text in a form two equal values print the same: the contents of `OnceLock`s are
++/// removed, since they are caches filled on demand and a value that has been used shows more
++/// than a fresh one; the elements of `UnordMap`s and `UnordSet`s are sorted, since their
++/// order is unspecified; and the numbers of `AllocId`s (`alloc12`) are removed, since a
++/// decoded allocation and a computed one get different ones. (The encoding comparison sees
++/// the allocations' contents.)
++fn normalized(text: &str) -> String {
++    normalized_inner(&without_alloc_ids(text))
++}
++
++fn without_alloc_ids(text: &str) -> String {
++    let mut out = String::with_capacity(text.len());
++    let mut rest = text;
++    while let Some(at) = rest.find("alloc") {
++        let after = &rest[at + "alloc".len()..];
++        let digits = after.len() - after.trim_start_matches(|c: char| c.is_ascii_digit()).len();
++        let word = rest[..at].chars().next_back().is_some_and(|c| c.is_alphanumeric() || c == '_');
++        out.push_str(&rest[..at + "alloc".len()]);
++        if digits > 0 && !word {
++            out.push('_');
++        } else {
++            out.push_str(&after[..digits]);
++        }
++        rest = &after[digits..];
++    }
++    out.push_str(rest);
++    out
++}
++
++fn normalized_inner(text: &str) -> String {
++    // The index of the bracket closing the one just before `text[from..]`.
++    fn closing(text: &str, from: usize) -> usize {
++        let mut depth = 1;
++        for (i, c) in text[from..].char_indices() {
++            match c {
++                '(' | '[' | '{' => depth += 1,
++                ')' | ']' | '}' => depth -= 1,
++                _ => {}
++            }
++            if depth == 0 {
++                return from + i;
++            }
++        }
++        text.len()
++    }
++    // `text` split at top-level `, `.
++    fn elements(text: &str) -> Vec<&str> {
++        let (mut out, mut depth, mut start) = (Vec::new(), 0, 0);
++        let bytes = text.as_bytes();
++        for (i, c) in text.char_indices() {
++            match c {
++                '(' | '[' | '{' => depth += 1,
++                ')' | ']' | '}' => depth -= 1,
++                ',' if depth == 0 && bytes.get(i + 1) == Some(&b' ') => {
++                    out.push(&text[start..i]);
++                    start = i + 2;
++                }
++                _ => {}
++            }
++        }
++        if start < text.len() {
++            out.push(&text[start..]);
++        }
++        out
++    }
++    let mut out = String::with_capacity(text.len());
++    let mut rest = text;
++    loop {
++        let cache = rest.find("OnceLock(").map(|at| (at, "OnceLock(", false));
++        let unord = ["UnordMap { inner: {", "UnordSet { inner: {"]
++            .into_iter()
++            .filter_map(|m| rest.find(m).map(|at| (at, m, true)))
++            .min();
++        let Some((at, marker, sort)) = [cache, unord].into_iter().flatten().min() else {
++            break;
++        };
++        let open = at + marker.len();
++        let end = closing(rest, open);
++        out.push_str(&rest[..open]);
++        if sort {
++            let mut items: Vec<String> =
++                elements(&rest[open..end]).into_iter().map(normalized_inner).collect();
++            items.sort();
++            out.push_str(&items.join(", "));
++        } else {
++            out.push('_');
++        }
++        rest = &rest[end..];
++    }
++    out.push_str(rest);
++    out
++}
++
++/// Which allocations values share. For every value of the queries in `SHARING`, each
++/// allocation a fresh computation refers to is mapped to the one the value in use refers to in
++/// the same place (a value computed this session maps its allocations to themselves). Two
++/// different allocations for one fresh one mean the reused value does not share an allocation
++/// that a clean session would share: the round trip through the cache lost a deduplication.
++#[derive(Default)]
++struct Allocs {
++    /// Fresh allocation → the allocation in use, and where it was first seen.
++    seen: FxHashMap<AllocId, (AllocId, String)>,
++}
++
++impl Allocs {
++    fn check(&mut self, fresh: AllocId, used: AllocId, here: impl Fn() -> String) {
++        match self.seen.get(&fresh) {
++            None => {
++                self.seen.insert(fresh, (used, here()));
++            }
++            Some((other_used, other)) if *other_used != used => eprintln!(
++                "rustc-verify-reuse: allocation shared differently: {} uses {used:?} where a fresh computation uses {fresh:?}, but {other} uses {other_used:?} for it",
++                here(),
++            ),
++            Some(_) => {}
++        }
++    }
++}
++
++/// Queries whose values refer to allocations that may be shared with other values.
++const SHARING: &[&str] = &[
++    "eval_static_initializer",
++    "eval_to_allocation_raw",
++    "eval_to_const_value_raw",
++    "mir_for_ctfe",
++    "optimized_mir",
++    "promoted_mir",
++    "trivial_const",
++];
++
++/// Queries whose providers read the MIR or THIR of the definition they are given, which is
++/// stolen once it has been used: they are recomputed only if none of it has been stolen.
++const READING_BODIES: &[&str] = &[
++    "check_liveness",
++    "check_match",
++    "check_tail_calls",
++    "check_unsafety",
++    "has_ffi_unwind_calls",
++    "mir_const_qualif",
++    "mir_coroutine_witnesses",
++    "mir_for_ctfe",
++    "mir_inliner_callees",
++    "optimized_mir",
++    "promoted_mir",
++    "thir_abstract_const",
++    "trivial_const",
++];
++
++/// Queries never recomputed: `mir_borrowck` reads the MIR of nested bodies too, and
++/// `coroutine_by_move_body_def_id` makes a definition.
++const NOT_RECOMPUTED: &[&str] = &["coroutine_by_move_body_def_id", "mir_borrowck"];
++
++/// Whether any MIR or THIR of `def` computed this session has been stolen.
++// Only decides whether to check a value, outside dependency tracking.
++#[allow(rustc::untracked_query_information)]
++fn body_stolen<'tcx>(tcx: TyCtxt<'tcx>, def: LocalDefId) -> bool {
++    use rustc_middle::queries::{
++        mir_built, mir_drops_elaborated_and_const_checked as mir_elaborated, mir_promoted,
++        thir_body,
++    };
++    let vtables = &tcx.query_system.query_vtables;
++    let built = vtables.mir_built.cache.lookup(&def).is_some_and(|(body, _)| {
++        erase::restore_val::<mir_built::Value<'tcx>>(body).is_stolen()
++    });
++    let elaborated = vtables.mir_drops_elaborated_and_const_checked.cache.lookup(&def).is_some_and(
++        |(body, _)| erase::restore_val::<mir_elaborated::Value<'tcx>>(body).is_stolen(),
++    );
++    let promoted = vtables.mir_promoted.cache.lookup(&def).is_some_and(|(value, _)| {
++        let (body, promoted) = erase::restore_val::<mir_promoted::Value<'tcx>>(value);
++        body.is_stolen() || promoted.is_stolen()
++    });
++    let thir = vtables.thir_body.cache.lookup(&def).is_some_and(|(value, _)| {
++        erase::restore_val::<thir_body::Value<'tcx>>(value).is_ok_and(|(thir, _)| thir.is_stolen())
++    });
++    built || elaborated || promoted || thir
++}
++
++fn verify_reused_values_inner<'tcx, C, V>(
++    tcx: TyCtxt<'tcx>,
++    query: &'tcx QueryVTable<'tcx, C>,
++    allocs: &mut Allocs,
++) where
++    C: QueryCache<Value = Erased<V>>,
++    V: Erasable + Encodable<CacheEncoder<'tcx>>,
++{
++    if NOT_RECOMPUTED.contains(&query.name) {
++        return;
++    }
++    let reads_body = READING_BODIES.contains(&query.name);
++    if let Some(skip) = std::env::var_os("RUSTC_VERIFY_REUSE_SKIP")
++        && skip.to_string_lossy().split(',').any(|name| name == query.name)
++    {
++        return;
++    }
++    let mut entries = Vec::new();
++    query.cache.for_each(&mut |key, value, _| entries.push((*key, *value)));
++    let hash = |value: &C::Value| {
++        query.hash_value_fn.map_or(Fingerprint::ZERO, |f| {
++            tcx.with_stable_hashing_context(|mut hcx| f(&mut hcx, value))
++        })
++    };
++    let scratch = std::env::temp_dir().join(format!("rustc-verify-reuse-{}", std::process::id()));
++    let mut checked = 0;
++    for (key, value) in entries {
++        if !query.will_cache_on_disk_for_key(key) {
++            continue;
++        }
++        let sharing = SHARING.contains(&query.name);
++        let dep_node = DepNode::construct(tcx, query.dep_kind, &key);
++        if !tcx.dep_graph.is_green(&dep_node) {
++            if sharing {
++                let (_, ids) =
++                    on_disk_cache::encode_alone(tcx, &scratch, &erase::restore_val::<V>(value));
++                let here = || format!("query `{}` for {:?}, computed this session", query.name, key);
++                for id in ids {
++                    allocs.check(id, id, here);
++                }
++            }
++            continue;
++        }
++        // A feedable query's value for a definition the compiler made up is set by whatever
++        // made it, and the provider may not accept the key: the associated type for an
++        // `impl Trait` in a trait (a synthetic HIR node), an elided lifetime that lowering
++        // adds as a parameter, or the type of a const argument, set when it is lowered.
++        if query.feedable
++            && key.key_as_def_id().and_then(|id| id.as_local()).is_some_and(|id| {
++                matches!(
++                    tcx.def_kind(id),
++                    rustc_hir::def::DefKind::LifetimeParam | rustc_hir::def::DefKind::AnonConst
++                ) || matches!(tcx.hir_node_by_def_id(id), rustc_hir::Node::Synthetic)
++            })
++        {
++            continue;
++        }
++        if reads_body
++            && key
++                .key_as_def_id()
++                .and_then(|id| id.as_local())
++                .is_none_or(|id| body_stolen(tcx, id) || body_stolen(tcx, tcx.typeck_root_def_id_local(id)))
++        {
++            continue;
++        }
++        checked += 1;
++        let fresh = tcx.dep_graph.with_ignore(|| (query.invoke_provider_fn)(tcx, key));
++        let text = (query.format_value)(&value);
++        let loaded = normalized(&text);
++        let computed = normalized(&(query.format_value)(&fresh));
++        let same_hash = hash(&value) == hash(&fresh);
++        let same_text = loaded == computed;
++        // `UnordMap`s and `UnordSet`s encode in their iteration order, which differs between a
++        // decoded value and a computed one and which nothing may observe, so the encoding of a
++        // value containing one is not compared.
++        let (loaded_bytes, loaded_ids) =
++            on_disk_cache::encode_alone(tcx, &scratch, &erase::restore_val::<V>(value));
++        let (fresh_bytes, fresh_ids) =
++            on_disk_cache::encode_alone(tcx, &scratch, &erase::restore_val::<V>(fresh));
++        let same_bytes =
++            text.contains("UnordMap {") || text.contains("UnordSet {") || loaded_bytes == fresh_bytes;
++        if sharing && loaded_ids.len() == fresh_ids.len() {
++            let here = || format!("query `{}` for {:?}, green", query.name, key);
++            for (fresh_id, loaded_id) in fresh_ids.into_iter().zip(loaded_ids) {
++                allocs.check(fresh_id, loaded_id, here);
++            }
++        }
++        if !(same_hash && same_text && same_bytes) {
++            let short = |s: &str| s.chars().take(2000).collect::<String>();
++            let what = [(same_hash, "stable hash"), (same_text, "Debug text"), (same_bytes, "encoding")]
++                .into_iter()
++                .filter_map(|(same, what)| (!same).then_some(what))
++                .collect::<Vec<_>>()
++                .join(", ");
++            eprintln!(
++                "rustc-verify-reuse: query `{}` for {:?}, green, differs from a fresh computation ({what})\n  reused: {}\n  fresh:  {}",
++                query.name,
++                key,
++                short(&loaded),
++                short(&computed),
++            );
++        }
++    }
++    let _ = std::fs::remove_file(&scratch);
++    if checked > 0 && std::env::var_os("RUSTC_VERIFY_REUSE").is_some_and(|v| v == "verbose") {
++        eprintln!("rustc-verify-reuse-checked: {} {checked}", query.name);
++    }
++}
++
+ fn encode_query_values_inner<'tcx, C, V>(
+     tcx: TyCtxt<'tcx>,
+     query: &'tcx QueryVTable<'tcx, C>,
+@@ -44,7 +360,7 @@ fn encode_query_values_inner<'tcx, C, V>(
+ }
+ 
+ pub(crate) fn verify_query_key_hashes<'tcx>(tcx: TyCtxt<'tcx>) {
+-    if tcx.sess.opts.unstable_opts.incremental_verify_ich || cfg!(debug_assertions) {
++    if (*tcx.sess.opts.unstable_opts.read_incremental_verify_ich()) || cfg!(debug_assertions) {
+         tcx.sess.time("verify_query_key_hashes", || {
+             for_each_query_vtable!(ALL, tcx, |query| {
+                 verify_query_key_hashes_inner(query, tcx);
+@@ -99,7 +415,7 @@ pub(crate) fn should_verify_loaded_value(
+ ) -> bool {
+     let hash = Fingerprint::from(key_fingerprint).to_smaller_hash().as_u64();
+     hash % 32 == dep_graph_data.session_count() % 32
+-        || tcx.sess.opts.unstable_opts.incremental_verify_ich
++        || (*tcx.sess.opts.unstable_opts.read_incremental_verify_ich())
+ }
+ 
+ /// Inner implementation of [`DepKindVTable::promote_from_disk_fn`] for queries.
+diff --git a/compiler/rustc_query_impl/src/lib.rs b/compiler/rustc_query_impl/src/lib.rs
+index eed772cae..5eecf938d 100644
+--- a/compiler/rustc_query_impl/src/lib.rs
++++ b/compiler/rustc_query_impl/src/lib.rs
+@@ -52,4 +52,5 @@ pub fn provide(providers: &mut rustc_middle::util::Providers) {
+         self_profile::alloc_self_profile_query_strings;
+     providers.hooks.verify_query_key_hashes = incremental::verify_query_key_hashes;
+     providers.hooks.encode_query_values = incremental::encode_query_values;
++    providers.hooks.verify_reused_values = incremental::verify_reused_values;
+ }
+diff --git a/compiler/rustc_session/src/config.rs b/compiler/rustc_session/src/config.rs
+index 64cfdfd5f..7c3993f87 100644
+--- a/compiler/rustc_session/src/config.rs
++++ b/compiler/rustc_session/src/config.rs
+@@ -1528,8 +1528,8 @@ impl Options {
+     /// Returns `true` if there is a reason to build the dep graph.
+     pub fn build_dep_graph(&self) -> bool {
+         self.incremental.is_some()
+-            || self.unstable_opts.dump_dep_graph
+-            || self.unstable_opts.query_dep_graph
++            || (*self.unstable_opts.read_dump_dep_graph())
++            || (*self.unstable_opts.read_query_dep_graph())
+     }
+ 
+     pub fn file_path_mapping(&self) -> FilePathMapping {
+@@ -1542,8 +1542,8 @@ pub fn file_path_mapping(&self) -> FilePathMapping {
+ 
+     /// Returns `true` if there will be an output file generated.
+     pub fn will_create_output_file(&self) -> bool {
+-        !self.unstable_opts.parse_crate_root_only && // The file is just being parsed
+-            self.unstable_opts.ls.is_empty() // The file is just being queried
++        !(*self.unstable_opts.read_parse_crate_root_only()) && // The file is just being parsed
++            (*self.unstable_opts.read_ls()).is_empty() // The file is just being queried
+     }
+ 
+     #[inline]
+diff --git a/compiler/rustc_session/src/diagnostics.rs b/compiler/rustc_session/src/diagnostics.rs
+index e673435da..8fad9bb43 100644
+--- a/compiler/rustc_session/src/diagnostics.rs
++++ b/compiler/rustc_session/src/diagnostics.rs
+@@ -129,7 +129,7 @@ pub fn add_feature_diagnostics_for_issue(
+             // We're unlikely to stabilize something out of `rustc_attrs`
+             // without at least renaming it, so pointing out how old
+             // the compiler is will do little good.
+-        } else if sess.opts.unstable_opts.ui_testing {
++        } else if (*sess.opts.unstable_opts.read_ui_testing()) {
+             err.subdiagnostic(SuggestUpgradeCompiler::ui_testing());
+         } else if let Some(suggestion) = SuggestUpgradeCompiler::new() {
+             err.subdiagnostic(suggestion);
+@@ -168,7 +168,7 @@ pub fn feature_err_unstable_feature_bound(
+             // We're unlikely to stabilize something out of `rustc_attrs`
+             // without at least renaming it, so pointing out how old
+             // the compiler is will do little good.
+-        } else if sess.opts.unstable_opts.ui_testing {
++        } else if (*sess.opts.unstable_opts.read_ui_testing()) {
+             err.subdiagnostic(SuggestUpgradeCompiler::ui_testing());
+         } else if let Some(suggestion) = SuggestUpgradeCompiler::new() {
+             err.subdiagnostic(suggestion);
+diff --git a/compiler/rustc_session/src/lib.rs b/compiler/rustc_session/src/lib.rs
+index e3580d36e..b807713e9 100644
+--- a/compiler/rustc_session/src/lib.rs
++++ b/compiler/rustc_session/src/lib.rs
+@@ -6,6 +6,7 @@
+ #![feature(iter_intersperse)]
+ #![feature(macro_derive)]
+ #![feature(macro_metavar_expr)]
++#![feature(macro_metavar_expr_concat)]
+ #![feature(option_into_flat_iter)]
+ #![feature(rustc_attrs)]
+ // To generate CodegenOptionsTargetModifiers and UnstableOptionsTargetModifiers enums
+diff --git a/compiler/rustc_session/src/options.rs b/compiler/rustc_session/src/options.rs
+index 9a3e74c28..264c4c123 100644
+--- a/compiler/rustc_session/src/options.rs
++++ b/compiler/rustc_session/src/options.rs
+@@ -543,6 +543,26 @@ pub struct $struct_name {
+             )*
+         }
+ 
++        impl $struct_name {
++            $(
++                /// The option's value. A read of an option the dependency graph does not
++                /// track is reported, for testing incremental compilation
++                /// (`rustc_data_structures::untracked`).
++                #[inline]
++                #[track_caller]
++                #[allow(dead_code)]
++                pub fn ${concat(read_, $opt)}(&self) -> &$t {
++                    if stringify!($dep_tracking_marker) == "UNTRACKED" {
++                        rustc_data_structures::untracked::untracked_read(concat!(
++                            "the untracked option ",
++                            stringify!($opt)
++                        ));
++                    }
++                    &self.$opt
++                }
++            )*
++        }
++
+         #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Copy, Clone, Encodable, BlobDecodable)]
+         pub enum $tmod_enum {
+             $(
+diff --git a/compiler/rustc_session/src/output.rs b/compiler/rustc_session/src/output.rs
+index 4824abae6..ba42fc461 100644
+--- a/compiler/rustc_session/src/output.rs
++++ b/compiler/rustc_session/src/output.rs
+@@ -98,7 +98,7 @@ pub fn filename_for_input(
+     crate_name: Symbol,
+     outputs: &OutputFilenames,
+ ) -> OutFileName {
+-    let libname = format!("{}{}", crate_name, sess.opts.cg.extra_filename);
++    let libname = format!("{}{}", crate_name, (*sess.opts.cg.read_extra_filename()));
+ 
+     match crate_type {
+         CrateType::Rlib => {
+diff --git a/compiler/rustc_session/src/session.rs b/compiler/rustc_session/src/session.rs
+index f068aaa58..447a2d9a6 100644
+--- a/compiler/rustc_session/src/session.rs
++++ b/compiler/rustc_session/src/session.rs
+@@ -352,11 +352,11 @@ pub fn early_lto(&self) -> LtoCli {
+     }
+ 
+     pub fn print_llvm_stats(&self) -> bool {
+-        self.opts.unstable_opts.print_codegen_stats
++        (*self.opts.unstable_opts.read_print_codegen_stats())
+     }
+ 
+     pub fn print_llvm_stats_json(&self) -> Option<&String> {
+-        self.opts.unstable_opts.print_codegen_stats_json.as_ref()
++        (*self.opts.unstable_opts.read_print_codegen_stats_json()).as_ref()
+     }
+ 
+     pub fn relocation_model(&self) -> RelocModel {
+@@ -673,10 +673,10 @@ pub fn create_feature_err<'a>(&'a self, err: impl Diagnostic<'a>, feature: Symbo
+     /// Record the fact that we called `trimmed_def_paths`, and do some
+     /// checking about whether its cost was justified.
+     pub fn record_trimmed_def_paths(&self) {
+-        if self.opts.unstable_opts.print_type_sizes
+-            || self.opts.unstable_opts.query_dep_graph
+-            || self.opts.unstable_opts.dump_mir.is_some()
+-            || self.opts.unstable_opts.unpretty.is_some()
++        if (*self.opts.unstable_opts.read_print_type_sizes())
++            || (*self.opts.unstable_opts.read_query_dep_graph())
++            || (*self.opts.unstable_opts.read_dump_mir()).is_some()
++            || (*self.opts.unstable_opts.read_unpretty()).is_some()
+             || self.prof.is_args_recording_enabled()
+             || self.opts.output_types.contains_key(&OutputType::Mir)
+             || std::env::var_os("RUSTC_LOG").is_some()
+@@ -897,7 +897,7 @@ pub fn diagnostic_width(&self) -> usize {
+         let default_column_width = 140;
+         if let Some(width) = self.opts.diagnostic_width {
+             width
+-        } else if self.opts.unstable_opts.ui_testing {
++        } else if (*self.opts.unstable_opts.read_ui_testing()) {
+             default_column_width
+         } else {
+             termize::dimensions().map_or(default_column_width, |(w, _)| w)
+@@ -1070,7 +1070,7 @@ pub fn fewer_names(&self) -> bool {
+     }
+ 
+     pub fn unstable_options(&self) -> bool {
+-        self.opts.unstable_opts.unstable_options
++        (*self.opts.unstable_opts.read_unstable_options())
+     }
+ 
+     pub fn is_nightly_build(&self) -> bool {
+@@ -1280,9 +1280,9 @@ pub fn pointer_authentication_init_fini(&self) -> Option<&PointerAuthSchema> {
+ // JUSTIFICATION: part of session construction
+ #[allow(rustc::bad_opt_access)]
+ fn default_emitter(sopts: &config::Options, source_map: Arc<SourceMap>) -> Box<DynEmitter> {
+-    let macro_backtrace = sopts.unstable_opts.macro_backtrace;
+-    let track_diagnostics = sopts.unstable_opts.track_diagnostics;
+-    let terminal_url = match sopts.unstable_opts.terminal_urls {
++    let macro_backtrace = (*sopts.unstable_opts.read_macro_backtrace());
++    let track_diagnostics = (*sopts.unstable_opts.read_track_diagnostics());
++    let terminal_url = match (*sopts.unstable_opts.read_terminal_urls()) {
+         TerminalUrl::Auto => {
+             match (std::env::var("COLORTERM").as_deref(), std::env::var("TERM").as_deref()) {
+                 (Ok("truecolor"), Ok("xterm-256color"))
+@@ -1310,9 +1310,9 @@ fn default_emitter(sopts: &config::Options, source_map: Arc<SourceMap>) -> Box<D
+                     .terminal_url(terminal_url)
+                     .theme(if unicode { OutputTheme::Unicode } else { OutputTheme::Ascii })
+                     .ignored_directories_in_source_blocks(
+-                        sopts.unstable_opts.ignore_directory_in_diagnostics_source_blocks.clone(),
++                        (*sopts.unstable_opts.read_ignore_directory_in_diagnostics_source_blocks()).clone(),
+                     );
+-                Box::new(emitter.ui_testing(sopts.unstable_opts.ui_testing))
++                Box::new(emitter.ui_testing((*sopts.unstable_opts.read_ui_testing())))
+             }
+         },
+         config::ErrorOutputType::Json { pretty, json_rendered, color_config } => Box::new(
+@@ -1323,9 +1323,9 @@ fn default_emitter(sopts: &config::Options, source_map: Arc<SourceMap>) -> Box<D
+                 json_rendered,
+                 color_config,
+             )
+-            .ui_testing(sopts.unstable_opts.ui_testing)
++            .ui_testing((*sopts.unstable_opts.read_ui_testing()))
+             .ignored_directories_in_source_blocks(
+-                sopts.unstable_opts.ignore_directory_in_diagnostics_source_blocks.clone(),
++                (*sopts.unstable_opts.read_ignore_directory_in_diagnostics_source_blocks()).clone(),
+             )
+             .diagnostic_width(sopts.diagnostic_width)
+             .macro_backtrace(macro_backtrace)
+@@ -1368,7 +1368,7 @@ pub fn build_early_session(
+ 
+     let host_triple = TargetTuple::from_tuple(config::host_tuple());
+     let (host, target_warnings) =
+-        Target::search(&host_triple, sopts.sysroot.path(), sopts.unstable_opts.unstable_options)
++        Target::search(&host_triple, sopts.sysroot.path(), (*sopts.unstable_opts.read_unstable_options()))
+             .unwrap_or_else(|e| {
+                 dcx.handle().fatal(format!("Error loading host specification: {e}"))
+             });
+@@ -1398,7 +1398,7 @@ pub fn build_session(
+     let (wasm_proc_macro_target, target_warnings) = Target::search(
+         &wasm_proc_macro_tuple,
+         sopts.sysroot.path(),
+-        sopts.unstable_opts.unstable_options,
++        (*sopts.unstable_opts.read_unstable_options()),
+     )
+     .unwrap_or_else(|e| {
+         dcx.fatal(format!("Error loading wasm proc-macro target specification: {e}"))
+@@ -1414,8 +1414,8 @@ pub fn build_session(
+         let profiler = SelfProfiler::new(
+             directory,
+             sopts.crate_name.as_deref(),
+-            sopts.unstable_opts.self_profile_events.as_deref(),
+-            &sopts.unstable_opts.self_profile_counter,
++            (*sopts.unstable_opts.read_self_profile_events()).as_deref(),
++            &(*sopts.unstable_opts.read_self_profile_counter()),
+         );
+         match profiler {
+             Ok(profiler) => Some(Arc::new(profiler)),
+@@ -1438,7 +1438,7 @@ pub fn build_session(
+ 
+     let prof = SelfProfilerRef::new(
+         self_profiler,
+-        sopts.unstable_opts.time_passes.then(|| sopts.unstable_opts.time_passes_format),
++        (*sopts.unstable_opts.read_time_passes()).then(|| (*sopts.unstable_opts.read_time_passes_format())),
+     );
+ 
+     let ctfe_backtrace = Lock::new(match env::var("RUSTC_CTFE_BACKTRACE") {
+@@ -1759,7 +1759,7 @@ fn validate_commandline_args_with_session_available(sess: &Session) {
+     }
+ 
+     if !sess.target.options.supported_split_debuginfo.contains(&sess.split_debuginfo())
+-        && !sess.opts.unstable_opts.unstable_options
++        && !(*sess.opts.unstable_opts.read_unstable_options())
+     {
+         sess.dcx().emit_err(diagnostics::SplitDebugInfoUnstablePlatform {
+             debuginfo: sess.split_debuginfo(),
+@@ -1794,7 +1794,7 @@ fn validate_commandline_args_with_session_available(sess: &Session) {
+         sess.dcx().emit_err(diagnostics::InstrumentationNotSupported { us: "XRay".to_string() });
+     }
+ 
+-    if let Some(flavor) = sess.opts.cg.linker_flavor
++    if let Some(flavor) = (*sess.opts.cg.read_linker_flavor())
+         && let Some(compatible_list) = sess.target.linker_flavor.check_compatibility(flavor)
+     {
+         let flavor = flavor.desc();
+diff --git a/compiler/rustc_trait_selection/src/error_reporting/infer/mod.rs b/compiler/rustc_trait_selection/src/error_reporting/infer/mod.rs
+index b2b57e018..9d88ae348 100644
+--- a/compiler/rustc_trait_selection/src/error_reporting/infer/mod.rs
++++ b/compiler/rustc_trait_selection/src/error_reporting/infer/mod.rs
+@@ -2385,7 +2385,7 @@ fn expected_found_str_term(
+                 let exp_s = exp.content();
+                 let fnd_s = fnd.content();
+                 if !self.tcx.sess.opts.verbose
+-                    && self.tcx.sess.opts.unstable_opts.write_long_types_to_disk
++                    && (*self.tcx.sess.opts.unstable_opts.read_write_long_types_to_disk())
+                 {
+                     // We aren't explicitly asking for `--verbose` output, and we are storing long
+                     // types to disk, so we try to shorten the output.
+diff --git a/compiler/rustc_ty_utils/src/layout.rs b/compiler/rustc_ty_utils/src/layout.rs
+index 8d8e50139..bb4978b23 100644
+--- a/compiler/rustc_ty_utils/src/layout.rs
++++ b/compiler/rustc_ty_utils/src/layout.rs
+@@ -101,7 +101,7 @@ fn layout_of<'tcx>(
+ 
+     // If we are running with `-Zprint-type-sizes`, maybe record layouts
+     // for dumping later.
+-    if cx.tcx().sess.opts.unstable_opts.print_type_sizes {
++    if (*cx.tcx().sess.opts.unstable_opts.read_print_type_sizes()) {
+         record_layout_for_printing(&cx, layout);
+     }
+ 

@@ -72,6 +72,7 @@ env.update(
 )
 if not args.no_verify_reuse:
     env["RUSTC_VERIFY_REUSE"] = "1"
+    env["RUSTC_REPORT_UNTRACKED"] = "1"
 cargo = ["cargo", f"+{args.toolchain}"]
 
 
@@ -114,6 +115,7 @@ def build(target_dir):
         "secs": round(time.time() - t, 1),
         "log": log[-6000:],
         "reuse": [line[:3000] for line in log.splitlines() if line.startswith("rustc-verify-reuse:")],
+        "untracked": {line for line in log.splitlines() if line.startswith("rustc-untracked-read:")},
         "rmetas": rmetas,
         "fresh": fresh,
         "art": artifacts.collect(r.stdout, target_dir),
@@ -141,6 +143,10 @@ for i, commit in enumerate(commits):
     date = run(["git", "log", "-1", "--format=%cs", commit]).stdout.strip()
     names = members()
     inc = build(target)
+    # Reads of untracked state, each listed once in <work>/untracked.txt.
+    known = set((work / "untracked.txt").read_text().splitlines()) if (work / "untracked.txt").exists() else set()
+    with (work / "untracked.txt").open("a") as f:
+        f.write("".join(line + "\n" for line in sorted(inc["untracked"] - known)))
 
     # The clean build: the same target directory path, starting from a copy with the
     # workspace members and the incremental cache removed.
