@@ -1,3 +1,469 @@
+diff --git a/compiler/rustc_codegen_llvm/src/back/llvm_backend.rs b/compiler/rustc_codegen_llvm/src/back/llvm_backend.rs
+index 8780af2f6..374c78070 100644
+--- a/compiler/rustc_codegen_llvm/src/back/llvm_backend.rs
++++ b/compiler/rustc_codegen_llvm/src/back/llvm_backend.rs
+@@ -74,6 +74,39 @@ fn compile_codegen_unit(
+     ) -> (ModuleCodegen<ModuleLlvm>, u64) {
+         base::compile_codegen_unit(tcx, cgu_name, bitcode_needed)
+     }
++    fn codegen_unit_again(
++        &self,
++        tcx: TyCtxt<'_>,
++        cgu_name: Symbol,
++        bitcode_needed: bool,
++    ) -> Option<ModuleCodegen<ModuleLlvm>> {
++        Some(base::codegen_unit_again(tcx, cgu_name, bitcode_needed))
++    }
++    fn unoptimized_code(&self, module: &ModuleCodegen<ModuleLlvm>) -> Option<Vec<u8>> {
++        // The module as text, without inline assembly's `srcloc` cookies: they are raw byte
++        // positions, which an edit before the code moves without changing it, and they are
++        // only emitted where a reused module never goes through LLVM again (see `asm.rs`).
++        let text = unsafe {
++            let raw = llvm::LLVMPrintModuleToString(module.module_llvm.llmod());
++            let text = CStr::from_ptr(raw).to_string_lossy().into_owned();
++            llvm::LLVMDisposeMessage(raw);
++            text
++        };
++        let srclocs: Vec<&str> = text
++            .lines()
++            .filter_map(|line| line.split_once(", !srcloc ").map(|(_, node)| node))
++            .collect();
++        let mut out = String::with_capacity(text.len());
++        for line in text.lines() {
++            let line = line.split_once(", !srcloc ").map_or(line, |(code, _)| code);
++            if srclocs.iter().any(|node| line.starts_with(&format!("{node} = "))) {
++                continue;
++            }
++            out.push_str(line);
++            out.push('\n');
++        }
++        Some(out.into_bytes())
++    }
+ }
+ 
+ impl WriteBackendMethods for LlvmCodegenBackend {
+diff --git a/compiler/rustc_codegen_llvm/src/base.rs b/compiler/rustc_codegen_llvm/src/base.rs
+index 77cb37ede..4bd2556f3 100644
+--- a/compiler/rustc_codegen_llvm/src/base.rs
++++ b/compiler/rustc_codegen_llvm/src/base.rs
+@@ -80,145 +80,155 @@ pub(crate) fn compile_codegen_unit(
+     // the time we needed for codegenning it.
+     let cost = time_to_codegen.as_nanos() as u64;
+ 
+-    fn module_codegen(
+-        tcx: TyCtxt<'_>,
+-        cgu_name: Symbol,
+-        needs_bitcode: bool,
+-    ) -> ModuleCodegen<ModuleLlvm> {
+-        let cgu = tcx.codegen_unit(cgu_name);
+-        let _prof_timer =
+-            tcx.prof.generic_activity_with_arg_recorder("codegen_module", |recorder| {
+-                recorder.record_arg(cgu_name.to_string());
+-                recorder.record_arg(cgu.size_estimate().to_string());
+-            });
+-        // Instantiate monomorphizations without filling out definitions yet...
+-        let llvm_module = ModuleLlvm::new(tcx, cgu_name.as_str());
+-        {
+-            let mut cx = CodegenCx::new(tcx, cgu, &llvm_module, needs_bitcode);
++    (module, cost)
++}
+ 
+-            // Declare and store globals shared by all offload kernels
+-            //
+-            // These globals are left in the LLVM-IR host module so all kernels can access them.
+-            // They are necessary for correct offload execution. We do this here to simplify the
+-            // `offload` intrinsic, avoiding the need for tracking whether it's the first
+-            // intrinsic call or not.
+-            let has_host_offload = cx
+-                .sess()
+-                .opts
+-                .unstable_opts
+-                .offload
+-                .iter()
+-                .any(|o| matches!(o, Offload::Host(_) | Offload::Test));
+-            if has_host_offload && !cx.sess().target.is_like_gpu {
+-                cx.offload_globals.replace(Some(OffloadGlobals::declare(&cx)));
+-            }
++fn module_codegen(
++    tcx: TyCtxt<'_>,
++    cgu_name: Symbol,
++    needs_bitcode: bool,
++) -> ModuleCodegen<ModuleLlvm> {
++    let cgu = tcx.codegen_unit(cgu_name);
++    let _prof_timer =
++        tcx.prof.generic_activity_with_arg_recorder("codegen_module", |recorder| {
++            recorder.record_arg(cgu_name.to_string());
++            recorder.record_arg(cgu.size_estimate().to_string());
++        });
++    // Instantiate monomorphizations without filling out definitions yet...
++    let llvm_module = ModuleLlvm::new(tcx, cgu_name.as_str());
++    {
++        let mut cx = CodegenCx::new(tcx, cgu, &llvm_module, needs_bitcode);
+ 
+-            let mono_items = cx.codegen_unit.items_in_deterministic_order(cx.tcx);
+-            for &(mono_item, data) in &mono_items {
+-                mono_item.predefine::<Builder<'_, '_, '_>>(
+-                    &mut cx,
+-                    cgu_name.as_str(),
+-                    data.linkage,
+-                    data.visibility,
+-                );
+-            }
++        // Declare and store globals shared by all offload kernels
++        //
++        // These globals are left in the LLVM-IR host module so all kernels can access them.
++        // They are necessary for correct offload execution. We do this here to simplify the
++        // `offload` intrinsic, avoiding the need for tracking whether it's the first
++        // intrinsic call or not.
++        let has_host_offload = cx
++            .sess()
++            .opts
++            .unstable_opts
++            .offload
++            .iter()
++            .any(|o| matches!(o, Offload::Host(_) | Offload::Test));
++        if has_host_offload && !cx.sess().target.is_like_gpu {
++            cx.offload_globals.replace(Some(OffloadGlobals::declare(&cx)));
++        }
+ 
+-            // ... and now that we have everything pre-defined, fill out those definitions.
+-            for &(mono_item, item_data) in &mono_items {
+-                mono_item.define::<Builder<'_, '_, '_>>(&mut cx, cgu_name.as_str(), item_data);
+-            }
++        let mono_items = cx.codegen_unit.items_in_deterministic_order(cx.tcx);
++        for &(mono_item, data) in &mono_items {
++            mono_item.predefine::<Builder<'_, '_, '_>>(
++                &mut cx,
++                cgu_name.as_str(),
++                data.linkage,
++                data.visibility,
++            );
++        }
+ 
+-            // If this codegen unit contains the main function, also create the
+-            // wrapper here
+-            if let Some(entry) =
+-                maybe_create_entry_wrapper::<Builder<'_, '_, '_>>(&cx, cx.codegen_unit)
+-            {
+-                let mut attrs =
+-                    attributes::sanitize_attrs(&cx, tcx, SanitizerFnAttrs::default(), None, None);
+-                // When pointer authentication is enabled, ensure that the ptrauth-* attributes are
+-                // also attached to the entry wrapper.
+-                //
+-                // FIXME(jchlanda) If it ever becomes necessary to ensure that all compiler
+-                // generated functions receive the ptrauth-* attributes, `declare_fn` or
+-                // `declare_raw_fn` could be used to provide those.
+-                if cx.sess().pointer_authentication() {
+-                    let cfg = cx.sess().pointer_auth_config.as_ref().unwrap();
+-                    for ptrauth_attr in cfg.fn_attrs() {
+-                        attrs.push(llvm::CreateAttrString(cx.llcx, ptrauth_attr));
+-                    }
+-                }
+-                attributes::apply_to_llfn(entry, llvm::AttributePlace::Function, &attrs);
+-            }
++        // ... and now that we have everything pre-defined, fill out those definitions.
++        for &(mono_item, item_data) in &mono_items {
++            mono_item.define::<Builder<'_, '_, '_>>(&mut cx, cgu_name.as_str(), item_data);
++        }
+ 
+-            // Define Objective-C module info and module flags. Note, the module info will
+-            // also be added to the `llvm.compiler.used` variable, created later.
++        // If this codegen unit contains the main function, also create the
++        // wrapper here
++        if let Some(entry) =
++            maybe_create_entry_wrapper::<Builder<'_, '_, '_>>(&cx, cx.codegen_unit)
++        {
++            let mut attrs =
++                attributes::sanitize_attrs(&cx, tcx, SanitizerFnAttrs::default(), None, None);
++            // When pointer authentication is enabled, ensure that the ptrauth-* attributes are
++            // also attached to the entry wrapper.
+             //
+-            // These are only necessary when we need the linker to do its Objective-C-specific
+-            // magic. We could theoretically do it unconditionally, but at a slight cost to linker
+-            // performance in the common case where it's unnecessary.
+-            if !cx.objc_classrefs.borrow().is_empty() || !cx.objc_selrefs.borrow().is_empty() {
+-                if cx.objc_abi_version() == 1 {
+-                    cx.define_objc_module_info();
+-                }
+-                cx.add_objc_module_flags();
+-            }
+-
++            // FIXME(jchlanda) If it ever becomes necessary to ensure that all compiler
++            // generated functions receive the ptrauth-* attributes, `declare_fn` or
++            // `declare_raw_fn` could be used to provide those.
+             if cx.sess().pointer_authentication() {
+                 let cfg = cx.sess().pointer_auth_config.as_ref().unwrap();
+-
+-                let aarch64_elf_pauthabi_version =
+-                    cfg.calculate_pauth_abi_version(&cx.sess().target);
+-                if aarch64_elf_pauthabi_version != 0 {
+-                    cx.add_ptrauth_pauthabi_version_and_platform_flags(
+-                        aarch64_elf_pauthabi_version,
+-                    );
+-                }
+-                if cfg.elf_got {
+-                    cx.add_ptrauth_elf_got_flag();
+-                }
+-                if cx.sess().pointer_authentication_functions().is_some() {
+-                    cx.add_ptrauth_sign_personality_flag();
++                for ptrauth_attr in cfg.fn_attrs() {
++                    attrs.push(llvm::CreateAttrString(cx.llcx, ptrauth_attr));
+                 }
+             }
++            attributes::apply_to_llfn(entry, llvm::AttributePlace::Function, &attrs);
++        }
+ 
+-            // Finalize code coverage by injecting the coverage map. Note, the coverage map will
+-            // also be added to the `llvm.compiler.used` variable, created next.
+-            if cx.sess().instrument_coverage() {
+-                cx.coverageinfo_finalize();
++        // Define Objective-C module info and module flags. Note, the module info will
++        // also be added to the `llvm.compiler.used` variable, created later.
++        //
++        // These are only necessary when we need the linker to do its Objective-C-specific
++        // magic. We could theoretically do it unconditionally, but at a slight cost to linker
++        // performance in the common case where it's unnecessary.
++        if !cx.objc_classrefs.borrow().is_empty() || !cx.objc_selrefs.borrow().is_empty() {
++            if cx.objc_abi_version() == 1 {
++                cx.define_objc_module_info();
+             }
++            cx.add_objc_module_flags();
++        }
+ 
+-            // Create the llvm.used variable.
+-            if !cx.used_statics.is_empty() {
+-                cx.create_used_variable_impl(c"llvm.used", &cx.used_statics);
+-            }
++        if cx.sess().pointer_authentication() {
++            let cfg = cx.sess().pointer_auth_config.as_ref().unwrap();
+ 
+-            // Create the llvm.compiler.used variable.
+-            {
+-                let compiler_used_statics = cx.compiler_used_statics.borrow();
+-                if !compiler_used_statics.is_empty() {
+-                    cx.create_used_variable_impl(c"llvm.compiler.used", &compiler_used_statics);
+-                }
++            let aarch64_elf_pauthabi_version =
++                cfg.calculate_pauth_abi_version(&cx.sess().target);
++            if aarch64_elf_pauthabi_version != 0 {
++                cx.add_ptrauth_pauthabi_version_and_platform_flags(
++                    aarch64_elf_pauthabi_version,
++                );
++            }
++            if cfg.elf_got {
++                cx.add_ptrauth_elf_got_flag();
+             }
++            if cx.sess().pointer_authentication_functions().is_some() {
++                cx.add_ptrauth_sign_personality_flag();
++            }
++        }
+ 
+-            // Run replace-all-uses-with for statics that need it. This must
+-            // happen after the llvm.used variables are created.
+-            for &(old_g, new_g) in cx.statics_to_rauw().borrow().iter() {
+-                unsafe {
+-                    llvm::LLVMReplaceAllUsesWith(old_g, new_g);
+-                    llvm::LLVMDeleteGlobal(old_g);
+-                }
++        // Finalize code coverage by injecting the coverage map. Note, the coverage map will
++        // also be added to the `llvm.compiler.used` variable, created next.
++        if cx.sess().instrument_coverage() {
++            cx.coverageinfo_finalize();
++        }
++
++        // Create the llvm.used variable.
++        if !cx.used_statics.is_empty() {
++            cx.create_used_variable_impl(c"llvm.used", &cx.used_statics);
++        }
++
++        // Create the llvm.compiler.used variable.
++        {
++            let compiler_used_statics = cx.compiler_used_statics.borrow();
++            if !compiler_used_statics.is_empty() {
++                cx.create_used_variable_impl(c"llvm.compiler.used", &compiler_used_statics);
+             }
++        }
+ 
+-            // Finalize debuginfo
+-            if cx.sess().opts.debuginfo != DebugInfo::None {
+-                cx.debuginfo_finalize();
++        // Run replace-all-uses-with for statics that need it. This must
++        // happen after the llvm.used variables are created.
++        for &(old_g, new_g) in cx.statics_to_rauw().borrow().iter() {
++            unsafe {
++                llvm::LLVMReplaceAllUsesWith(old_g, new_g);
++                llvm::LLVMDeleteGlobal(old_g);
+             }
+         }
+ 
+-        ModuleCodegen::new_regular(cgu_name.to_string(), llvm_module)
++        // Finalize debuginfo
++        if cx.sess().opts.debuginfo != DebugInfo::None {
++            cx.debuginfo_finalize();
++        }
+     }
+ 
+-    (module, cost)
++    ModuleCodegen::new_regular(cgu_name.to_string(), llvm_module)
++}
++
++/// For testing incremental compilation (`RUSTC_VERIFY_REUSE`): the codegen unit generated
++/// again, outside dependency tracking, as a check of one reused from the incremental cache.
++pub(crate) fn codegen_unit_again(
++    tcx: TyCtxt<'_>,
++    cgu_name: Symbol,
++    bitcode_needed: bool,
++) -> ModuleCodegen<ModuleLlvm> {
++    tcx.dep_graph.with_ignore(|| module_codegen(tcx, cgu_name, bitcode_needed))
+ }
+ 
+ pub(crate) fn set_link_section(llval: &Value, attrs: &CodegenFnAttrs) {
+diff --git a/compiler/rustc_codegen_llvm/src/llvm/ffi.rs b/compiler/rustc_codegen_llvm/src/llvm/ffi.rs
+index f576f29a1..bc9ce9580 100644
+--- a/compiler/rustc_codegen_llvm/src/llvm/ffi.rs
++++ b/compiler/rustc_codegen_llvm/src/llvm/ffi.rs
+@@ -1649,6 +1649,7 @@ pub(crate) fn LLVMBuildFence<'a>(
+     pub(crate) fn LLVMGetHostCPUFeatures() -> *mut c_char;
+ 
+     pub(crate) fn LLVMDisposeMessage(message: *mut c_char);
++    pub(crate) fn LLVMPrintModuleToString(M: &Module) -> *mut c_char;
+ 
+     pub(crate) fn LLVMIsMultithreaded() -> Bool;
+ 
+diff --git a/compiler/rustc_codegen_ssa/src/base.rs b/compiler/rustc_codegen_ssa/src/base.rs
+index f9dfd04fa..43aa5424c 100644
+--- a/compiler/rustc_codegen_ssa/src/base.rs
++++ b/compiler/rustc_codegen_ssa/src/base.rs
+@@ -1,4 +1,5 @@
+ use std::collections::BTreeSet;
++use std::path::PathBuf;
+ use std::sync::Arc;
+ use std::time::{Duration, Instant};
+ use std::{cmp, iter};
+@@ -847,6 +848,7 @@ pub fn codegen_crate<
+         FxHashMap::default()
+     };
+ 
++    let verify_reuse = std::env::var_os("RUSTC_VERIFY_REUSE").is_some();
+     for (i, cgu) in codegen_units.iter().enumerate() {
+         ongoing_codegen.wait_for_signal_to_codegen_item();
+         ongoing_codegen.check_for_errors(tcx.sess);
+@@ -868,9 +870,15 @@ pub fn codegen_crate<
+                 // compilation hang on post-monomorphization errors.
+                 tcx.dcx().abort_if_errors();
+ 
++                if verify_reuse {
++                    record_codegen_unit(&backend, tcx, cgu.name(), &module);
++                }
+                 submit_codegened_module_to_llvm(&ongoing_codegen.coordinator, module, cost);
+             }
+             CguReuse::PreLto => {
++                if verify_reuse {
++                    verify_reused_codegen_unit(&backend, tcx, cgu.name(), bitcode_needed);
++                }
+                 submit_pre_lto_module_to_llvm(
+                     tcx,
+                     &ongoing_codegen.coordinator,
+@@ -885,6 +893,9 @@ pub fn codegen_crate<
+                 tcx.dcx().abort_if_errors();
+             }
+             CguReuse::PostLto => {
++                if verify_reuse {
++                    verify_reused_codegen_unit(&backend, tcx, cgu.name(), bitcode_needed);
++                }
+                 submit_post_lto_module_to_llvm(
+                     &ongoing_codegen.coordinator,
+                     CachedModuleCodegen {
+@@ -1253,6 +1264,61 @@ pub(crate) fn provide(providers: &mut Providers) {
+     };
+ }
+ 
++/// For testing incremental compilation (`RUSTC_VERIFY_REUSE`): where a codegen unit's
++/// unoptimized code is kept, from the session that generated it, to check the unit when a
++/// later session reuses it. In the crate's incremental directory, outside any one session's.
++fn recorded_codegen_unit(tcx: TyCtxt<'_>, cgu_name: Symbol) -> Option<PathBuf> {
++    let session: &std::path::Path = &tcx.incr_comp_session?.new_session_directory;
++    Some(session.parent()?.join("verify-reuse").join(format!("{cgu_name}.ll")))
++}
++
++fn record_codegen_unit<B: ExtraBackendMethods>(
++    backend: &B,
++    tcx: TyCtxt<'_>,
++    cgu_name: Symbol,
++    module: &ModuleCodegen<B::Module>,
++) {
++    let (Some(path), Some(code)) =
++        (recorded_codegen_unit(tcx, cgu_name), backend.unoptimized_code(module))
++    else {
++        return;
++    };
++    if let Some(dir) = path.parent() {
++        let _ = std::fs::create_dir_all(dir);
++    }
++    let _ = std::fs::write(path, code);
++}
++
++/// Generates a reused codegen unit again and compares its unoptimized code with that of the
++/// session that generated the reused one. A difference prints a line starting
++/// `rustc-verify-reuse:` and keeps the fresh code next to the recorded one.
++fn verify_reused_codegen_unit<B: ExtraBackendMethods>(
++    backend: &B,
++    tcx: TyCtxt<'_>,
++    cgu_name: Symbol,
++    bitcode_needed: bool,
++) {
++    let Some(path) = recorded_codegen_unit(tcx, cgu_name) else { return };
++    let Ok(recorded) = std::fs::read(&path) else { return };
++    let Some(module) = backend.codegen_unit_again(tcx, cgu_name, bitcode_needed) else { return };
++    let Some(fresh) = backend.unoptimized_code(&module) else { return };
++    if std::env::var_os("RUSTC_VERIFY_REUSE").is_some_and(|v| v == "verbose") {
++        eprintln!("rustc-verify-reuse-checked: codegen unit `{cgu_name}`");
++    }
++    if fresh != recorded {
++        let kept = path.with_extension("fresh.ll");
++        let _ = std::fs::write(&kept, &fresh);
++        eprintln!(
++            "rustc-verify-reuse: codegen unit `{cgu_name}` of `{}` reused from the incremental cache differs from a fresh codegen (unoptimized code, {} and {} bytes); kept as {} next to {}",
++            tcx.crate_name(LOCAL_CRATE),
++            recorded.len(),
++            fresh.len(),
++            kept.display(),
++            path.display(),
++        );
++    }
++}
++
+ pub fn determine_cgu_reuse<'tcx>(tcx: TyCtxt<'tcx>, cgu: &CodegenUnit<'tcx>) -> CguReuse {
+     if !tcx.dep_graph.is_fully_enabled()
+         || tcx.sess.opts.unstable_opts.disable_incr_comp_backend_caching
+diff --git a/compiler/rustc_codegen_ssa/src/traits/backend.rs b/compiler/rustc_codegen_ssa/src/traits/backend.rs
+index e06ac36fd..1fea1d7c8 100644
+--- a/compiler/rustc_codegen_ssa/src/traits/backend.rs
++++ b/compiler/rustc_codegen_ssa/src/traits/backend.rs
+@@ -167,4 +167,23 @@ fn compile_codegen_unit(
+         cgu_name: Symbol,
+         bitcode_needed: bool,
+     ) -> (ModuleCodegen<Self::Module>, u64);
++
++    /// For testing incremental compilation (`RUSTC_VERIFY_REUSE`): the codegen unit generated
++    /// again, outside dependency tracking, as a check of one reused from the incremental cache.
++    /// `None` if the backend cannot.
++    fn codegen_unit_again(
++        &self,
++        _tcx: TyCtxt<'_>,
++        _cgu_name: Symbol,
++        _bitcode_needed: bool,
++    ) -> Option<ModuleCodegen<Self::Module>> {
++        None
++    }
++
++    /// For testing incremental compilation (`RUSTC_VERIFY_REUSE`): a generated module's code
++    /// before optimization, as bytes that are equal when the code is. `None` if the backend
++    /// cannot say.
++    fn unoptimized_code(&self, _module: &ModuleCodegen<Self::Module>) -> Option<Vec<u8>> {
++        None
++    }
+ }
 diff --git a/compiler/rustc_incremental/src/persist/save.rs b/compiler/rustc_incremental/src/persist/save.rs
 index 46f47d6c8..69ea0af7a 100644
 --- a/compiler/rustc_incremental/src/persist/save.rs
@@ -217,7 +683,7 @@ index 956c59012..957ddcb20 100644
      fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
          // Add more details here if/when necessary.
 diff --git a/compiler/rustc_query_impl/src/incremental.rs b/compiler/rustc_query_impl/src/incremental.rs
-index a030fe71e..f868ab5b2 100644
+index a030fe71e..4ce05e8e3 100644
 --- a/compiler/rustc_query_impl/src/incremental.rs
 +++ b/compiler/rustc_query_impl/src/incremental.rs
 @@ -1,17 +1,20 @@
@@ -243,7 +709,7 @@ index a030fe71e..f868ab5b2 100644
  
  use crate::query_vtables::for_each_query_vtable;
  
-@@ -25,6 +28,317 @@ pub(crate) fn encode_query_values<'tcx>(tcx: TyCtxt<'tcx>, encoder: &mut CacheEn
+@@ -25,6 +28,319 @@ pub(crate) fn encode_query_values<'tcx>(tcx: TyCtxt<'tcx>, encoder: &mut CacheEn
      });
  }
  
@@ -427,6 +893,8 @@ index a030fe71e..f868ab5b2 100644
 +const NOT_RECOMPUTED: &[&str] = &["coroutine_by_move_body_def_id", "mir_borrowck"];
 +
 +/// Whether any MIR or THIR of `def` computed this session has been stolen.
++// Only decides whether to check a value, outside dependency tracking.
++#[allow(rustc::untracked_query_information)]
 +fn body_stolen<'tcx>(tcx: TyCtxt<'tcx>, def: LocalDefId) -> bool {
 +    use rustc_middle::queries::{
 +        mir_built, mir_drops_elaborated_and_const_checked as mir_elaborated, mir_promoted,

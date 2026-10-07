@@ -54,3 +54,14 @@ rc $ef -Cincremental="$d/i8" --out-dir "$d/e2" "$d/e.rs"
 n1=$(cd "$d/e1" && ar p libe.rlib | grep -a -c "added after the first build")
 n2=$(cd "$d/e2" && ar p libe.rlib | grep -a -c "added after the first build")
 if [ "$n1" = "$n2" ]; then echo same; else echo "DIFFER (the rebuilt object embeds the file as it was)"; fi
+
+echo -n "asm-warning, a warning from inline assembly after a comment at the end, incremental vs clean: "
+mkdir -p "$d/w"
+printf 'mod m;\nfn main() {\n    m::f();\n}\n' > "$d/w/main.rs"
+printf 'pub fn f() {\n    unsafe { std::arch::asm!(".warning \\"from the assembler\\"") }\n}\n' > "$d/w/m.rs"
+wf="--crate-type bin -Ccodegen-units=4"
+"$rustc" --edition 2024 $wf -Cincremental="$d/i9" -o "$d/w/a" "$d/w/main.rs" 2> /dev/null
+echo "// a comment at the end" >> "$d/w/m.rs"
+n1=$("$rustc" --edition 2024 $wf -Cincremental="$d/i9" -o "$d/w/a" "$d/w/main.rs" 2>&1 | grep -c "from the assembler")
+n2=$("$rustc" --edition 2024 $wf -Cincremental="$d/i10" -o "$d/w/b" "$d/w/main.rs" 2>&1 | grep -c "from the assembler")
+if [ "$n1" = "$n2" ]; then echo same; else echo "DIFFER (the rebuild shows no warning)"; fi

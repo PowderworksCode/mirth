@@ -46,7 +46,7 @@ reused item is checked over many sessions, with an option to check everything.
 ## The patch
 
 [`hunt/verify-reuse.patch`](hunt/verify-reuse.patch), against the pinned rustc, does this for
-metadata and for query results. It is on when `RUSTC_VERIFY_REUSE` is set (`verbose` also
+metadata, query results and codegen units. It is on when `RUSTC_VERIFY_REUSE` is set (`verbose` also
 counts what was checked), and every fuzzer and replay build now runs with it: a line
 starting `rustc-verify-reuse:` is a finding of kind `verify-reuse` (`reuse` in the replay).
 
@@ -87,9 +87,27 @@ Not recomputed:
   argument), which are set rather than computed;
 - anything named in `RUSTC_VERIFY_REUSE_SKIP` (comma-separated query names).
 
-Object files and replayed diagnostics are not checked yet. Finding 6 in [`hunt.md`](hunt.md),
-reused object code whose debuginfo names the previous version of an edited file, is the kind
-of bug a check of reused object files would catch on the spot.
+**Codegen units.** When a codegen unit is generated, its unoptimized LLVM IR is kept in the
+crate's incremental directory (`verify-reuse/<unit>.ll`, outside any one session's
+directory). When a later session reuses the unit's object code, the unit is generated again,
+outside dependency tracking, and its IR compared with the kept one; a difference keeps the
+fresh IR as `<unit>.fresh.ll`. Inline assembly's `srcloc` cookies are left out of both:
+they are raw byte positions that an edit earlier in the source map moves, and rustc emits
+them only where a reused module never goes through LLVM again. Both sessions need the check
+on. This is the check that would have caught [finding 6](hunt.md) on the spot: with
+`-Zembed-source`, its reproduction prints
+
+```text
+rustc-verify-reuse: codegen unit `21p0vejx42dvnj8u08b23lumy` of `lib` reused from the incremental cache differs from a fresh codegen (unoptimized code, 2102 and 2135 bytes)
+```
+
+and on `fixtures/sink` an edit and rebuild checks 257 reused units and prints nothing (with
+finding 6's checksum left out of incremental sessions by
+[`hunt/debuginfo-checksum-stopgap.patch`](hunt/debuginfo-checksum-stopgap.patch), a testing aid,
+not a fix). It costs more than the rest: about 40% on that rebuild.
+
+Replayed diagnostics are not checked yet, and diagnostics LLVM emits while compiling a unit
+are not replayed at all ([finding 7](hunt.md)).
 
 ## Does it find the known bugs?
 
