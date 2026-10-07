@@ -29,7 +29,7 @@ with `-Zthreads=8`. `rustc/check.sh wide` runs the ordinary checks.
 | 3 | with `-Zthreads=8`, two traits with `-> impl Trait` methods give different metadata from run to run | known: [#162202](https://github.com/rust-lang/rust/issues/162202) |
 | 4 | incremental rebuilds republish the previous session's metadata when an edit moves no span, so its source map describes old files | **looks new**; found later by the fuzzer and the history replay ([`scale.md`](scale.md)); root cause found, regression from #114669 (1.90); fix and regression test written |
 | 5 | `-Zemit-stack-sizes`, `-Zcodegen-source-order` and `-Zbuild-sdylib-interface` are untracked but change output that incremental compilation reuses | **looks new**; found by a query written from a closed bug and an option audit ([`ur-queries.md`](ur-queries.md)); report drafted |
-| 6 | reused object code keeps the previous checksum of an edited source file in its debuginfo, and with `-Zembed-source` the previous file; with optimizations, ThinLTO symbol names then differ from a clean build | **looks new**; found by the fuzzer at `-Copt-level=2`; root cause found, since 1.44 (#69718); report drafted, no fix |
+| 6 | reused object code keeps the previous checksum of an edited source file in its debuginfo, and with `-Zembed-source` the previous file; with optimizations, ThinLTO symbol names then differ from a clean build | **looks new**; found by the fuzzer at `-Copt-level=2`; root cause found, since 1.44 (#69718); report drafted and a regression test (`hunt/tests/incr-debuginfo-embedded-source`, failing: no fix) |
 
 Findings 1 and 2 are single-threaded: an ordinary `cargo build`, an edit, another
 `cargo build`, and the metadata differs from a clean build of the edited source. Both come

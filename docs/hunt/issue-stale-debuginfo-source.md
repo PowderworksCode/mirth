@@ -123,6 +123,17 @@ incremental builds emit. A query fingerprinting one source file's contents, read
 `file_metadata`, would make the dependency explicit, as the candidate fix for the same
 problem in reused metadata does ([report](issue-stale-metadata-reuse.md)).
 
+### A test
+
+`tests/run-make/incr-debuginfo-embedded-source` (in mirth at
+`docs/hunt/tests/incr-debuginfo-embedded-source/rmake.rs`) builds a binary with
+`-Zembed-source`, adds a comment at the end of `main.rs`, rebuilds incrementally and builds
+clean, and checks that both embed the edited file. On `ea137335b` it fails:
+
+```text
+the incremental rebuild embeds a different main.rs from a clean build: ["fn main() {\n    println!(\"{}\", 7);\n}\n"]
+```
+
 ### How it was found
 
 [mirth](https://github.com/PowderworksCode/mirth) fuzzes edits on a five-crate workspace
