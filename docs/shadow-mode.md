@@ -121,7 +121,10 @@ difference anywhere.
 
 **Patch order.** `verify-reuse.patch` applies to the pinned rustc on its own, so a fix can
 be reverted to check that it catches the bug; the three fixes apply on top of it, then
-[`report-untracked.patch`](hunt/report-untracked.patch) and the stopgap.
+[`report-untracked.patch`](hunt/report-untracked.patch) and the two stopgaps
+(`debuginfo-checksum-stopgap.patch`, `threads-def-order-stopgap.patch`).
+`rustc/regen-patches.sh` regenerates the first two from a compiler tree with all of them
+applied and checks that the stack reproduces the tree.
 
 ## What it reports in the runs
 

@@ -683,7 +683,7 @@ index 956c59012..957ddcb20 100644
      fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
          // Add more details here if/when necessary.
 diff --git a/compiler/rustc_query_impl/src/incremental.rs b/compiler/rustc_query_impl/src/incremental.rs
-index a030fe71e..6b2e2db1a 100644
+index a030fe71e..afcab4a0b 100644
 --- a/compiler/rustc_query_impl/src/incremental.rs
 +++ b/compiler/rustc_query_impl/src/incremental.rs
 @@ -1,17 +1,20 @@
@@ -709,7 +709,7 @@ index a030fe71e..6b2e2db1a 100644
  
  use crate::query_vtables::for_each_query_vtable;
  
-@@ -25,6 +28,326 @@ pub(crate) fn encode_query_values<'tcx>(tcx: TyCtxt<'tcx>, encoder: &mut CacheEn
+@@ -25,6 +28,335 @@ pub(crate) fn encode_query_values<'tcx>(tcx: TyCtxt<'tcx>, encoder: &mut CacheEn
      });
  }
  
@@ -845,14 +845,23 @@ index a030fe71e..6b2e2db1a 100644
 +}
 +
 +impl Allocs {
-+    fn check(&mut self, fresh: AllocId, used: AllocId, here: impl Fn() -> String) {
++    fn check(&mut self, tcx: TyCtxt<'_>, fresh: AllocId, used: AllocId, here: impl Fn() -> String) {
 +        match self.seen.get(&fresh) {
 +            None => {
 +                self.seen.insert(fresh, (used, here()));
 +            }
 +            Some((other_used, other)) if *other_used != used => eprintln!(
-+                "rustc-verify-reuse: allocation shared differently: {} uses {used:?} where a fresh computation uses {fresh:?}, but {other} uses {other_used:?} for it",
++                "rustc-verify-reuse: allocation shared differently: {} uses {used:?} where a fresh computation uses {fresh:?}, but {other} uses {other_used:?} for it\n  allocation: {}",
 +                here(),
++                match tcx.global_alloc(fresh) {
++                    rustc_middle::mir::interpret::GlobalAlloc::Memory(alloc) => {
++                        let alloc = alloc.inner();
++                        let len = alloc.len();
++                        let bytes = alloc.inspect_with_uninit_and_ptr_outside_interpreter(0..len.min(64));
++                        format!("memory, {len} bytes, align {}, {:?}", alloc.align.bytes(), bytes)
++                    }
++                    other => format!("{other:?}").chars().take(600).collect::<String>(),
++                },
 +            ),
 +            Some(_) => {}
 +        }
@@ -961,7 +970,7 @@ index a030fe71e..6b2e2db1a 100644
 +                    on_disk_cache::encode_alone(tcx, &scratch, &erase::restore_val::<V>(value));
 +                let here = || format!("query `{}` for {:?}, computed this session", query.name, key);
 +                for id in ids {
-+                    allocs.check(id, id, here);
++                    allocs.check(tcx, id, id, here);
 +                }
 +            }
 +            continue;
@@ -1007,7 +1016,7 @@ index a030fe71e..6b2e2db1a 100644
 +        if sharing && loaded_ids.len() == fresh_ids.len() {
 +            let here = || format!("query `{}` for {:?}, green", query.name, key);
 +            for (fresh_id, loaded_id) in fresh_ids.into_iter().zip(loaded_ids) {
-+                allocs.check(fresh_id, loaded_id, here);
++                allocs.check(tcx, fresh_id, loaded_id, here);
 +            }
 +        }
 +        if !(same_hash && same_text && same_bytes) {

@@ -1656,10 +1656,10 @@ index ca60614ba..e3bf3285f 100644
              }
  
 diff --git a/compiler/rustc_query_impl/src/incremental.rs b/compiler/rustc_query_impl/src/incremental.rs
-index 6b2e2db1a..0985313c1 100644
+index afcab4a0b..f2a75b6a1 100644
 --- a/compiler/rustc_query_impl/src/incremental.rs
 +++ b/compiler/rustc_query_impl/src/incremental.rs
-@@ -367,7 +367,7 @@ fn encode_query_values_inner<'tcx, C, V>(
+@@ -376,7 +376,7 @@ fn encode_query_values_inner<'tcx, C, V>(
  }
  
  pub(crate) fn verify_query_key_hashes<'tcx>(tcx: TyCtxt<'tcx>) {
@@ -1668,7 +1668,7 @@ index 6b2e2db1a..0985313c1 100644
          tcx.sess.time("verify_query_key_hashes", || {
              for_each_query_vtable!(ALL, tcx, |query| {
                  verify_query_key_hashes_inner(query, tcx);
-@@ -422,7 +422,7 @@ pub(crate) fn should_verify_loaded_value(
+@@ -431,7 +431,7 @@ pub(crate) fn should_verify_loaded_value(
  ) -> bool {
      let hash = Fingerprint::from(key_fingerprint).to_smaller_hash().as_u64();
      hash % 32 == dep_graph_data.session_count() % 32
