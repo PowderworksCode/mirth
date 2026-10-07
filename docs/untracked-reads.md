@@ -100,9 +100,9 @@ one of these set, and prints, could compute a result that depends on who asked f
 task records the modes it started with, and the modes' getters report a read of an inherited
 one.
 
-On `fixtures/sink`, 18 kinds of query start with an inherited mode (`with_reduced_queries`
-from printing in `explicit_item_bounds`, `with_no_trimmed_paths` from debug output), but none
-reads it, there or in the ten crates: those queries do not print.
+On `fixtures/sink`, 18 kinds of query start with an inherited mode (16 with
+`with_reduced_queries`, 2 with `with_no_trimmed_paths`), but none reads it, there or in the
+ten crates.
 
 ## Limits
 
