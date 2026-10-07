@@ -8,6 +8,8 @@ from scratch, and the two are compared:
   P6     every .rmeta Cargo reports for a workspace member is identical
   rlib   every rlib's members are identical, object code included
   diag   both builds printed the same diagnostics
+  reuse  the compiler's own check of what it reused (RUSTC_VERIFY_REUSE,
+         docs/hunt/verify-reuse.patch) found nothing stale
   ICE    neither build crashed the compiler
   split  both builds succeed or both fail
 
@@ -46,6 +48,8 @@ p.add_argument("--jobs", default="4")
 p.add_argument("--keep", type=int, default=3, help="differences kept per crate")
 p.add_argument("--from", dest="start", type=int, default=0, help="first commit index to replay")
 p.add_argument("--to", dest="end", type=int, default=None, help="last commit index to replay")
+p.add_argument("--no-verify-reuse", action="store_true",
+               help="do not set RUSTC_VERIFY_REUSE (needs a compiler with docs/hunt/verify-reuse.patch)")
 args = p.parse_args()
 
 work = Path(args.work).resolve()
@@ -65,6 +69,8 @@ env.update(
     RUSTFLAGS="--cap-lints=warn",
     CARGO_TERM_COLOR="never",
 )
+if not args.no_verify_reuse:
+    env["RUSTC_VERIFY_REUSE"] = "1"
 cargo = ["cargo", f"+{args.toolchain}"]
 
 
@@ -106,6 +112,7 @@ def build(target_dir):
         "ice": "internal compiler error" in log or "the compiler unexpectedly panicked" in log,
         "secs": round(time.time() - t, 1),
         "log": log[-6000:],
+        "reuse": [line[:3000] for line in log.splitlines() if line.startswith("rustc-verify-reuse:")],
         "rmetas": rmetas,
         "fresh": fresh,
         "art": artifacts.collect(r.stdout, target_dir),
@@ -160,6 +167,10 @@ for i, commit in enumerate(commits):
         problems.append("ICE")
     if inc["ok"] != clean["ok"]:
         problems.append("split")
+    if inc["reuse"]:
+        # The compiler's own check found something it reused stale.
+        problems.append("reuse")
+        (keep_dir(i, commit) / "reuse.txt").write_text("\n".join(inc["reuse"]))
     if clean["fresh"]:
         # A member the clean build did not compile again would be compared with itself.
         problems.append("stale")

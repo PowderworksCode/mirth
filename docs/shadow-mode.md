@@ -43,11 +43,70 @@ Recomputing everything doubles a build's cost, so the flag would usually sample,
 `-Zincremental-verify-ich` does: a deterministic subset per session, rotating so that every
 reused item is checked over many sessions, with an option to check everything.
 
-## Where it would go first
+## The patch
 
-Metadata is the cheapest to start with and has the most recent bug: the reuse decision is
-one function (`encode_metadata` in `rustc_metadata/src/rmeta/encoder.rs`), and encoding
-again into a temporary file and comparing bytes is a small change. A failure would name
-the first differing byte, which `-Zmeta-stats`'s sections place in a table.
+[`hunt/verify-reuse.patch`](hunt/verify-reuse.patch), against the pinned rustc, does this for
+metadata and for query results. It is on when `RUSTC_VERIFY_REUSE` is set (`verbose` also
+counts what was checked), and every fuzzer and replay build now runs with it: a line
+starting `rustc-verify-reuse:` is a finding of kind `verify-reuse` (`reuse` in the replay).
 
-Not started. This page is the record of what was looked at.
+**Metadata.** When `encode_metadata` reuses the saved `.rmeta`, it also encodes the metadata
+again, into a file next to the output, and compares the bytes. A difference prints the
+first differing byte and keeps the fresh file as `<output>.rmeta.fresh`.
+
+**Query results.** At the end of the session, just before the dependency graph and the cache
+are saved, every value of a query cached on disk whose node is green is computed again by
+its provider, outside dependency tracking, and compared with the value in use three ways:
+
+- the stable hash;
+- the `Debug` text, which sees fields the stable hash ignores, with on-demand caches
+  (`OnceLock`) blanked, `UnordMap`/`UnordSet` elements sorted and `AllocId` numbers removed;
+- the bytes the cache would encode for the value alone, allocations included, which see the
+  order of hash maps (not compared for values containing an `UnordMap` or `UnordSet`, which
+  encode in an order nothing may observe).
+
+And across values: for queries whose values refer to allocations (MIR, const evaluation),
+each allocation a fresh computation refers to is mapped to the one the value in use refers
+to. One fresh allocation mapped to two different ones means the values in use do not share an
+allocation that a clean session would share.
+
+The first version recomputed a value as it was loaded. That runs the provider while the query
+that asked for the value is still executing, and it cycled (`E0391`, "cycle detected when
+finding item bounds"). At the end of the session nothing is executing, and the previous
+session's cache can still be read.
+
+Not recomputed:
+
+- queries whose provider reads MIR or THIR that has already been stolen
+  (`optimized_mir`, `mir_for_ctfe` and others, for a definition whose bodies were built this
+  session; the same definitions are checked when their bodies were not built);
+- `mir_borrowck`, which reads the MIR of nested bodies too, and
+  `coroutine_by_move_body_def_id`, which makes a definition;
+- values of feedable queries for definitions the compiler made up (the associated type of
+  an `impl Trait` in a trait, an elided lifetime added by lowering, the type of a const
+  argument), which are set rather than computed;
+- anything named in `RUSTC_VERIFY_REUSE_SKIP` (comma-separated query names).
+
+Object files and replayed diagnostics are not checked yet.
+
+## Does it find the known bugs?
+
+Each fix reverted in turn on the patched compiler, with the reproduction from
+[`hunt/`](hunt) and an edit to `fixtures/sink`:
+
+| bug | fix reverted | the check prints |
+|---|---|---|
+| `param_def_id_to_index` order ([report](hunt/issue-generics-order.md)) | `generics-index-map.patch` | ``query `generics_of` for DefId(0:11 ~ lib[ab28]::{impl#0}), green, differs from a fresh computation (encoding)`` |
+| literal allocation deduplication ([report](hunt/issue-literal-dedup.md)) | `alloc-dedup-on-decode.patch` | ``allocation shared differently: query `optimized_mir` for DefId(0:4 ~ lib[ab28]::b), computed this session uses alloc1 where a fresh computation uses alloc1, but query `optimized_mir` for DefId(0:3 ~ lib[ab28]::a), green uses alloc2 for it`` |
+| stale metadata reuse ([report](hunt/issue-stale-metadata-reuse.md)) | `metadata-source-files.patch` | ``metadata of `sink_core` reused from the incremental cache differs from a fresh encoding (237382 and 237383 bytes, first difference at byte 8)`` |
+
+With all three fixes, the same builds print nothing. Neither of the first two is visible to
+the stable hash, so `-Zincremental-verify-ich` cannot see them.
+
+**Cost.** An incremental rebuild of `fixtures/sink` after an edit recomputes about 11,800 green
+values and takes 2.65 s instead of 2.33 s.
+
+**Noise removed on the way.** Before the `Debug` text and encoding comparisons were
+normalized, they reported values that were equal: lazily filled caches in MIR bodies, the
+iteration order of `UnordMap`s in `typeck_root` and `specialization_graph_of`, and the
+numbers of allocations in const-evaluation results.

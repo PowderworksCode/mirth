@@ -127,6 +127,10 @@ compared, and ICEs, hangs and one-sided failures are reported. Every 40 kept edi
 starts again from the pristine fixture. A finding keeps every edit since the last reset, and
 `rustc/fuzz-replay.py` replays it exactly.
 
+Since [`shadow-mode.md`](shadow-mode.md), the fuzzer and the replay also run every build
+with the compiler's own check of what it reused (`RUSTC_VERIFY_REUSE`, on a compiler with
+[`hunt/verify-reuse.patch`](hunt/verify-reuse.patch)), and report what it prints.
+
 Throughput on this 16-core machine: about 2 edits a second with six workers, about
 170,000 a day, while other work shared the machine.
 

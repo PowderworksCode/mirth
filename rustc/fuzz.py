@@ -14,6 +14,8 @@ Each worker keeps one copy of the fixture and repeats:
        exe    the binary's bytes
        diag   the diagnostics each crate printed
        run    the binaries' output and exit status
+       reuse  the compiler's own check of what it reused (RUSTC_VERIFY_REUSE,
+              docs/hunt/verify-reuse.patch) found nothing stale
        ICE    neither build crashed the compiler
        split  both builds succeed or both fail
 
@@ -54,6 +56,8 @@ p.add_argument("--toolchain", default="nightly-2026-10-06")
 p.add_argument("--rustflags", default="-Zincremental-verify-ich")
 p.add_argument("--seed", type=int, default=0)
 p.add_argument("--timeout", type=int, default=180, help="seconds before a build counts as hung")
+p.add_argument("--no-verify-reuse", action="store_true",
+               help="do not set RUSTC_VERIFY_REUSE (needs a compiler with docs/hunt/verify-reuse.patch)")
 args = p.parse_args()
 
 WORK = Path(args.work).resolve()
@@ -262,6 +266,8 @@ def env():
     e = dict(os.environ)
     e.update(RUSTC=args.rustc, RUSTC_WRAPPER="", CARGO_INCREMENTAL="1",
              RUSTFLAGS=args.rustflags, CARGO_TERM_COLOR="never")
+    if not args.no_verify_reuse:
+        e["RUSTC_VERIFY_REUSE"] = "1"
     return e
 
 
@@ -312,9 +318,24 @@ def build(src, target):
         "ok": r.returncode == 0,
         "ice": "internal compiler error" in log or "the compiler unexpectedly panicked" in log,
         "hang": hang,
+        "reuse": reuse_checks(log),
         "secs": time.time() - t, "log": log, "rmetas": rmetas, "exe": exe,
         "art": artifacts.collect(r.stdout, target),
     }
+
+
+def reuse_checks(log):
+    """What the compiler's own check of reused results (docs/hunt/verify-reuse.patch) found
+    stale: `query <name>`, `metadata` or `allocation sharing`, once each."""
+    found = set()
+    for line in log.splitlines():
+        if line.startswith("rustc-verify-reuse: query `"):
+            found.add("query " + line.split("`")[1])
+        elif line.startswith("rustc-verify-reuse: metadata"):
+            found.add("metadata")
+        elif line.startswith("rustc-verify-reuse: allocation shared differently"):
+            found.add("allocation sharing")
+    return sorted(found)
 
 
 def run_exe(exe):
@@ -410,6 +431,9 @@ def worker(k):
             report("ICE", [], inc, None)
         if inc["hang"]:
             report("hang", [], inc, None)
+        if inc["reuse"]:
+            lines = [l[:3000] for l in inc["log"].splitlines() if l.startswith("rustc-verify-reuse")]
+            report("verify-reuse", inc["reuse"], inc, None, lines[:20])
         if not inc["ok"]:
             stats["failed"] += 1
             path.write_text(old)
