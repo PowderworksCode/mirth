@@ -45,8 +45,12 @@ which cannot find the crates the instrumented compiler built, `error[E0463]`. So
 
 Every crate, all targets, compiles with and without `-Znext-solver=globally`, with no errors
 either way. Comparing the metadata is not meaningful as done here: the flag changes Cargo's
-hashes, so each file differs in its name and crate hash. The tests under the new solver are
-compared with the old solver's results below.
+hashes, so each file differs in its name and crate hash.
+
+The behaviour is compared instead: each crate's tests under the new solver, at
+`-Copt-level=0` with debug assertions, against the old solver's results from the run above.
+All 2,239 tests give the same result, and the failures that come from the setup (doctests,
+compile-fail suites) are the same errors the same number of times under both solvers.
 
 ## Threads
 
