@@ -331,7 +331,7 @@ index f576f29a1..bc9ce9580 100644
      pub(crate) fn LLVMIsMultithreaded() -> Bool;
  
 diff --git a/compiler/rustc_codegen_ssa/src/base.rs b/compiler/rustc_codegen_ssa/src/base.rs
-index f9dfd04fa..43aa5424c 100644
+index f9dfd04fa..fea558316 100644
 --- a/compiler/rustc_codegen_ssa/src/base.rs
 +++ b/compiler/rustc_codegen_ssa/src/base.rs
 @@ -1,4 +1,5 @@
@@ -416,7 +416,7 @@ index f9dfd04fa..43aa5424c 100644
 +    let Ok(recorded) = std::fs::read(&path) else { return };
 +    let Some(module) = backend.codegen_unit_again(tcx, cgu_name, bitcode_needed) else { return };
 +    let Some(fresh) = backend.unoptimized_code(&module) else { return };
-+    if std::env::var_os("RUSTC_VERIFY_REUSE").is_some_and(|v| v == "verbose") {
++    if std::env::var_os("RUSTC_VERIFY_REUSE").is_some_and(|v| v.to_string_lossy().contains("verbose")) {
 +        eprintln!("rustc-verify-reuse-checked: codegen unit `{cgu_name}`");
 +    }
 +    if fresh != recorded {
@@ -477,7 +477,7 @@ index 46f47d6c8..69ea0af7a 100644
          par_join(
              move || {
 diff --git a/compiler/rustc_metadata/src/rmeta/encoder.rs b/compiler/rustc_metadata/src/rmeta/encoder.rs
-index 03493d0e1..1bb732d9a 100644
+index 03493d0e1..0adb62f8e 100644
 --- a/compiler/rustc_metadata/src/rmeta/encoder.rs
 +++ b/compiler/rustc_metadata/src/rmeta/encoder.rs
 @@ -52,6 +52,9 @@
@@ -581,7 +581,7 @@ index 03493d0e1..1bb732d9a 100644
 +    });
 +    let reused = std::fs::read(path).unwrap_or_default();
 +    let encoded = std::fs::read(&fresh).unwrap_or_default();
-+    if std::env::var_os("RUSTC_VERIFY_REUSE").is_some_and(|v| v == "verbose") {
++    if std::env::var_os("RUSTC_VERIFY_REUSE").is_some_and(|v| v.to_string_lossy().contains("verbose")) {
 +        eprintln!("rustc-verify-reuse-checked: metadata of `{}`", tcx.crate_name(LOCAL_CRATE));
 +    }
 +    if reused == encoded {
@@ -683,7 +683,7 @@ index 956c59012..957ddcb20 100644
      fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
          // Add more details here if/when necessary.
 diff --git a/compiler/rustc_query_impl/src/incremental.rs b/compiler/rustc_query_impl/src/incremental.rs
-index a030fe71e..4ce05e8e3 100644
+index a030fe71e..6b2e2db1a 100644
 --- a/compiler/rustc_query_impl/src/incremental.rs
 +++ b/compiler/rustc_query_impl/src/incremental.rs
 @@ -1,17 +1,20 @@
@@ -709,7 +709,7 @@ index a030fe71e..4ce05e8e3 100644
  
  use crate::query_vtables::for_each_query_vtable;
  
-@@ -25,6 +28,319 @@ pub(crate) fn encode_query_values<'tcx>(tcx: TyCtxt<'tcx>, encoder: &mut CacheEn
+@@ -25,6 +28,326 @@ pub(crate) fn encode_query_values<'tcx>(tcx: TyCtxt<'tcx>, encoder: &mut CacheEn
      });
  }
  
@@ -889,8 +889,10 @@ index a030fe71e..4ce05e8e3 100644
 +];
 +
 +/// Queries never recomputed: `mir_borrowck` reads the MIR of nested bodies too, and
-+/// `coroutine_by_move_body_def_id` makes a definition.
-+const NOT_RECOMPUTED: &[&str] = &["coroutine_by_move_body_def_id", "mir_borrowck"];
++/// `coroutine_by_move_body_def_id` and `eval_static_initializer` (for a nested static) make a
++/// definition.
++const NOT_RECOMPUTED: &[&str] =
++    &["coroutine_by_move_body_def_id", "eval_static_initializer", "mir_borrowck"];
 +
 +/// Whether any MIR or THIR of `def` computed this session has been stolen.
 +// Only decides whether to check a value, outside dependency tracking.
@@ -942,6 +944,9 @@ index a030fe71e..4ce05e8e3 100644
 +        })
 +    };
 +    let scratch = std::env::temp_dir().join(format!("rustc-verify-reuse-{}", std::process::id()));
++    // With `RUSTC_VERIFY_REUSE=all`, values computed this session are checked too: a
++    // difference there means the provider's result depends on more than its inputs.
++    let all = std::env::var_os("RUSTC_VERIFY_REUSE").is_some_and(|v| v.to_string_lossy().contains("all"));
 +    let mut checked = 0;
 +    for (key, value) in entries {
 +        if !query.will_cache_on_disk_for_key(key) {
@@ -949,7 +954,8 @@ index a030fe71e..4ce05e8e3 100644
 +        }
 +        let sharing = SHARING.contains(&query.name);
 +        let dep_node = DepNode::construct(tcx, query.dep_kind, &key);
-+        if !tcx.dep_graph.is_green(&dep_node) {
++        let green = tcx.dep_graph.is_green(&dep_node);
++        if !green && !all {
 +            if sharing {
 +                let (_, ids) =
 +                    on_disk_cache::encode_alone(tcx, &scratch, &erase::restore_val::<V>(value));
@@ -1012,16 +1018,17 @@ index a030fe71e..4ce05e8e3 100644
 +                .collect::<Vec<_>>()
 +                .join(", ");
 +            eprintln!(
-+                "rustc-verify-reuse: query `{}` for {:?}, green, differs from a fresh computation ({what})\n  reused: {}\n  fresh:  {}",
++                "rustc-verify-reuse: query `{}` for {:?}, {}, differs from a fresh computation ({what})\n  reused: {}\n  fresh:  {}",
 +                query.name,
 +                key,
++                if green { "green" } else { "computed this session" },
 +                short(&loaded),
 +                short(&computed),
 +            );
 +        }
 +    }
 +    let _ = std::fs::remove_file(&scratch);
-+    if checked > 0 && std::env::var_os("RUSTC_VERIFY_REUSE").is_some_and(|v| v == "verbose") {
++    if checked > 0 && std::env::var_os("RUSTC_VERIFY_REUSE").is_some_and(|v| v.to_string_lossy().contains("verbose")) {
 +        eprintln!("rustc-verify-reuse-checked: {} {checked}", query.name);
 +    }
 +}

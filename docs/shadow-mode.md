@@ -81,7 +81,9 @@ Not recomputed:
   (`optimized_mir`, `mir_for_ctfe` and others, for a definition whose bodies were built this
   session; the same definitions are checked when their bodies were not built);
 - `mir_borrowck`, which reads the MIR of nested bodies too, and
-  `coroutine_by_move_body_def_id`, which makes a definition;
+  `coroutine_by_move_body_def_id` and `eval_static_initializer`, which can make a definition
+  (the latter for a static whose value has a nested allocation), and definitions are frozen
+  by then;
 - values of feedable queries for definitions the compiler made up (the associated type of
   an `impl Trait` in a trait, an elided lifetime added by lowering, the type of a const
   argument), which are set rather than computed;
@@ -108,6 +110,18 @@ not a fix). It costs more than the rest: about 40% on that rebuild.
 
 Replayed diagnostics are not checked yet, and diagnostics LLVM emits while compiling a unit
 are not replayed at all ([finding 7](hunt.md)).
+
+**Every value, not only reused ones.** With `RUSTC_VERIFY_REUSE=all` the same end-of-session
+recomputation covers values computed in this session too, in clean builds as well. A
+difference there would mean a provider's result depends on more than its inputs: on the
+order queries ran in, say. `all,verbose` also counts what was checked. A clean build of
+regex (all targets) recomputed 575,658 values, the other nine replayed crates and
+`fixtures/sink` likewise, and a `-Zthreads=8` build of the threads fixture 21,079: no
+difference anywhere.
+
+**Patch order.** `verify-reuse.patch` applies to the pinned rustc on its own, so a fix can
+be reverted to check that it catches the bug; the three fixes apply on top of it, then
+[`report-untracked.patch`](hunt/report-untracked.patch) and the stopgap.
 
 ## What it reports in the runs
 

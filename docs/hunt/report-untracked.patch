@@ -104,50 +104,10 @@ index 1f8177477..3b51986d6 100644
      }
  
 diff --git a/compiler/rustc_codegen_llvm/src/back/llvm_backend.rs b/compiler/rustc_codegen_llvm/src/back/llvm_backend.rs
-index 8780af2f6..95628cdcd 100644
+index 374c78070..95628cdcd 100644
 --- a/compiler/rustc_codegen_llvm/src/back/llvm_backend.rs
 +++ b/compiler/rustc_codegen_llvm/src/back/llvm_backend.rs
-@@ -74,6 +74,39 @@ fn compile_codegen_unit(
-     ) -> (ModuleCodegen<ModuleLlvm>, u64) {
-         base::compile_codegen_unit(tcx, cgu_name, bitcode_needed)
-     }
-+    fn codegen_unit_again(
-+        &self,
-+        tcx: TyCtxt<'_>,
-+        cgu_name: Symbol,
-+        bitcode_needed: bool,
-+    ) -> Option<ModuleCodegen<ModuleLlvm>> {
-+        Some(base::codegen_unit_again(tcx, cgu_name, bitcode_needed))
-+    }
-+    fn unoptimized_code(&self, module: &ModuleCodegen<ModuleLlvm>) -> Option<Vec<u8>> {
-+        // The module as text, without inline assembly's `srcloc` cookies: they are raw byte
-+        // positions, which an edit before the code moves without changing it, and they are
-+        // only emitted where a reused module never goes through LLVM again (see `asm.rs`).
-+        let text = unsafe {
-+            let raw = llvm::LLVMPrintModuleToString(module.module_llvm.llmod());
-+            let text = CStr::from_ptr(raw).to_string_lossy().into_owned();
-+            llvm::LLVMDisposeMessage(raw);
-+            text
-+        };
-+        let srclocs: Vec<&str> = text
-+            .lines()
-+            .filter_map(|line| line.split_once(", !srcloc ").map(|(_, node)| node))
-+            .collect();
-+        let mut out = String::with_capacity(text.len());
-+        for line in text.lines() {
-+            let line = line.split_once(", !srcloc ").map_or(line, |(code, _)| code);
-+            if srclocs.iter().any(|node| line.starts_with(&format!("{node} = "))) {
-+                continue;
-+            }
-+            out.push_str(line);
-+            out.push('\n');
-+        }
-+        Some(out.into_bytes())
-+    }
- }
- 
- impl WriteBackendMethods for LlvmCodegenBackend {
-@@ -370,7 +403,7 @@ fn join_codegen(
+@@ -403,7 +403,7 @@ fn join_codegen(
              .expect("Expected LlvmCodegenBackend's OngoingCodegen, found Box<Any>")
              .join(sess, incr_comp_session, crate_info);
  
@@ -169,282 +129,6 @@ index a95f25954..746cfd95c 100644
  
      let verbose_asm = sess.opts.unstable_opts.verbose_asm;
      let relax_elf_relocations =
-diff --git a/compiler/rustc_codegen_llvm/src/base.rs b/compiler/rustc_codegen_llvm/src/base.rs
-index 77cb37ede..4bd2556f3 100644
---- a/compiler/rustc_codegen_llvm/src/base.rs
-+++ b/compiler/rustc_codegen_llvm/src/base.rs
-@@ -80,145 +80,155 @@ pub(crate) fn compile_codegen_unit(
-     // the time we needed for codegenning it.
-     let cost = time_to_codegen.as_nanos() as u64;
- 
--    fn module_codegen(
--        tcx: TyCtxt<'_>,
--        cgu_name: Symbol,
--        needs_bitcode: bool,
--    ) -> ModuleCodegen<ModuleLlvm> {
--        let cgu = tcx.codegen_unit(cgu_name);
--        let _prof_timer =
--            tcx.prof.generic_activity_with_arg_recorder("codegen_module", |recorder| {
--                recorder.record_arg(cgu_name.to_string());
--                recorder.record_arg(cgu.size_estimate().to_string());
--            });
--        // Instantiate monomorphizations without filling out definitions yet...
--        let llvm_module = ModuleLlvm::new(tcx, cgu_name.as_str());
--        {
--            let mut cx = CodegenCx::new(tcx, cgu, &llvm_module, needs_bitcode);
-+    (module, cost)
-+}
- 
--            // Declare and store globals shared by all offload kernels
--            //
--            // These globals are left in the LLVM-IR host module so all kernels can access them.
--            // They are necessary for correct offload execution. We do this here to simplify the
--            // `offload` intrinsic, avoiding the need for tracking whether it's the first
--            // intrinsic call or not.
--            let has_host_offload = cx
--                .sess()
--                .opts
--                .unstable_opts
--                .offload
--                .iter()
--                .any(|o| matches!(o, Offload::Host(_) | Offload::Test));
--            if has_host_offload && !cx.sess().target.is_like_gpu {
--                cx.offload_globals.replace(Some(OffloadGlobals::declare(&cx)));
--            }
-+fn module_codegen(
-+    tcx: TyCtxt<'_>,
-+    cgu_name: Symbol,
-+    needs_bitcode: bool,
-+) -> ModuleCodegen<ModuleLlvm> {
-+    let cgu = tcx.codegen_unit(cgu_name);
-+    let _prof_timer =
-+        tcx.prof.generic_activity_with_arg_recorder("codegen_module", |recorder| {
-+            recorder.record_arg(cgu_name.to_string());
-+            recorder.record_arg(cgu.size_estimate().to_string());
-+        });
-+    // Instantiate monomorphizations without filling out definitions yet...
-+    let llvm_module = ModuleLlvm::new(tcx, cgu_name.as_str());
-+    {
-+        let mut cx = CodegenCx::new(tcx, cgu, &llvm_module, needs_bitcode);
- 
--            let mono_items = cx.codegen_unit.items_in_deterministic_order(cx.tcx);
--            for &(mono_item, data) in &mono_items {
--                mono_item.predefine::<Builder<'_, '_, '_>>(
--                    &mut cx,
--                    cgu_name.as_str(),
--                    data.linkage,
--                    data.visibility,
--                );
--            }
-+        // Declare and store globals shared by all offload kernels
-+        //
-+        // These globals are left in the LLVM-IR host module so all kernels can access them.
-+        // They are necessary for correct offload execution. We do this here to simplify the
-+        // `offload` intrinsic, avoiding the need for tracking whether it's the first
-+        // intrinsic call or not.
-+        let has_host_offload = cx
-+            .sess()
-+            .opts
-+            .unstable_opts
-+            .offload
-+            .iter()
-+            .any(|o| matches!(o, Offload::Host(_) | Offload::Test));
-+        if has_host_offload && !cx.sess().target.is_like_gpu {
-+            cx.offload_globals.replace(Some(OffloadGlobals::declare(&cx)));
-+        }
- 
--            // ... and now that we have everything pre-defined, fill out those definitions.
--            for &(mono_item, item_data) in &mono_items {
--                mono_item.define::<Builder<'_, '_, '_>>(&mut cx, cgu_name.as_str(), item_data);
--            }
-+        let mono_items = cx.codegen_unit.items_in_deterministic_order(cx.tcx);
-+        for &(mono_item, data) in &mono_items {
-+            mono_item.predefine::<Builder<'_, '_, '_>>(
-+                &mut cx,
-+                cgu_name.as_str(),
-+                data.linkage,
-+                data.visibility,
-+            );
-+        }
- 
--            // If this codegen unit contains the main function, also create the
--            // wrapper here
--            if let Some(entry) =
--                maybe_create_entry_wrapper::<Builder<'_, '_, '_>>(&cx, cx.codegen_unit)
--            {
--                let mut attrs =
--                    attributes::sanitize_attrs(&cx, tcx, SanitizerFnAttrs::default(), None, None);
--                // When pointer authentication is enabled, ensure that the ptrauth-* attributes are
--                // also attached to the entry wrapper.
--                //
--                // FIXME(jchlanda) If it ever becomes necessary to ensure that all compiler
--                // generated functions receive the ptrauth-* attributes, `declare_fn` or
--                // `declare_raw_fn` could be used to provide those.
--                if cx.sess().pointer_authentication() {
--                    let cfg = cx.sess().pointer_auth_config.as_ref().unwrap();
--                    for ptrauth_attr in cfg.fn_attrs() {
--                        attrs.push(llvm::CreateAttrString(cx.llcx, ptrauth_attr));
--                    }
--                }
--                attributes::apply_to_llfn(entry, llvm::AttributePlace::Function, &attrs);
--            }
-+        // ... and now that we have everything pre-defined, fill out those definitions.
-+        for &(mono_item, item_data) in &mono_items {
-+            mono_item.define::<Builder<'_, '_, '_>>(&mut cx, cgu_name.as_str(), item_data);
-+        }
- 
--            // Define Objective-C module info and module flags. Note, the module info will
--            // also be added to the `llvm.compiler.used` variable, created later.
-+        // If this codegen unit contains the main function, also create the
-+        // wrapper here
-+        if let Some(entry) =
-+            maybe_create_entry_wrapper::<Builder<'_, '_, '_>>(&cx, cx.codegen_unit)
-+        {
-+            let mut attrs =
-+                attributes::sanitize_attrs(&cx, tcx, SanitizerFnAttrs::default(), None, None);
-+            // When pointer authentication is enabled, ensure that the ptrauth-* attributes are
-+            // also attached to the entry wrapper.
-             //
--            // These are only necessary when we need the linker to do its Objective-C-specific
--            // magic. We could theoretically do it unconditionally, but at a slight cost to linker
--            // performance in the common case where it's unnecessary.
--            if !cx.objc_classrefs.borrow().is_empty() || !cx.objc_selrefs.borrow().is_empty() {
--                if cx.objc_abi_version() == 1 {
--                    cx.define_objc_module_info();
--                }
--                cx.add_objc_module_flags();
--            }
--
-+            // FIXME(jchlanda) If it ever becomes necessary to ensure that all compiler
-+            // generated functions receive the ptrauth-* attributes, `declare_fn` or
-+            // `declare_raw_fn` could be used to provide those.
-             if cx.sess().pointer_authentication() {
-                 let cfg = cx.sess().pointer_auth_config.as_ref().unwrap();
--
--                let aarch64_elf_pauthabi_version =
--                    cfg.calculate_pauth_abi_version(&cx.sess().target);
--                if aarch64_elf_pauthabi_version != 0 {
--                    cx.add_ptrauth_pauthabi_version_and_platform_flags(
--                        aarch64_elf_pauthabi_version,
--                    );
--                }
--                if cfg.elf_got {
--                    cx.add_ptrauth_elf_got_flag();
--                }
--                if cx.sess().pointer_authentication_functions().is_some() {
--                    cx.add_ptrauth_sign_personality_flag();
-+                for ptrauth_attr in cfg.fn_attrs() {
-+                    attrs.push(llvm::CreateAttrString(cx.llcx, ptrauth_attr));
-                 }
-             }
-+            attributes::apply_to_llfn(entry, llvm::AttributePlace::Function, &attrs);
-+        }
- 
--            // Finalize code coverage by injecting the coverage map. Note, the coverage map will
--            // also be added to the `llvm.compiler.used` variable, created next.
--            if cx.sess().instrument_coverage() {
--                cx.coverageinfo_finalize();
-+        // Define Objective-C module info and module flags. Note, the module info will
-+        // also be added to the `llvm.compiler.used` variable, created later.
-+        //
-+        // These are only necessary when we need the linker to do its Objective-C-specific
-+        // magic. We could theoretically do it unconditionally, but at a slight cost to linker
-+        // performance in the common case where it's unnecessary.
-+        if !cx.objc_classrefs.borrow().is_empty() || !cx.objc_selrefs.borrow().is_empty() {
-+            if cx.objc_abi_version() == 1 {
-+                cx.define_objc_module_info();
-             }
-+            cx.add_objc_module_flags();
-+        }
- 
--            // Create the llvm.used variable.
--            if !cx.used_statics.is_empty() {
--                cx.create_used_variable_impl(c"llvm.used", &cx.used_statics);
--            }
-+        if cx.sess().pointer_authentication() {
-+            let cfg = cx.sess().pointer_auth_config.as_ref().unwrap();
- 
--            // Create the llvm.compiler.used variable.
--            {
--                let compiler_used_statics = cx.compiler_used_statics.borrow();
--                if !compiler_used_statics.is_empty() {
--                    cx.create_used_variable_impl(c"llvm.compiler.used", &compiler_used_statics);
--                }
-+            let aarch64_elf_pauthabi_version =
-+                cfg.calculate_pauth_abi_version(&cx.sess().target);
-+            if aarch64_elf_pauthabi_version != 0 {
-+                cx.add_ptrauth_pauthabi_version_and_platform_flags(
-+                    aarch64_elf_pauthabi_version,
-+                );
-+            }
-+            if cfg.elf_got {
-+                cx.add_ptrauth_elf_got_flag();
-             }
-+            if cx.sess().pointer_authentication_functions().is_some() {
-+                cx.add_ptrauth_sign_personality_flag();
-+            }
-+        }
- 
--            // Run replace-all-uses-with for statics that need it. This must
--            // happen after the llvm.used variables are created.
--            for &(old_g, new_g) in cx.statics_to_rauw().borrow().iter() {
--                unsafe {
--                    llvm::LLVMReplaceAllUsesWith(old_g, new_g);
--                    llvm::LLVMDeleteGlobal(old_g);
--                }
-+        // Finalize code coverage by injecting the coverage map. Note, the coverage map will
-+        // also be added to the `llvm.compiler.used` variable, created next.
-+        if cx.sess().instrument_coverage() {
-+            cx.coverageinfo_finalize();
-+        }
-+
-+        // Create the llvm.used variable.
-+        if !cx.used_statics.is_empty() {
-+            cx.create_used_variable_impl(c"llvm.used", &cx.used_statics);
-+        }
-+
-+        // Create the llvm.compiler.used variable.
-+        {
-+            let compiler_used_statics = cx.compiler_used_statics.borrow();
-+            if !compiler_used_statics.is_empty() {
-+                cx.create_used_variable_impl(c"llvm.compiler.used", &compiler_used_statics);
-             }
-+        }
- 
--            // Finalize debuginfo
--            if cx.sess().opts.debuginfo != DebugInfo::None {
--                cx.debuginfo_finalize();
-+        // Run replace-all-uses-with for statics that need it. This must
-+        // happen after the llvm.used variables are created.
-+        for &(old_g, new_g) in cx.statics_to_rauw().borrow().iter() {
-+            unsafe {
-+                llvm::LLVMReplaceAllUsesWith(old_g, new_g);
-+                llvm::LLVMDeleteGlobal(old_g);
-             }
-         }
- 
--        ModuleCodegen::new_regular(cgu_name.to_string(), llvm_module)
-+        // Finalize debuginfo
-+        if cx.sess().opts.debuginfo != DebugInfo::None {
-+            cx.debuginfo_finalize();
-+        }
-     }
- 
--    (module, cost)
-+    ModuleCodegen::new_regular(cgu_name.to_string(), llvm_module)
-+}
-+
-+/// For testing incremental compilation (`RUSTC_VERIFY_REUSE`): the codegen unit generated
-+/// again, outside dependency tracking, as a check of one reused from the incremental cache.
-+pub(crate) fn codegen_unit_again(
-+    tcx: TyCtxt<'_>,
-+    cgu_name: Symbol,
-+    bitcode_needed: bool,
-+) -> ModuleCodegen<ModuleLlvm> {
-+    tcx.dep_graph.with_ignore(|| module_codegen(tcx, cgu_name, bitcode_needed))
- }
- 
- pub(crate) fn set_link_section(llval: &Value, attrs: &CodegenFnAttrs) {
 diff --git a/compiler/rustc_codegen_llvm/src/debuginfo/metadata.rs b/compiler/rustc_codegen_llvm/src/debuginfo/metadata.rs
 index a3bcce345..33eec74df 100644
 --- a/compiler/rustc_codegen_llvm/src/debuginfo/metadata.rs
@@ -463,18 +147,6 @@ index a3bcce345..33eec74df 100644
              source = source_file.src.as_deref().map(String::as_str);
              if source.is_none() {
                  cx.tcx.sess.source_map().ensure_source_file_source_present(source_file);
-diff --git a/compiler/rustc_codegen_llvm/src/llvm/ffi.rs b/compiler/rustc_codegen_llvm/src/llvm/ffi.rs
-index f576f29a1..bc9ce9580 100644
---- a/compiler/rustc_codegen_llvm/src/llvm/ffi.rs
-+++ b/compiler/rustc_codegen_llvm/src/llvm/ffi.rs
-@@ -1649,6 +1649,7 @@ pub(crate) fn LLVMBuildFence<'a>(
-     pub(crate) fn LLVMGetHostCPUFeatures() -> *mut c_char;
- 
-     pub(crate) fn LLVMDisposeMessage(message: *mut c_char);
-+    pub(crate) fn LLVMPrintModuleToString(M: &Module) -> *mut c_char;
- 
-     pub(crate) fn LLVMIsMultithreaded() -> Bool;
- 
 diff --git a/compiler/rustc_codegen_llvm/src/llvm_util.rs b/compiler/rustc_codegen_llvm/src/llvm_util.rs
 index a582e897e..859a2e5c4 100644
 --- a/compiler/rustc_codegen_llvm/src/llvm_util.rs
@@ -770,16 +442,10 @@ index 04be7956e..3d6cdf857 100644
          old_incr_comp_session_dir: tcx
              .incr_comp_session
 diff --git a/compiler/rustc_codegen_ssa/src/base.rs b/compiler/rustc_codegen_ssa/src/base.rs
-index f9dfd04fa..3d3e17231 100644
+index fea558316..703270e78 100644
 --- a/compiler/rustc_codegen_ssa/src/base.rs
 +++ b/compiler/rustc_codegen_ssa/src/base.rs
-@@ -1,4 +1,5 @@
- use std::collections::BTreeSet;
-+use std::path::PathBuf;
- use std::sync::Arc;
- use std::time::{Duration, Instant};
- use std::{cmp, iter};
-@@ -808,7 +809,7 @@ pub fn codegen_crate<
+@@ -809,7 +809,7 @@ pub fn codegen_crate<
      });
  
      let mut total_codegen_time = Duration::new(0, 0);
@@ -788,41 +454,7 @@ index f9dfd04fa..3d3e17231 100644
  
      // The non-parallel compiler can only translate codegen units to LLVM IR
      // on a single thread, leading to a staircase effect where the N LLVM
-@@ -847,6 +848,7 @@ pub fn codegen_crate<
-         FxHashMap::default()
-     };
- 
-+    let verify_reuse = std::env::var_os("RUSTC_VERIFY_REUSE").is_some();
-     for (i, cgu) in codegen_units.iter().enumerate() {
-         ongoing_codegen.wait_for_signal_to_codegen_item();
-         ongoing_codegen.check_for_errors(tcx.sess);
-@@ -868,9 +870,15 @@ pub fn codegen_crate<
-                 // compilation hang on post-monomorphization errors.
-                 tcx.dcx().abort_if_errors();
- 
-+                if verify_reuse {
-+                    record_codegen_unit(&backend, tcx, cgu.name(), &module);
-+                }
-                 submit_codegened_module_to_llvm(&ongoing_codegen.coordinator, module, cost);
-             }
-             CguReuse::PreLto => {
-+                if verify_reuse {
-+                    verify_reused_codegen_unit(&backend, tcx, cgu.name(), bitcode_needed);
-+                }
-                 submit_pre_lto_module_to_llvm(
-                     tcx,
-                     &ongoing_codegen.coordinator,
-@@ -885,6 +893,9 @@ pub fn codegen_crate<
-                 tcx.dcx().abort_if_errors();
-             }
-             CguReuse::PostLto => {
-+                if verify_reuse {
-+                    verify_reused_codegen_unit(&backend, tcx, cgu.name(), bitcode_needed);
-+                }
-                 submit_post_lto_module_to_llvm(
-                     &ongoing_codegen.coordinator,
-                     CachedModuleCodegen {
-@@ -900,7 +911,7 @@ pub fn codegen_crate<
+@@ -911,7 +911,7 @@ pub fn codegen_crate<
  
      // Since the main thread is sometimes blocked during codegen, we keep track
      // -Ztime-passes output manually.
@@ -831,7 +463,7 @@ index f9dfd04fa..3d3e17231 100644
          let end_rss = get_resident_set_size();
  
          print_time_passes_entry(
-@@ -908,7 +919,7 @@ pub fn codegen_crate<
+@@ -919,7 +919,7 @@ pub fn codegen_crate<
              total_codegen_time,
              start_rss.unwrap(),
              end_rss,
@@ -840,96 +472,6 @@ index f9dfd04fa..3d3e17231 100644
          );
      }
  
-@@ -1253,6 +1264,61 @@ pub(crate) fn provide(providers: &mut Providers) {
-     };
- }
- 
-+/// For testing incremental compilation (`RUSTC_VERIFY_REUSE`): where a codegen unit's
-+/// unoptimized code is kept, from the session that generated it, to check the unit when a
-+/// later session reuses it. In the crate's incremental directory, outside any one session's.
-+fn recorded_codegen_unit(tcx: TyCtxt<'_>, cgu_name: Symbol) -> Option<PathBuf> {
-+    let session: &std::path::Path = &tcx.incr_comp_session?.new_session_directory;
-+    Some(session.parent()?.join("verify-reuse").join(format!("{cgu_name}.ll")))
-+}
-+
-+fn record_codegen_unit<B: ExtraBackendMethods>(
-+    backend: &B,
-+    tcx: TyCtxt<'_>,
-+    cgu_name: Symbol,
-+    module: &ModuleCodegen<B::Module>,
-+) {
-+    let (Some(path), Some(code)) =
-+        (recorded_codegen_unit(tcx, cgu_name), backend.unoptimized_code(module))
-+    else {
-+        return;
-+    };
-+    if let Some(dir) = path.parent() {
-+        let _ = std::fs::create_dir_all(dir);
-+    }
-+    let _ = std::fs::write(path, code);
-+}
-+
-+/// Generates a reused codegen unit again and compares its unoptimized code with that of the
-+/// session that generated the reused one. A difference prints a line starting
-+/// `rustc-verify-reuse:` and keeps the fresh code next to the recorded one.
-+fn verify_reused_codegen_unit<B: ExtraBackendMethods>(
-+    backend: &B,
-+    tcx: TyCtxt<'_>,
-+    cgu_name: Symbol,
-+    bitcode_needed: bool,
-+) {
-+    let Some(path) = recorded_codegen_unit(tcx, cgu_name) else { return };
-+    let Ok(recorded) = std::fs::read(&path) else { return };
-+    let Some(module) = backend.codegen_unit_again(tcx, cgu_name, bitcode_needed) else { return };
-+    let Some(fresh) = backend.unoptimized_code(&module) else { return };
-+    if std::env::var_os("RUSTC_VERIFY_REUSE").is_some_and(|v| v == "verbose") {
-+        eprintln!("rustc-verify-reuse-checked: codegen unit `{cgu_name}`");
-+    }
-+    if fresh != recorded {
-+        let kept = path.with_extension("fresh.ll");
-+        let _ = std::fs::write(&kept, &fresh);
-+        eprintln!(
-+            "rustc-verify-reuse: codegen unit `{cgu_name}` of `{}` reused from the incremental cache differs from a fresh codegen (unoptimized code, {} and {} bytes); kept as {} next to {}",
-+            tcx.crate_name(LOCAL_CRATE),
-+            recorded.len(),
-+            fresh.len(),
-+            kept.display(),
-+            path.display(),
-+        );
-+    }
-+}
-+
- pub fn determine_cgu_reuse<'tcx>(tcx: TyCtxt<'tcx>, cgu: &CodegenUnit<'tcx>) -> CguReuse {
-     if !tcx.dep_graph.is_fully_enabled()
-         || tcx.sess.opts.unstable_opts.disable_incr_comp_backend_caching
-diff --git a/compiler/rustc_codegen_ssa/src/traits/backend.rs b/compiler/rustc_codegen_ssa/src/traits/backend.rs
-index e06ac36fd..1fea1d7c8 100644
---- a/compiler/rustc_codegen_ssa/src/traits/backend.rs
-+++ b/compiler/rustc_codegen_ssa/src/traits/backend.rs
-@@ -167,4 +167,23 @@ fn compile_codegen_unit(
-         cgu_name: Symbol,
-         bitcode_needed: bool,
-     ) -> (ModuleCodegen<Self::Module>, u64);
-+
-+    /// For testing incremental compilation (`RUSTC_VERIFY_REUSE`): the codegen unit generated
-+    /// again, outside dependency tracking, as a check of one reused from the incremental cache.
-+    /// `None` if the backend cannot.
-+    fn codegen_unit_again(
-+        &self,
-+        _tcx: TyCtxt<'_>,
-+        _cgu_name: Symbol,
-+        _bitcode_needed: bool,
-+    ) -> Option<ModuleCodegen<Self::Module>> {
-+        None
-+    }
-+
-+    /// For testing incremental compilation (`RUSTC_VERIFY_REUSE`): a generated module's code
-+    /// before optimization, as bytes that are equal when the code is. `None` if the backend
-+    /// cannot say.
-+    fn unoptimized_code(&self, _module: &ModuleCodegen<Self::Module>) -> Option<Vec<u8>> {
-+        None
-+    }
- }
 diff --git a/compiler/rustc_data_structures/src/lib.rs b/compiler/rustc_data_structures/src/lib.rs
 index aae378939..dc71d2ae3 100644
 --- a/compiler/rustc_data_structures/src/lib.rs
@@ -1156,18 +698,6 @@ index 76e0bf92c..0caeb2789 100644
  
      // Match exhaustively to make sure we don't miss any cases.
      let loaded = match load_result {
-diff --git a/compiler/rustc_incremental/src/persist/save.rs b/compiler/rustc_incremental/src/persist/save.rs
-index 46f47d6c8..69ea0af7a 100644
---- a/compiler/rustc_incremental/src/persist/save.rs
-+++ b/compiler/rustc_incremental/src/persist/save.rs
-@@ -41,6 +41,7 @@ pub(crate) fn save_dep_graph(tcx: TyCtxt<'_>) {
- 
-         sess.time("assert_dep_graph", || assert_dep_graph(tcx));
-         sess.time("check_clean", || clean::check_clean_annotations(tcx));
-+        sess.time("verify_reused_values", || tcx.verify_reused_values());
- 
-         par_join(
-             move || {
 diff --git a/compiler/rustc_infer/src/infer/relate/higher_ranked.rs b/compiler/rustc_infer/src/infer/relate/higher_ranked.rs
 index 324725a07..baa0f2b04 100644
 --- a/compiler/rustc_infer/src/infer/relate/higher_ranked.rs
@@ -1478,28 +1008,10 @@ index 6cb6ad001..8586b036d 100644
                          diagnostics::StaticLinkingNotSupported::UserRequested {
                              lib_name: lib.name,
 diff --git a/compiler/rustc_metadata/src/rmeta/encoder.rs b/compiler/rustc_metadata/src/rmeta/encoder.rs
-index 03493d0e1..6c65d6650 100644
+index 989ca8361..657b3a5cd 100644
 --- a/compiler/rustc_metadata/src/rmeta/encoder.rs
 +++ b/compiler/rustc_metadata/src/rmeta/encoder.rs
-@@ -15,6 +15,7 @@
- use rustc_data_structures::owned_slice::slice_owned;
- use rustc_data_structures::stable_hash::{StableHash, StableHasher};
- use rustc_data_structures::sync::{par_for_each_in, par_join};
-+use rustc_data_structures::svh::Svh;
- use rustc_data_structures::temp_dir::MaybeTempDir;
- use rustc_data_structures::thousands::usize_with_underscores;
- use rustc_hir as hir;
-@@ -52,6 +53,9 @@
- pub(super) struct EncodeContext<'a, 'tcx> {
-     opaque: FileEncoder<'a>,
-     metadata_hasher: Arc<Mutex<XxHash3_128>>,
-+    /// Set for a shadow encoding (see `verify_reused_metadata`), which keeps the crate hash it
-+    /// computes here instead of setting the session's, which the reused metadata already set.
-+    shadow_hash: Option<Option<Svh>>,
-     tcx: TyCtxt<'tcx>,
-     feat: &'tcx rustc_feature::Features,
-     tables: TableBuilders,
-@@ -585,6 +589,8 @@ fn encode_source_map(
+@@ -589,6 +589,8 @@ fn encode_source_map(
              //
              // At this point we also erase the actual on-disk path and only keep
              // the remapped version -- as is necessary for reproducible builds.
@@ -1508,20 +1020,7 @@ index 03493d0e1..6c65d6650 100644
              let mut adapted_source_file = (**source_file).clone();
  
              match source_file.name {
-@@ -817,7 +823,11 @@ macro_rules! stat {
-         } else {
-             tcx.crate_hash(LOCAL_CRATE)
-         };
--        tcx.untracked().local_crate_hash.set(hash).expect("local_crate_hash set twice");
-+        if let Some(shadow_hash) = &mut self.shadow_hash {
-+            *shadow_hash = Some(hash);
-+        } else {
-+            tcx.untracked().local_crate_hash.set(hash).expect("local_crate_hash set twice");
-+        }
- 
-         let unhashed = stat!("final", || {
-             // Indexed by dependency `CrateNum`, matching the numbering `encode_crate_deps` uses.
-@@ -831,7 +841,7 @@ macro_rules! stat {
+@@ -839,7 +841,7 @@ macro_rules! stat {
              }
  
              self.lazy(CrateRootUnhashed {
@@ -1530,7 +1029,7 @@ index 03493d0e1..6c65d6650 100644
                  dep_extra_filenames,
              })
          });
-@@ -841,7 +851,7 @@ macro_rules! stat {
+@@ -849,7 +851,7 @@ macro_rules! stat {
          let computed_total_bytes: usize = stats.iter().map(|(_, size)| size).sum();
          assert_eq!(total_bytes, computed_total_bytes);
  
@@ -1539,143 +1038,14 @@ index 03493d0e1..6c65d6650 100644
              use std::fmt::Write;
  
              self.opaque.flush();
-@@ -2561,6 +2571,10 @@ pub fn encode_metadata(tcx: TyCtxt<'_>, path: &Path, ref_path: Option<&Path>) {
-         let hash = blob.expect("file already created").get_crate_hash();
-         tcx.untracked().local_crate_hash.set(hash).expect("local_crate_hash set twice");
- 
-+        if std::env::var_os("RUSTC_VERIFY_REUSE").is_some() {
-+            verify_reused_metadata(tcx, path);
-+        }
-+
-         // Generate the metadata stub manually, as that is a small file compared to full metadata.
-         if let Some(ref_path) = ref_path {
-             let _prof_timer = tcx.prof.verbose_generic_activity("generate_crate_metadata_stub");
-@@ -2598,6 +2612,9 @@ pub fn encode_metadata(tcx: TyCtxt<'_>, path: &Path, ref_path: Option<&Path>) {
-         dep_node,
-         tcx,
+@@ -2612,6 +2614,7 @@ pub fn encode_metadata(tcx: TyCtxt<'_>, path: &Path, ref_path: Option<&Path>) {
          || {
-+            // Make the metadata depend on the source files it describes.
-+            let _ = tcx.local_source_files_fingerprint(());
+             // Make the metadata depend on the source files it describes.
+             let _ = tcx.local_source_files_fingerprint(());
 +            rustc_middle::dep_graph::declare_untracked_input("source file contents");
              with_encode_metadata_header(tcx, path, |ecx| {
                  // Encode all the entries and extra information in the crate,
                  // culminating in the `CrateRoot` which points to all of it.
-@@ -2638,6 +2655,15 @@ fn with_encode_metadata_header(
-     tcx: TyCtxt<'_>,
-     path: &Path,
-     f: impl FnOnce(&mut EncodeContext<'_, '_>) -> (usize, usize),
-+) {
-+    with_encode_metadata_header_shadow(tcx, path, false, f)
-+}
-+
-+fn with_encode_metadata_header_shadow(
-+    tcx: TyCtxt<'_>,
-+    path: &Path,
-+    shadow: bool,
-+    f: impl FnOnce(&mut EncodeContext<'_, '_>) -> (usize, usize),
- ) {
-     // By default the crate hash (SVH) is computed from the bytes of the encoded metadata,
-     // Under `-Z metadata-crate-hash=no` the SVH comes from the legacy `crate_hash` query instead and
-@@ -2694,6 +2720,7 @@ fn with_encode_metadata_header(
-     let mut ecx = EncodeContext {
-         opaque: encoder,
-         metadata_hasher: Arc::clone(&metadata_hasher),
-+        shadow_hash: shadow.then_some(None),
-         tcx,
-         feat: tcx.features(),
-         tables: Default::default(),
-@@ -2733,12 +2760,15 @@ fn with_encode_metadata_header(
-         tcx.dcx().emit_fatal(FailWriteFile { path: ecx.opaque.path(), err });
-     }
- 
--    let hash = tcx
--        .untracked()
--        .local_crate_hash
--        .get()
--        .copied()
--        .expect("local_crate_hash set during encoding");
-+    let hash = match ecx.shadow_hash {
-+        Some(shadow_hash) => shadow_hash.expect("crate hash computed during the shadow encoding"),
-+        None => tcx
-+            .untracked()
-+            .local_crate_hash
-+            .get()
-+            .copied()
-+            .expect("local_crate_hash set during encoding"),
-+    };
-     if let Err(err) = encode_crate_hash(file, hash) {
-         tcx.dcx().emit_fatal(FailWriteFile { path: ecx.opaque.path(), err });
-     }
-@@ -2748,6 +2778,50 @@ fn with_encode_metadata_header(
-     }
- }
- 
-+/// Shadow verification, for testing incremental compilation: metadata was just reused from the
-+/// incremental cache because its dep-node is green. Encode it again from this session's
-+/// queries, outside dependency tracking, and check that the bytes are the same. A difference
-+/// means the reuse was wrong: something the metadata depends on is not tracked.
-+///
-+/// On a difference this prints a line starting `rustc-verify-reuse:` and keeps the fresh
-+/// encoding beside the reused file, as `<file>.fresh`; otherwise it removes it.
-+fn verify_reused_metadata(tcx: TyCtxt<'_>, path: &Path) {
-+    let fresh = path.with_extension("rmeta.fresh");
-+    // `encode_metadata` already runs with dependency tracking ignored.
-+    with_encode_metadata_header_shadow(tcx, &fresh, true, |ecx| {
-+        let (root, unhashed) = ecx.encode_crate_root();
-+        ecx.opaque.flush();
-+        (root.position.get(), unhashed.position.get())
-+    });
-+    let reused = std::fs::read(path).unwrap_or_default();
-+    let encoded = std::fs::read(&fresh).unwrap_or_default();
-+    if std::env::var_os("RUSTC_VERIFY_REUSE").is_some_and(|v| v == "verbose") {
-+        eprintln!("rustc-verify-reuse-checked: metadata of `{}`", tcx.crate_name(LOCAL_CRATE));
-+    }
-+    if reused == encoded {
-+        let _ = std::fs::remove_file(&fresh);
-+    } else {
-+        // Keep it next to the output, outside the temporary directory.
-+        let fresh = match tcx.output_filenames(()).path(rustc_session::config::OutputType::Metadata) {
-+            rustc_session::config::OutFileName::Real(out)
-+                if std::fs::rename(&fresh, out.with_extension("rmeta.fresh")).is_ok() =>
-+            {
-+                out.with_extension("rmeta.fresh")
-+            }
-+            _ => fresh,
-+        };
-+        let at = reused.iter().zip(&encoded).position(|(a, b)| a != b).unwrap_or(reused.len().min(encoded.len()));
-+        eprintln!(
-+            "rustc-verify-reuse: metadata of `{}` reused from the incremental cache differs from a fresh encoding ({} and {} bytes, first difference at byte {}); kept as {}",
-+            tcx.crate_name(LOCAL_CRATE),
-+            reused.len(),
-+            encoded.len(),
-+            at,
-+            fresh.display(),
-+        );
-+    }
-+}
-+
- fn encode_root_position(mut file: &File, pos: usize) -> Result<(), std::io::Error> {
-     file.seek(SeekFrom::Start(ROOT_POS_OFFSET as u64))?;
-     file.write_all(&pos.to_le_bytes())?;
-@@ -2768,6 +2842,18 @@ fn encode_crate_hash(mut file: &File, hash: Svh) -> Result<(), std::io::Error> {
- 
- pub(crate) fn provide(providers: &mut Providers) {
-     *providers = Providers {
-+        local_source_files_fingerprint: |tcx, ()| {
-+            let mut hasher = StableHasher::new();
-+            for file in tcx.sess.source_map().files().iter() {
-+                if file.is_imported() {
-+                    continue;
-+                }
-+                std::hash::Hash::hash(&file.name, &mut hasher);
-+                std::hash::Hash::hash(&file.unnormalized_source_len, &mut hasher);
-+                std::hash::Hash::hash(&file.src_hash, &mut hasher);
-+            }
-+            Svh::new(hasher.finish())
-+        },
-         doc_link_resolutions: |tcx, def_id| {
-             tcx.resolutions(())
-                 .doc_link_resolutions
 diff --git a/compiler/rustc_middle/src/dep_graph/graph.rs b/compiler/rustc_middle/src/dep_graph/graph.rs
 index dcb5775f2..211d1d6f5 100644
 --- a/compiler/rustc_middle/src/dep_graph/graph.rs
@@ -1852,21 +1222,6 @@ index 1c476fc91..4a76764f4 100644
          GraphEncoder { status, retained_graph, profiler: sess.prof.clone() }
      }
  
-diff --git a/compiler/rustc_middle/src/hooks.rs b/compiler/rustc_middle/src/hooks.rs
-index 7bccc34db..71f2341b1 100644
---- a/compiler/rustc_middle/src/hooks.rs
-+++ b/compiler/rustc_middle/src/hooks.rs
-@@ -106,6 +106,10 @@ fn clone(&self) -> Self { *self }
- 
-     hook verify_query_key_hashes() -> ();
- 
-+    /// Under `RUSTC_VERIFY_REUSE`, computes reused query values again and reports any that
-+    /// differ. For testing incremental compilation.
-+    hook verify_reused_values() -> ();
-+
-     /// Ensure the given scalar is valid for the given type.
-     /// This checks non-recursive runtime validity.
-     hook validate_scalar_in_layout(scalar: crate::ty::ScalarInt, ty: Ty<'tcx>) -> bool;
 diff --git a/compiler/rustc_middle/src/lint.rs b/compiler/rustc_middle/src/lint.rs
 index 8822ffee6..2cccc2a36 100644
 --- a/compiler/rustc_middle/src/lint.rs
@@ -1929,49 +1284,6 @@ index 1cd34c35b..05d476384 100644
      if dark_mode {
          graph_attrs.push(r#"bgcolor="black""#);
          graph_attrs.push(r#"fontcolor="white""#);
-diff --git a/compiler/rustc_middle/src/mir/interpret/mod.rs b/compiler/rustc_middle/src/mir/interpret/mod.rs
-index 10aa9532b..6ff5cb4fa 100644
---- a/compiler/rustc_middle/src/mir/interpret/mod.rs
-+++ b/compiler/rustc_middle/src/mir/interpret/mod.rs
-@@ -99,6 +99,10 @@ enum AllocDiscriminant {
-     VTable,
-     Static,
-     Type,
-+    /// Memory that was deduplicated when it was created (string literals, for instance), and
-+    /// must be deduplicated again when decoded: otherwise the same allocation decoded from the
-+    /// incremental cache and created afresh would get two `AllocId`s.
-+    DedupAlloc,
- }
- 
- pub fn specialized_encode_alloc_id<'tcx, E: TyEncoder<'tcx>>(
-@@ -109,7 +113,13 @@ pub fn specialized_encode_alloc_id<'tcx, E: TyEncoder<'tcx>>(
-     match tcx.global_alloc(alloc_id) {
-         GlobalAlloc::Memory(alloc) => {
-             trace!("encoding {:?} with {:#?}", alloc_id, alloc);
--            AllocDiscriminant::Alloc.encode(encoder);
-+            let deduplicated = tcx.alloc_map.dedup.lock().get(&(GlobalAlloc::Memory(alloc), CTFE_ALLOC_SALT))
-+                == Some(&alloc_id);
-+            if deduplicated {
-+                AllocDiscriminant::DedupAlloc.encode(encoder);
-+            } else {
-+                AllocDiscriminant::Alloc.encode(encoder);
-+            }
-             alloc.encode(encoder);
-         }
-         GlobalAlloc::Function { instance } => {
-@@ -216,6 +226,12 @@ pub fn decode_alloc_id<'tcx, D>(&self, decoder: &mut D) -> AllocId
-                 trace!("decoded alloc {:?}", alloc);
-                 decoder.interner().reserve_and_set_memory_alloc(alloc)
-             }
-+            AllocDiscriminant::DedupAlloc => {
-+                trace!("creating deduplicated memory alloc ID");
-+                let alloc = <ConstAllocation<'tcx> as Decodable<_>>::decode(decoder);
-+                trace!("decoded alloc {:?}", alloc);
-+                decoder.interner().reserve_and_set_memory_dedup(alloc, CTFE_ALLOC_SALT)
-+            }
-             AllocDiscriminant::Fn => {
-                 trace!("creating fn alloc ID");
-                 let instance = ty::Instance::decode(decoder);
 diff --git a/compiler/rustc_middle/src/mir/pretty.rs b/compiler/rustc_middle/src/mir/pretty.rs
 index ae30093b1..5ceeb0c88 100644
 --- a/compiler/rustc_middle/src/mir/pretty.rs
@@ -2061,82 +1373,6 @@ index cf567fa1c..82b2c8ef3 100644
              // In this case, we do not need to keep the items in any specific order, as the input
              // is already deterministic.
              //
-diff --git a/compiler/rustc_middle/src/queries.rs b/compiler/rustc_middle/src/queries.rs
-index d9d618519..b9c94ce6b 100644
---- a/compiler/rustc_middle/src/queries.rs
-+++ b/compiler/rustc_middle/src/queries.rs
-@@ -190,6 +190,15 @@ fn describe_as_module(def_id: impl Into<LocalDefId>, tcx: TyCtxt<'_>) -> String
-         desc { "get the value of an environment variable" }
-     }
- 
-+    /// A fingerprint of every local source file's name, length and contents. Metadata
-+    /// encodes all three in its source map, so reusing metadata from the incremental
-+    /// cache has to depend on them; nothing else that metadata reads does.
-+    query local_source_files_fingerprint(_: ()) -> Svh {
-+        // The source map is global state
-+        eval_always
-+        desc { "fingerprinting the local source files" }
-+    }
-+
-     query resolutions(_: ()) -> &'tcx ResolverGlobalCtxt {
-         desc { "getting the resolver outputs" }
-     }
-diff --git a/compiler/rustc_middle/src/query/on_disk_cache.rs b/compiler/rustc_middle/src/query/on_disk_cache.rs
-index 956c59012..957ddcb20 100644
---- a/compiler/rustc_middle/src/query/on_disk_cache.rs
-+++ b/compiler/rustc_middle/src/query/on_disk_cache.rs
-@@ -756,6 +756,51 @@ pub struct CacheEncoder<'tcx> {
-     side_effects_index: Vec<(SerializedDepNodeIndex, AbsoluteBytePos)>,
- }
- 
-+/// For testing incremental compilation (`RUSTC_VERIFY_REUSE`): `value` as the cache would
-+/// encode it, alone, in a fresh encoder, so that two values can be compared by the bytes a later
-+/// session would read, and the allocations it refers to in the order it first refers to them.
-+/// `path` is a scratch file.
-+pub fn encode_alone<'tcx, V: Encodable<CacheEncoder<'tcx>>>(
-+    tcx: TyCtxt<'tcx>,
-+    path: &std::path::Path,
-+    value: &V,
-+) -> (Vec<u8>, Vec<interpret::AllocId>) {
-+    let file_to_file_index = tcx
-+        .sess
-+        .source_map()
-+        .files()
-+        .iter()
-+        .enumerate()
-+        .map(|(index, file)| (&raw const **file, SourceFileIndex(index as u32)))
-+        .collect();
-+    let Ok(file) = FileEncoder::new(path) else { return Default::default() };
-+    let mut encoder = CacheEncoder {
-+        tcx,
-+        encoder: file,
-+        type_shorthands: Default::default(),
-+        predicate_shorthands: Default::default(),
-+        interpret_allocs: Default::default(),
-+        caching_source_map_view: CachingSourceMapView::new(tcx.sess.source_map()),
-+        file_to_file_index,
-+        hygiene_context: Default::default(),
-+        symbol_index_table: Default::default(),
-+        source_span_cache: Default::default(),
-+        query_values_index: Default::default(),
-+        side_effects_index: Default::default(),
-+    };
-+    value.encode(&mut encoder);
-+    // The allocations it refers to, as `serialize` encodes them, so that their contents are
-+    // compared too.
-+    let mut n = 0;
-+    while n < encoder.interpret_allocs.len() {
-+        let id = encoder.interpret_allocs[n];
-+        interpret::specialized_encode_alloc_id(&mut encoder, tcx, id);
-+        n += 1;
-+    }
-+    let _ = encoder.encoder.finish();
-+    (std::fs::read(path).unwrap_or_default(), encoder.interpret_allocs.into_iter().collect())
-+}
-+
- impl<'tcx> fmt::Debug for CacheEncoder<'tcx> {
-     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-         // Add more details here if/when necessary.
 diff --git a/compiler/rustc_middle/src/ty/context.rs b/compiler/rustc_middle/src/ty/context.rs
 index aa7fe0872..e56a7d587 100644
 --- a/compiler/rustc_middle/src/ty/context.rs
@@ -2172,37 +1408,6 @@ index fb4e30b16..c6a883286 100644
              return regular;
          }
  
-diff --git a/compiler/rustc_middle/src/ty/generics.rs b/compiler/rustc_middle/src/ty/generics.rs
-index 353ac74bd..5c52883cf 100644
---- a/compiler/rustc_middle/src/ty/generics.rs
-+++ b/compiler/rustc_middle/src/ty/generics.rs
-@@ -1,7 +1,7 @@
- use std::ops::ControlFlow;
- 
- use rustc_ast as ast;
--use rustc_data_structures::fx::FxHashMap;
-+use rustc_data_structures::fx::FxIndexMap;
- use rustc_hir::def_id::DefId;
- use rustc_macros::{StableHash, TyDecodable, TyEncodable};
- use rustc_span::{Span, Symbol, bug, kw};
-@@ -124,7 +124,7 @@ pub struct Generics {
- 
-     /// Reverse map to the `index` field of each `GenericParamDef`.
-     #[stable_hash(ignore)]
--    pub param_def_id_to_index: FxHashMap<DefId, u32>,
-+    pub param_def_id_to_index: FxIndexMap<DefId, u32>,
- 
-     pub has_self: bool,
-     pub has_late_bound_regions: Option<Span>,
-@@ -132,8 +132,6 @@ pub struct Generics {
- 
- impl std::fmt::Debug for Generics {
-     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
--        // ironically, we get this warning because of what we're trying to fix.
--        #[expect(rustc::potential_query_instability)]
-         let mut stabilized_hashmap = self.param_def_id_to_index.iter().collect::<Vec<_>>();
-         stabilized_hashmap.sort_by_key(|(_, v)| **v);
-         f.debug_struct("Generics")
 diff --git a/compiler/rustc_middle/src/ty/print/pretty.rs b/compiler/rustc_middle/src/ty/print/pretty.rs
 index cafe93c59..c2bc8681b 100644
 --- a/compiler/rustc_middle/src/ty/print/pretty.rs
@@ -2450,353 +1655,10 @@ index ca60614ba..e3bf3285f 100644
              }
  
 diff --git a/compiler/rustc_query_impl/src/incremental.rs b/compiler/rustc_query_impl/src/incremental.rs
-index a030fe71e..0cfa01b39 100644
+index 6b2e2db1a..0985313c1 100644
 --- a/compiler/rustc_query_impl/src/incremental.rs
 +++ b/compiler/rustc_query_impl/src/incremental.rs
-@@ -1,17 +1,20 @@
- use rustc_data_structures::fingerprint::{Fingerprint, PackedFingerprint};
-+use rustc_data_structures::fx::FxHashMap;
- use rustc_data_structures::unord::UnordMap;
- #[expect(unused_imports, reason = "used by doc comments")]
- use rustc_middle::dep_graph::DepKindVTable;
- use rustc_middle::dep_graph::{
-     DepGraphData, DepNode, DepNodeIndex, DepNodeKey, SerializedDepNodeIndex,
- };
-+use rustc_middle::mir::interpret::AllocId;
- use rustc_middle::query::erase::{Erasable, Erased};
--use rustc_middle::query::on_disk_cache::{CacheDecoder, CacheEncoder};
--use rustc_middle::query::{QueryCache, QueryState, QueryVTable, erase};
-+use rustc_middle::query::on_disk_cache::{self, CacheDecoder, CacheEncoder};
-+use rustc_middle::query::{QueryCache, QueryKey, QueryState, QueryVTable, erase};
- use rustc_middle::ty::TyCtxt;
- use rustc_middle::verify_ich::incremental_verify_ich;
- use rustc_serialize::{Decodable, Encodable};
- use rustc_span::bug;
-+use rustc_span::def_id::LocalDefId;
- 
- use crate::query_vtables::for_each_query_vtable;
- 
-@@ -25,6 +28,319 @@ pub(crate) fn encode_query_values<'tcx>(tcx: TyCtxt<'tcx>, encoder: &mut CacheEn
-     });
- }
- 
-+/// Shadow verification, for testing incremental compilation, under `RUSTC_VERIFY_REUSE`: at
-+/// the end of the session, before the dependency graph and the cache are saved, compute every
-+/// green value of a cached query again with its provider, outside dependency tracking, and
-+/// compare: by stable hash; by `Debug` text, which also sees fields the stable hash ignores;
-+/// and by the bytes the cache would encode, which also see the order of hash maps. A green
-+/// value was reused from the previous session; a difference means it was stale (its
-+/// computation read something that is not tracked), or that it did not survive the round trip
-+/// through the cache.
-+///
-+/// It runs here because no query is executing, so recomputing cannot cycle back into the
-+/// query being checked, and the previous session's cache is still readable. A difference
-+/// prints a line starting `rustc-verify-reuse:`. `RUSTC_VERIFY_REUSE_SKIP` lists more queries, comma-separated, not to recompute.
-+pub(crate) fn verify_reused_values<'tcx>(tcx: TyCtxt<'tcx>) {
-+    if std::env::var_os("RUSTC_VERIFY_REUSE").is_none() {
-+        return;
-+    }
-+    // Load every green value that was not used this session, so it is checked too.
-+    tcx.dep_graph.exec_cache_promotions(tcx);
-+    // Printing values must not use trimmed paths, which assume a diagnostic is emitted.
-+    let mut allocs = Allocs::default();
-+    rustc_middle::ty::print::with_no_trimmed_paths!(for_each_query_vtable!(
-+        CACHE_ON_DISK,
-+        tcx,
-+        |query| verify_reused_values_inner(tcx, query, &mut allocs)
-+    ));
-+}
-+
-+/// `Debug` text in a form two equal values print the same: the contents of `OnceLock`s are
-+/// removed, since they are caches filled on demand and a value that has been used shows more
-+/// than a fresh one; the elements of `UnordMap`s and `UnordSet`s are sorted, since their
-+/// order is unspecified; and the numbers of `AllocId`s (`alloc12`) are removed, since a
-+/// decoded allocation and a computed one get different ones. (The encoding comparison sees
-+/// the allocations' contents.)
-+fn normalized(text: &str) -> String {
-+    normalized_inner(&without_alloc_ids(text))
-+}
-+
-+fn without_alloc_ids(text: &str) -> String {
-+    let mut out = String::with_capacity(text.len());
-+    let mut rest = text;
-+    while let Some(at) = rest.find("alloc") {
-+        let after = &rest[at + "alloc".len()..];
-+        let digits = after.len() - after.trim_start_matches(|c: char| c.is_ascii_digit()).len();
-+        let word = rest[..at].chars().next_back().is_some_and(|c| c.is_alphanumeric() || c == '_');
-+        out.push_str(&rest[..at + "alloc".len()]);
-+        if digits > 0 && !word {
-+            out.push('_');
-+        } else {
-+            out.push_str(&after[..digits]);
-+        }
-+        rest = &after[digits..];
-+    }
-+    out.push_str(rest);
-+    out
-+}
-+
-+fn normalized_inner(text: &str) -> String {
-+    // The index of the bracket closing the one just before `text[from..]`.
-+    fn closing(text: &str, from: usize) -> usize {
-+        let mut depth = 1;
-+        for (i, c) in text[from..].char_indices() {
-+            match c {
-+                '(' | '[' | '{' => depth += 1,
-+                ')' | ']' | '}' => depth -= 1,
-+                _ => {}
-+            }
-+            if depth == 0 {
-+                return from + i;
-+            }
-+        }
-+        text.len()
-+    }
-+    // `text` split at top-level `, `.
-+    fn elements(text: &str) -> Vec<&str> {
-+        let (mut out, mut depth, mut start) = (Vec::new(), 0, 0);
-+        let bytes = text.as_bytes();
-+        for (i, c) in text.char_indices() {
-+            match c {
-+                '(' | '[' | '{' => depth += 1,
-+                ')' | ']' | '}' => depth -= 1,
-+                ',' if depth == 0 && bytes.get(i + 1) == Some(&b' ') => {
-+                    out.push(&text[start..i]);
-+                    start = i + 2;
-+                }
-+                _ => {}
-+            }
-+        }
-+        if start < text.len() {
-+            out.push(&text[start..]);
-+        }
-+        out
-+    }
-+    let mut out = String::with_capacity(text.len());
-+    let mut rest = text;
-+    loop {
-+        let cache = rest.find("OnceLock(").map(|at| (at, "OnceLock(", false));
-+        let unord = ["UnordMap { inner: {", "UnordSet { inner: {"]
-+            .into_iter()
-+            .filter_map(|m| rest.find(m).map(|at| (at, m, true)))
-+            .min();
-+        let Some((at, marker, sort)) = [cache, unord].into_iter().flatten().min() else {
-+            break;
-+        };
-+        let open = at + marker.len();
-+        let end = closing(rest, open);
-+        out.push_str(&rest[..open]);
-+        if sort {
-+            let mut items: Vec<String> =
-+                elements(&rest[open..end]).into_iter().map(normalized_inner).collect();
-+            items.sort();
-+            out.push_str(&items.join(", "));
-+        } else {
-+            out.push('_');
-+        }
-+        rest = &rest[end..];
-+    }
-+    out.push_str(rest);
-+    out
-+}
-+
-+/// Which allocations values share. For every value of the queries in `SHARING`, each
-+/// allocation a fresh computation refers to is mapped to the one the value in use refers to in
-+/// the same place (a value computed this session maps its allocations to themselves). Two
-+/// different allocations for one fresh one mean the reused value does not share an allocation
-+/// that a clean session would share: the round trip through the cache lost a deduplication.
-+#[derive(Default)]
-+struct Allocs {
-+    /// Fresh allocation → the allocation in use, and where it was first seen.
-+    seen: FxHashMap<AllocId, (AllocId, String)>,
-+}
-+
-+impl Allocs {
-+    fn check(&mut self, fresh: AllocId, used: AllocId, here: impl Fn() -> String) {
-+        match self.seen.get(&fresh) {
-+            None => {
-+                self.seen.insert(fresh, (used, here()));
-+            }
-+            Some((other_used, other)) if *other_used != used => eprintln!(
-+                "rustc-verify-reuse: allocation shared differently: {} uses {used:?} where a fresh computation uses {fresh:?}, but {other} uses {other_used:?} for it",
-+                here(),
-+            ),
-+            Some(_) => {}
-+        }
-+    }
-+}
-+
-+/// Queries whose values refer to allocations that may be shared with other values.
-+const SHARING: &[&str] = &[
-+    "eval_static_initializer",
-+    "eval_to_allocation_raw",
-+    "eval_to_const_value_raw",
-+    "mir_for_ctfe",
-+    "optimized_mir",
-+    "promoted_mir",
-+    "trivial_const",
-+];
-+
-+/// Queries whose providers read the MIR or THIR of the definition they are given, which is
-+/// stolen once it has been used: they are recomputed only if none of it has been stolen.
-+const READING_BODIES: &[&str] = &[
-+    "check_liveness",
-+    "check_match",
-+    "check_tail_calls",
-+    "check_unsafety",
-+    "has_ffi_unwind_calls",
-+    "mir_const_qualif",
-+    "mir_coroutine_witnesses",
-+    "mir_for_ctfe",
-+    "mir_inliner_callees",
-+    "optimized_mir",
-+    "promoted_mir",
-+    "thir_abstract_const",
-+    "trivial_const",
-+];
-+
-+/// Queries never recomputed: `mir_borrowck` reads the MIR of nested bodies too, and
-+/// `coroutine_by_move_body_def_id` makes a definition.
-+const NOT_RECOMPUTED: &[&str] = &["coroutine_by_move_body_def_id", "mir_borrowck"];
-+
-+/// Whether any MIR or THIR of `def` computed this session has been stolen.
-+// Only decides whether to check a value, outside dependency tracking.
-+#[allow(rustc::untracked_query_information)]
-+fn body_stolen<'tcx>(tcx: TyCtxt<'tcx>, def: LocalDefId) -> bool {
-+    use rustc_middle::queries::{
-+        mir_built, mir_drops_elaborated_and_const_checked as mir_elaborated, mir_promoted,
-+        thir_body,
-+    };
-+    let vtables = &tcx.query_system.query_vtables;
-+    let built = vtables.mir_built.cache.lookup(&def).is_some_and(|(body, _)| {
-+        erase::restore_val::<mir_built::Value<'tcx>>(body).is_stolen()
-+    });
-+    let elaborated = vtables.mir_drops_elaborated_and_const_checked.cache.lookup(&def).is_some_and(
-+        |(body, _)| erase::restore_val::<mir_elaborated::Value<'tcx>>(body).is_stolen(),
-+    );
-+    let promoted = vtables.mir_promoted.cache.lookup(&def).is_some_and(|(value, _)| {
-+        let (body, promoted) = erase::restore_val::<mir_promoted::Value<'tcx>>(value);
-+        body.is_stolen() || promoted.is_stolen()
-+    });
-+    let thir = vtables.thir_body.cache.lookup(&def).is_some_and(|(value, _)| {
-+        erase::restore_val::<thir_body::Value<'tcx>>(value).is_ok_and(|(thir, _)| thir.is_stolen())
-+    });
-+    built || elaborated || promoted || thir
-+}
-+
-+fn verify_reused_values_inner<'tcx, C, V>(
-+    tcx: TyCtxt<'tcx>,
-+    query: &'tcx QueryVTable<'tcx, C>,
-+    allocs: &mut Allocs,
-+) where
-+    C: QueryCache<Value = Erased<V>>,
-+    V: Erasable + Encodable<CacheEncoder<'tcx>>,
-+{
-+    if NOT_RECOMPUTED.contains(&query.name) {
-+        return;
-+    }
-+    let reads_body = READING_BODIES.contains(&query.name);
-+    if let Some(skip) = std::env::var_os("RUSTC_VERIFY_REUSE_SKIP")
-+        && skip.to_string_lossy().split(',').any(|name| name == query.name)
-+    {
-+        return;
-+    }
-+    let mut entries = Vec::new();
-+    query.cache.for_each(&mut |key, value, _| entries.push((*key, *value)));
-+    let hash = |value: &C::Value| {
-+        query.hash_value_fn.map_or(Fingerprint::ZERO, |f| {
-+            tcx.with_stable_hashing_context(|mut hcx| f(&mut hcx, value))
-+        })
-+    };
-+    let scratch = std::env::temp_dir().join(format!("rustc-verify-reuse-{}", std::process::id()));
-+    let mut checked = 0;
-+    for (key, value) in entries {
-+        if !query.will_cache_on_disk_for_key(key) {
-+            continue;
-+        }
-+        let sharing = SHARING.contains(&query.name);
-+        let dep_node = DepNode::construct(tcx, query.dep_kind, &key);
-+        if !tcx.dep_graph.is_green(&dep_node) {
-+            if sharing {
-+                let (_, ids) =
-+                    on_disk_cache::encode_alone(tcx, &scratch, &erase::restore_val::<V>(value));
-+                let here = || format!("query `{}` for {:?}, computed this session", query.name, key);
-+                for id in ids {
-+                    allocs.check(id, id, here);
-+                }
-+            }
-+            continue;
-+        }
-+        // A feedable query's value for a definition the compiler made up is set by whatever
-+        // made it, and the provider may not accept the key: the associated type for an
-+        // `impl Trait` in a trait (a synthetic HIR node), an elided lifetime that lowering
-+        // adds as a parameter, or the type of a const argument, set when it is lowered.
-+        if query.feedable
-+            && key.key_as_def_id().and_then(|id| id.as_local()).is_some_and(|id| {
-+                matches!(
-+                    tcx.def_kind(id),
-+                    rustc_hir::def::DefKind::LifetimeParam | rustc_hir::def::DefKind::AnonConst
-+                ) || matches!(tcx.hir_node_by_def_id(id), rustc_hir::Node::Synthetic)
-+            })
-+        {
-+            continue;
-+        }
-+        if reads_body
-+            && key
-+                .key_as_def_id()
-+                .and_then(|id| id.as_local())
-+                .is_none_or(|id| body_stolen(tcx, id) || body_stolen(tcx, tcx.typeck_root_def_id_local(id)))
-+        {
-+            continue;
-+        }
-+        checked += 1;
-+        let fresh = tcx.dep_graph.with_ignore(|| (query.invoke_provider_fn)(tcx, key));
-+        let text = (query.format_value)(&value);
-+        let loaded = normalized(&text);
-+        let computed = normalized(&(query.format_value)(&fresh));
-+        let same_hash = hash(&value) == hash(&fresh);
-+        let same_text = loaded == computed;
-+        // `UnordMap`s and `UnordSet`s encode in their iteration order, which differs between a
-+        // decoded value and a computed one and which nothing may observe, so the encoding of a
-+        // value containing one is not compared.
-+        let (loaded_bytes, loaded_ids) =
-+            on_disk_cache::encode_alone(tcx, &scratch, &erase::restore_val::<V>(value));
-+        let (fresh_bytes, fresh_ids) =
-+            on_disk_cache::encode_alone(tcx, &scratch, &erase::restore_val::<V>(fresh));
-+        let same_bytes =
-+            text.contains("UnordMap {") || text.contains("UnordSet {") || loaded_bytes == fresh_bytes;
-+        if sharing && loaded_ids.len() == fresh_ids.len() {
-+            let here = || format!("query `{}` for {:?}, green", query.name, key);
-+            for (fresh_id, loaded_id) in fresh_ids.into_iter().zip(loaded_ids) {
-+                allocs.check(fresh_id, loaded_id, here);
-+            }
-+        }
-+        if !(same_hash && same_text && same_bytes) {
-+            let short = |s: &str| s.chars().take(2000).collect::<String>();
-+            let what = [(same_hash, "stable hash"), (same_text, "Debug text"), (same_bytes, "encoding")]
-+                .into_iter()
-+                .filter_map(|(same, what)| (!same).then_some(what))
-+                .collect::<Vec<_>>()
-+                .join(", ");
-+            eprintln!(
-+                "rustc-verify-reuse: query `{}` for {:?}, green, differs from a fresh computation ({what})\n  reused: {}\n  fresh:  {}",
-+                query.name,
-+                key,
-+                short(&loaded),
-+                short(&computed),
-+            );
-+        }
-+    }
-+    let _ = std::fs::remove_file(&scratch);
-+    if checked > 0 && std::env::var_os("RUSTC_VERIFY_REUSE").is_some_and(|v| v == "verbose") {
-+        eprintln!("rustc-verify-reuse-checked: {} {checked}", query.name);
-+    }
-+}
-+
- fn encode_query_values_inner<'tcx, C, V>(
-     tcx: TyCtxt<'tcx>,
-     query: &'tcx QueryVTable<'tcx, C>,
-@@ -44,7 +360,7 @@ fn encode_query_values_inner<'tcx, C, V>(
+@@ -367,7 +367,7 @@ fn encode_query_values_inner<'tcx, C, V>(
  }
  
  pub(crate) fn verify_query_key_hashes<'tcx>(tcx: TyCtxt<'tcx>) {
@@ -2805,7 +1667,7 @@ index a030fe71e..0cfa01b39 100644
          tcx.sess.time("verify_query_key_hashes", || {
              for_each_query_vtable!(ALL, tcx, |query| {
                  verify_query_key_hashes_inner(query, tcx);
-@@ -99,7 +415,7 @@ pub(crate) fn should_verify_loaded_value(
+@@ -422,7 +422,7 @@ pub(crate) fn should_verify_loaded_value(
  ) -> bool {
      let hash = Fingerprint::from(key_fingerprint).to_smaller_hash().as_u64();
      hash % 32 == dep_graph_data.session_count() % 32
@@ -2814,16 +1676,6 @@ index a030fe71e..0cfa01b39 100644
  }
  
  /// Inner implementation of [`DepKindVTable::promote_from_disk_fn`] for queries.
-diff --git a/compiler/rustc_query_impl/src/lib.rs b/compiler/rustc_query_impl/src/lib.rs
-index eed772cae..5eecf938d 100644
---- a/compiler/rustc_query_impl/src/lib.rs
-+++ b/compiler/rustc_query_impl/src/lib.rs
-@@ -52,4 +52,5 @@ pub fn provide(providers: &mut rustc_middle::util::Providers) {
-         self_profile::alloc_self_profile_query_strings;
-     providers.hooks.verify_query_key_hashes = incremental::verify_query_key_hashes;
-     providers.hooks.encode_query_values = incremental::encode_query_values;
-+    providers.hooks.verify_reused_values = incremental::verify_reused_values;
- }
 diff --git a/compiler/rustc_session/src/config.rs b/compiler/rustc_session/src/config.rs
 index 64cfdfd5f..7c3993f87 100644
 --- a/compiler/rustc_session/src/config.rs
