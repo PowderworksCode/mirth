@@ -4,7 +4,8 @@ with an incremental build after each, then compare with a clean build.
 
     rustc/fuzz-replay.py --rustc <rustc> --fixture fixtures/sink --finding <dir> --work <dir> [--upto N]
 
-Prints which .rmeta files differ. --upto replays only the first N edits that
+Prints which .rmeta files differ, and keeps the compiler's output of the last
+incremental build and the clean build as inc.log and clean.log. --upto replays only the first N edits that
 were kept, to find where the difference appears.
 """
 
@@ -45,6 +46,7 @@ def build(t):
             for f in msg["filenames"]:
                 if f.endswith(".rmeta"):
                     rmetas[str(Path(f).relative_to(t))] = Path(f).read_bytes()
+    build.log = r.stderr
     return r.returncode == 0, rmetas
 
 
@@ -71,8 +73,10 @@ for step in history:
         print(f"{step['edit']:18} {step['file']:24} {'built' if ok else 'failed'}")
 
 ok, inc = build(target)
+(work / "inc.log").write_text(build.log)
 target.rename(inc_target)
 ok2, clean = build(target)
+(work / "clean.log").write_text(build.log)
 differ = sorted(r for r in set(inc) | set(clean) if inc.get(r) != clean.get(r))
 print(json.dumps({"kept_edits": kept, "inc_ok": ok, "clean_ok": ok2, "differ": [Path(d).name for d in differ]}))
 for d in differ:
