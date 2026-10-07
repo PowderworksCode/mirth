@@ -29,6 +29,7 @@ with `-Zthreads=8`. `rustc/check.sh wide` runs the ordinary checks.
 | 3 | with `-Zthreads=8`, two traits with `-> impl Trait` methods give different metadata from run to run | known: [#162202](https://github.com/rust-lang/rust/issues/162202) |
 | 4 | incremental rebuilds republish the previous session's metadata when an edit moves no span, so its source map describes old files | **looks new**; found later by the fuzzer and the history replay ([`scale.md`](scale.md)); root cause found, regression from #114669 (1.90); fix and regression test written |
 | 5 | `-Zemit-stack-sizes`, `-Zcodegen-source-order` and `-Zbuild-sdylib-interface` are untracked but change output that incremental compilation reuses | **looks new**; found by a query written from a closed bug and an option audit ([`ur-queries.md`](ur-queries.md)); report drafted |
+| 6 | reused object code keeps the previous checksum of an edited source file in its debuginfo, and with `-Zembed-source` the previous file; with optimizations, ThinLTO symbol names then differ from a clean build | **looks new**; found by the fuzzer at `-Copt-level=2`; root cause found, since 1.44 (#69718); report drafted, no fix |
 
 Findings 1 and 2 are single-threaded: an ordinary `cargo build`, an edit, another
 `cargo build`, and the metadata differs from a clean build of the edited source. Both come
@@ -37,12 +38,14 @@ incremental cache unchanged. All three reproduce with the official `nightly-2026
 without mirth: `docs/hunt/repro.sh` runs them. None was searched for: P5 and P6 reported
 them on the first run of the new fixture.
 
-Draft bug reports for 1, 2, 4 and 5, written to be filed upstream, are
+Draft bug reports for 1, 2, 4, 5 and 6, written to be filed upstream, are
 [`hunt/issue-generics-order.md`](hunt/issue-generics-order.md),
 [`hunt/issue-literal-dedup.md`](hunt/issue-literal-dedup.md) and
 [`hunt/issue-stale-metadata-reuse.md`](hunt/issue-stale-metadata-reuse.md) and
 [`hunt/issue-untracked-options.md`](hunt/issue-untracked-options.md), the last a comment for
-rust-lang/rust#84232. Each has a candidate fix
+rust-lang/rust#84232; for 6 it is
+[`hunt/issue-stale-debuginfo-source.md`](hunt/issue-stale-debuginfo-source.md), which has no
+fix, since every fix costs codegen reuse and the choice is the maintainers'. Each has a candidate fix
 (`hunt/*.patch`) and a regression test in the style of rustc's `tests/run-make`
 (`hunt/tests/`), which fails on the pinned compiler and passes with the fix.
 

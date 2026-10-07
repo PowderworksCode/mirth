@@ -326,7 +326,7 @@ def build(src, target):
 
 def reuse_checks(log):
     """What the compiler's own check of reused results (docs/hunt/verify-reuse.patch) found
-    stale: `query <name>`, `metadata` or `allocation sharing`, once each."""
+    stale: `query <name>`, `metadata` or `allocation sharing <queries>`, once each."""
     found = set()
     for line in log.splitlines():
         if line.startswith("rustc-verify-reuse: query `"):
@@ -334,7 +334,11 @@ def reuse_checks(log):
         elif line.startswith("rustc-verify-reuse: metadata"):
             found.add("metadata")
         elif line.startswith("rustc-verify-reuse: allocation shared differently"):
-            found.add("allocation sharing")
+            # Named by the two queries and typing modes, so that a new pattern is kept apart
+            # from a known one.
+            queries = re.findall(r"query `(\w+)`", line)
+            modes = re.findall(r"TypingModeEqWrapper\((\w+)\)", line)
+            found.add("allocation sharing " + " / ".join(queries + sorted(set(modes))))
     return sorted(found)
 
 

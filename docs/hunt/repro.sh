@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The three reproductions in hunt.md, with plain rustc (RUSTC, or the pinned
+# The reproductions in hunt.md, with plain rustc (RUSTC, or the pinned
 # nightly). Each prints "same" or "DIFFER".
 set -u
 here=$(cd "$(dirname "$0")" && pwd)
@@ -42,3 +42,15 @@ rc --crate-type lib --crate-name dep --emit=metadata,link -Cincremental="$d/i6" 
 if cmp -s "$d/s1/libdep.rmeta" "$d/s2/libdep.rmeta"; then echo same
 elif cmp -s "$d/s1/libdep.rmeta" "$d/before.rmeta"; then echo "DIFFER (the previous session's metadata, republished)"
 else echo DIFFER; fi
+
+echo -n "stale-debuginfo, embedded source after a comment at the end, incremental vs clean: "
+mkdir -p "$d/e1" "$d/e2"
+printf 'pub fn f(x: u32) -> u32 {\n    x ^ 7\n}\n' > "$d/e.rs"
+ef="--crate-type lib --crate-name e -Cdebuginfo=2 -Zdwarf-version=5 -Zembed-source=yes -Cembed-bitcode=no"
+rc $ef -Cincremental="$d/i7" --out-dir "$d/e1" "$d/e.rs"
+echo "// added after the first build" >> "$d/e.rs"
+rc $ef -Cincremental="$d/i7" --out-dir "$d/e1" "$d/e.rs"
+rc $ef -Cincremental="$d/i8" --out-dir "$d/e2" "$d/e.rs"
+n1=$(cd "$d/e1" && ar p libe.rlib | grep -a -c "added after the first build")
+n2=$(cd "$d/e2" && ar p libe.rlib | grep -a -c "added after the first build")
+if [ "$n1" = "$n2" ]; then echo same; else echo "DIFFER (the rebuilt object embeds the file as it was)"; fi

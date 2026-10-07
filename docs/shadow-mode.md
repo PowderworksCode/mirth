@@ -87,7 +87,9 @@ Not recomputed:
   argument), which are set rather than computed;
 - anything named in `RUSTC_VERIFY_REUSE_SKIP` (comma-separated query names).
 
-Object files and replayed diagnostics are not checked yet.
+Object files and replayed diagnostics are not checked yet. Finding 6 in [`hunt.md`](hunt.md),
+reused object code whose debuginfo names the previous version of an edited file, is the kind
+of bug a check of reused object files would catch on the spot.
 
 ## Does it find the known bugs?
 
