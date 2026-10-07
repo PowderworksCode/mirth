@@ -1,0 +1,34 @@
+diff --git a/compiler/rustc_interface/src/passes.rs b/compiler/rustc_interface/src/passes.rs
+index 8975f01de..eb0c39a27 100644
+--- a/compiler/rustc_interface/src/passes.rs
++++ b/compiler/rustc_interface/src/passes.rs
+@@ -1104,6 +1105,29 @@ fn run_required_analyses(tcx: TyCtxt<'_>) {
+     // to use `hir_crate_items`.
+     tcx.ensure_done().hir_crate_items(());
+ 
++    // mirth: testing only (docs/hunt/threads-def-order-stopgap.patch). Under the parallel front
++    // end, definitions that queries make get indices in whatever order threads reach them, so
++    // metadata tables indexed by definition differ from build to build (rust-lang/rust#162202).
++    // Make them here, on one thread and in definition order, while the order is deterministic.
++    if tcx.sess.opts.jobs.frontend.is_some() {
++        let items = tcx.hir_crate_items(());
++        for owner in items.owners() {
++            tcx.ensure_done().resolve_bound_vars(owner);
++        }
++        for def_id in items.definitions() {
++            match tcx.def_kind(def_id) {
++                rustc_hir::def::DefKind::Trait | rustc_hir::def::DefKind::Impl { .. } => {
++                    tcx.ensure_done()
++                        .associated_types_for_impl_traits_in_trait_or_impl(def_id.to_def_id());
++                }
++                rustc_hir::def::DefKind::Closure
++                    if tcx.needs_coroutine_by_move_body_def_id(def_id.to_def_id()) => {
++                    tcx.ensure_done().coroutine_by_move_body_def_id(def_id.to_def_id());
++                }
++                _ => {}
++            }
++        }
++    }
+     tcx.untracked().definitions.write().commit_end_of_determinism();
+ 
+     rustc_passes::delegation::check_glob_and_list_delegations_target_expr(tcx);

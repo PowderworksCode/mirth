@@ -171,7 +171,16 @@ turns the two such trait methods into boxed iterators and futures, and the free 
 into functions returning `impl Future` (once the fuzzer duplicated an `async fn`, clean
 threaded builds of the crate differed six ways in six builds, as in #162202's first
 example); with it, clean threaded builds agree. The fuzzer now builds clean a second time
-whenever anything differs, and reports P5 rather than P6 if the two clean builds disagree. With only one of the two changed, clean builds agreed but incremental rebuilds
+whenever anything differs, and reports P5 rather than P6 if the two clean builds disagree.
+
+That still left `-Zthreads` fuzzing finding #162202 again whenever an edit made another
+`impl Trait` or `async fn`. [`hunt/threads-def-order-stopgap.patch`](hunt/threads-def-order-stopgap.patch),
+a testing aid like the other stopgap, makes the definitions that queries create (RPITIT
+associated types, captured lifetimes of opaque types, coroutine by-move bodies) on one
+thread, in definition order, just before rustc's `commit_end_of_determinism`, when the
+front end is parallel. With it, eight `-Zthreads=8` builds of #162202's reproduction give one
+metadata file instead of four, and threaded builds of the original `fixtures/sink` agree,
+so the threaded fuzzer runs on the unmodified fixture. With only one of the two changed, clean builds agreed but incremental rebuilds
 differed from clean ones about half the time: the same out-of-order indices, made in one
 session and kept by the next (the incremental tables for the made-up associated types ended
 two indices earlier). That is #162202 reaching incremental sessions, not a new bug.
