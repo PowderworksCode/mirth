@@ -143,6 +143,36 @@ The last 1,455 of those comparisons also checked object code, binaries and diagn
 
 Millions of edits means about a week here, or several machines.
 
+## Other flags
+
+Short fuzz runs (two workers, 40 edits each) with one flag set added to every build, on the
+compiler with the three fixes, the reuse check and
+[`hunt/debuginfo-checksum-stopgap.patch`](hunt/debuginfo-checksum-stopgap.patch):
+
+| flags | compared | differences from a clean build |
+|---|---:|---|
+| `-Copt-level=2` (before the stopgap) | 102 | binaries and objects in a third of the rebuilds: [finding 6](hunt.md) |
+| `-Copt-level=2` | 152 | none |
+| `-Cinstrument-coverage` (official nightly) | 126 | none besides the known metadata bugs |
+| `-Cdebuginfo=line-tables-only` | 71 | none |
+| `-Cpanic=abort` | 68 | none |
+| `-Zshare-generics=yes -Copt-level=1` | 71 | none |
+| `-Copt-level=s` | 67 | none |
+| `-Ccodegen-units=1 -Copt-level=3` | 69 | none |
+| `-Zdwarf-version=5` | 66 | none |
+| `-Csplit-debuginfo=unpacked`, `=packed` | 74, 67 | every rebuild, but two clean builds differ too: objects name their `.dwo` files with the session suffix, so this oracle does not apply |
+
+The reuse check printed only the known allocation-sharing pattern in all of them.
+
+**Threads.** With `-Zthreads=8`, two clean builds of `fixtures/sink` already differ
+(#162202: the definitions made for `impl Trait` and `async fn` in traits get indices in a
+nondeterministic order). [`fixtures/sink-threads.patch`](../fixtures/sink-threads.patch)
+turns the two such trait methods into boxed iterators and futures; with it, clean threaded
+builds agree. With only one of the two changed, clean builds agreed but incremental rebuilds
+differed from clean ones about half the time: the same out-of-order indices, made in one
+session and kept by the next (the incremental tables for the made-up associated types ended
+two indices earlier). That is #162202 reaching incremental sessions, not a new bug.
+
 ## The survey
 
 [`properties.md`](properties.md) has 29 properties plus the crash baseline, ranked by how

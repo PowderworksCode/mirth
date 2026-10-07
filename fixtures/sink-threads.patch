@@ -1,0 +1,53 @@
+diff -ru a/core/src/asyncs.rs b/core/src/asyncs.rs
+--- a/core/src/asyncs.rs	2026-10-07 11:00:50.308004685 +0000
++++ b/core/src/asyncs.rs	2026-10-07 14:46:19.219199385 +0000
+@@ -35,18 +35,21 @@
+     a + b
+ }
+ 
+-#[allow(async_fn_in_trait)]
++/// A trait method returning a boxed future. (An `async fn` here makes `-Zthreads` builds
++/// nondeterministic: rust-lang/rust#162202.)
+ pub trait Fetch {
+-    async fn fetch(&self, key: &str) -> Option<String>;
++    fn fetch<'a>(&'a self, key: &'a str) -> core::pin::Pin<Box<dyn core::future::Future<Output = Option<String>> + 'a>>;
+ }
+ 
+ #[derive(Debug)]
+ pub struct Static(pub &'static [(&'static str, &'static str)]);
+ 
+ impl Fetch for Static {
+-    async fn fetch(&self, key: &str) -> Option<String> {
+-        YieldOnce::default().await;
+-        self.0.iter().find(|(k, _)| *k == key).map(|(_, v)| v.to_string())
++    fn fetch<'a>(&'a self, key: &'a str) -> core::pin::Pin<Box<dyn core::future::Future<Output = Option<String>> + 'a>> {
++        Box::pin(async move {
++            YieldOnce::default().await;
++            self.0.iter().find(|(k, _)| *k == key).map(|(_, v)| v.to_string())
++        })
+     }
+ }
+ 
+diff -ru a/core/src/shapes.rs b/core/src/shapes.rs
+--- a/core/src/shapes.rs	2026-10-07 11:00:50.316004651 +0000
++++ b/core/src/shapes.rs	2026-10-07 14:27:50.983376965 +0000
+@@ -178,14 +178,15 @@
+     }
+ }
+ 
+-/// Return-position `impl Trait` in a trait.
++/// A trait method returning a boxed iterator. (`impl Trait` here, with the `async fn` in
++/// `asyncs::Fetch`, makes `-Zthreads` builds nondeterministic: rust-lang/rust#162202.)
+ pub trait Labels {
+-    fn labels(&self) -> impl Iterator<Item = String> + '_;
++    fn labels(&self) -> Box<dyn Iterator<Item = String> + '_>;
+ }
+ 
+ impl Labels for [Square] {
+-    fn labels(&self) -> impl Iterator<Item = String> + '_ {
+-        self.iter().map(|s| format!("square {}", s.side))
++    fn labels(&self) -> Box<dyn Iterator<Item = String> + '_> {
++        Box::new(self.iter().map(|s| format!("square {}", s.side)))
+     }
+ }
+ 
