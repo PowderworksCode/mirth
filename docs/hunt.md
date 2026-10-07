@@ -27,6 +27,7 @@ with `-Zthreads=8`. `rustc/check.sh wide` runs the ordinary checks.
 | 1 | incremental rebuilds encode `Generics::param_def_id_to_index` in a different order from clean builds | **looks new**; root cause found; fix and regression test written |
 | 2 | incremental rebuilds encode a string literal twice where clean builds encode it once | **looks new**; root cause found, regression from #116707 (1.90); fix and regression test written |
 | 3 | with `-Zthreads=8`, two traits with `-> impl Trait` methods give different metadata from run to run | known: [#162202](https://github.com/rust-lang/rust/issues/162202) |
+| 4 | incremental rebuilds republish the previous session's metadata when an edit moves no span, so its source map describes old files | **looks new**; found later by the fuzzer and the history replay ([`scale.md`](scale.md)); root cause found, regression from #114669 (1.90); fix and regression test written |
 
 Findings 1 and 2 are single-threaded: an ordinary `cargo build`, an edit, another
 `cargo build`, and the metadata differs from a clean build of the edited source. Both come
@@ -35,9 +36,10 @@ incremental cache unchanged. All three reproduce with the official `nightly-2026
 without mirth: `docs/hunt/repro.sh` runs them. None was searched for: P5 and P6 reported
 them on the first run of the new fixture.
 
-Draft bug reports for 1 and 2, written to be filed upstream, are
-[`hunt/issue-generics-order.md`](hunt/issue-generics-order.md) and
-[`hunt/issue-literal-dedup.md`](hunt/issue-literal-dedup.md). Each has a candidate fix
+Draft bug reports for 1, 2 and 4, written to be filed upstream, are
+[`hunt/issue-generics-order.md`](hunt/issue-generics-order.md),
+[`hunt/issue-literal-dedup.md`](hunt/issue-literal-dedup.md) and
+[`hunt/issue-stale-metadata-reuse.md`](hunt/issue-stale-metadata-reuse.md). Each has a candidate fix
 (`hunt/*.patch`) and a regression test in the style of rustc's `tests/run-make`
 (`hunt/tests/`), which fails on the pinned compiler and passes with the fix.
 

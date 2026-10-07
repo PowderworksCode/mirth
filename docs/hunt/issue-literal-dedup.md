@@ -79,32 +79,48 @@ two and the clean build one.
 
 ### Suggested fix
 
-Decode immutable memory allocations the way they were created, deduplicated:
+Decode an allocation the way it was created. When encoding a memory allocation, check
+whether the deduplication map holds exactly this `AllocId` for it, under `CTFE_ALLOC_SALT`.
+If it does, encode it with a new discriminant, and decode that one through
+`reserve_and_set_memory_dedup` (attached, `alloc-dedup-on-decode.patch`):
 
 ```diff
-             AllocDiscriminant::Alloc => {
-                 let alloc = <ConstAllocation<'tcx> as Decodable<_>>::decode(decoder);
--                decoder.interner().reserve_and_set_memory_alloc(alloc)
-+                if alloc.inner().mutability.is_not() {
-+                    decoder.interner().reserve_and_set_memory_dedup(alloc, CTFE_ALLOC_SALT)
-+                } else {
-+                    decoder.interner().reserve_and_set_memory_alloc(alloc)
-+                }
-             }
+         GlobalAlloc::Memory(alloc) => {
+-            AllocDiscriminant::Alloc.encode(encoder);
++            let deduplicated = tcx.alloc_map.dedup.lock().get(&(GlobalAlloc::Memory(alloc), CTFE_ALLOC_SALT))
++                == Some(&alloc_id);
++            if deduplicated {
++                AllocDiscriminant::DedupAlloc.encode(encoder);
++            } else {
++                AllocDiscriminant::Alloc.encode(encoder);
++            }
+             alloc.encode(encoder);
+         }
+ ...
++            AllocDiscriminant::DedupAlloc => {
++                let alloc = <ConstAllocation<'tcx> as Decodable<_>>::decode(decoder);
++                decoder.interner().reserve_and_set_memory_dedup(alloc, CTFE_ALLOC_SALT)
++            }
 ```
 
-With it, together with the fix for #… (the other issue), the reproduction and all ten
-single-threaded incremental edits to a larger test fixture give identical metadata. These all
-still pass: `tests/incremental` (180), `tests/ui/{consts,statics,const-generics}` (1844),
-`tests/codegen-llvm` (1122), and the 532 UI and 46 run-make tests about metadata and crate
-loading that I run. The full test suite was not run.
+A simpler change, deduplicating every immutable allocation on decode, is wrong. I tried it
+first, and it fixes this reproduction but breaks the same property elsewhere. It merges
+allocations that a clean build keeps apart, because they were never deduplicated when
+created. On serde at commit `2f58a20` ("Inline is_human_readable", 2017), an incremental
+rebuild then encoded 59 bytes fewer of `interpret-alloc-index` than a clean build
+(`-Zmeta-stats`). With the narrower change above, that commit and its neighbours match.
 
-It does more than strictly needed: it would also merge an immutable allocation decoded from a
-dependency's metadata with an identical local one, and two immutable allocations that were
-distinct when created (results of different constants, say). As far as I know, neither has
-a guaranteed unique address, but someone who knows the const-eval memory model should
-confirm. A narrower fix records, when encoding, whether an allocation was created
-through deduplication and with which salt, and repeats exactly that when decoding.
+Two things for a reviewer. Only `CTFE_ALLOC_SALT` is handled: allocations deduplicated
+under other salts (Miri's) are encoded as before, which only matters if those reach an
+incremental cache. And the change adds a discriminant to the encoding of allocations in
+metadata and in the incremental cache, so it may want a metadata version bump.
+
+With all three changes proposed in this series applied (this one and the two in #… and
+#…), each attached regression test passes, and each fails when only its own change is
+removed. These rustc tests still pass: `tests/incremental` (180), the UI tests in
+`tests/ui/{deprecation,crate-loading,rmeta,extern,cross-crate}` (532), 46 metadata-related
+`tests/run-make` tests, `tests/ui/{consts,statics,const-generics}` (1844) and
+`tests/codegen-llvm` (1122). The full test suite was not run. FUZZ_NUMBERS
 
 A regression test in the style of `tests/run-make`, which fails before the change and passes
 after, is attached (`incr-metadata-literal-dedup/rmake.rs`).

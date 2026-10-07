@@ -1,19 +1,41 @@
 --- a/compiler/rustc_middle/src/mir/interpret/mod.rs
 +++ b/compiler/rustc_middle/src/mir/interpret/mod.rs
-@@ -214,7 +214,15 @@
-                 trace!("creating memory alloc ID");
-                 let alloc = <ConstAllocation<'tcx> as Decodable<_>>::decode(decoder);
+@@ -99,6 +99,10 @@
+     VTable,
+     Static,
+     Type,
++    /// Memory that was deduplicated when it was created (string literals, for instance), and
++    /// must be deduplicated again when decoded: otherwise the same allocation decoded from the
++    /// incremental cache and created afresh would get two `AllocId`s.
++    DedupAlloc,
+ }
+ 
+ pub fn specialized_encode_alloc_id<'tcx, E: TyEncoder<'tcx>>(
+@@ -109,7 +113,13 @@
+     match tcx.global_alloc(alloc_id) {
+         GlobalAlloc::Memory(alloc) => {
+             trace!("encoding {:?} with {:#?}", alloc_id, alloc);
+-            AllocDiscriminant::Alloc.encode(encoder);
++            let deduplicated = tcx.alloc_map.dedup.lock().get(&(GlobalAlloc::Memory(alloc), CTFE_ALLOC_SALT))
++                == Some(&alloc_id);
++            if deduplicated {
++                AllocDiscriminant::DedupAlloc.encode(encoder);
++            } else {
++                AllocDiscriminant::Alloc.encode(encoder);
++            }
+             alloc.encode(encoder);
+         }
+         GlobalAlloc::Function { instance } => {
+@@ -216,6 +226,12 @@
                  trace!("decoded alloc {:?}", alloc);
--                decoder.interner().reserve_and_set_memory_alloc(alloc)
-+                // Immutable memory is deduplicated when it is created (string literals, for
-+                // instance), so deduplicate it here too. Otherwise one allocation decoded
-+                // from the incremental cache and the same one created afresh get two
-+                // `AllocId`s, and metadata depends on which results came from the cache.
-+                if alloc.inner().mutability.is_not() {
-+                    decoder.interner().reserve_and_set_memory_dedup(alloc, CTFE_ALLOC_SALT)
-+                } else {
-+                    decoder.interner().reserve_and_set_memory_alloc(alloc)
-+                }
+                 decoder.interner().reserve_and_set_memory_alloc(alloc)
              }
++            AllocDiscriminant::DedupAlloc => {
++                trace!("creating deduplicated memory alloc ID");
++                let alloc = <ConstAllocation<'tcx> as Decodable<_>>::decode(decoder);
++                trace!("decoded alloc {:?}", alloc);
++                decoder.interner().reserve_and_set_memory_dedup(alloc, CTFE_ALLOC_SALT)
++            }
              AllocDiscriminant::Fn => {
                  trace!("creating fn alloc ID");
+                 let instance = ty::Instance::decode(decoder);

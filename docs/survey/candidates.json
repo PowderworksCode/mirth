@@ -1,0 +1,2072 @@
+{
+ "merged": {
+  "properties": [
+   {
+    "name": "P5+ metadata determinism under irrelevant perturbation",
+    "statement": "Two clean builds with the same source, dependencies, flags and target produce byte-identical .rmeta (and .rlib/.o), even when inputs that should not matter change: the HashMap seed, unrelated crates on the -L search path, the build directory (with --remap-path-prefix), environment variables that are not tracked, and the wall clock.",
+    "subsystem": "metadata / const-eval / whole-compiler",
+    "kind": "differential",
+    "how_to_check": "For every crate in a cargo build, run the build twice from clean. Between the runs, change one perturbation: add a decoy rlib to the search path, use a different target dir, set junk env vars, or shift the clock with faketime. Byte-compare every output. When they differ, use mirth's table-write recording to find the first table or row that diverges, then the query that produced it.",
+    "cost": "cheap (2 builds; perturbations are free)",
+    "issues": [
+     159677,
+     157743,
+     157747,
+     158602,
+     89911,
+     150409,
+     150419,
+     106571,
+     151537,
+     142152,
+     141540,
+     141313,
+     138910,
+     138089,
+     133966,
+     151625,
+     150983
+    ],
+    "currently_tested": "rustc has tests/run-make reproducibility tests on a few small fixtures and one perturbation each. mirth already checks P5 on whole cargo builds without perturbation. Search-path and build-dir perturbations across real crates are not tested.",
+    "mirth_fit": "Excellent. P5 already exists. Adding perturbations is a harness change. mirth's per-table write log turns a byte diff into the table, the row and the query that wrote it.",
+    "rank_reason": "Most bugs per check, cheapest of all (two builds), mirth already has the infrastructure, and the search-path and HashMap-order cases (e.g. DocLinkResMap, #159677) are untested upstream. Some of the const-eval issue IDs folded in here were not checked against the issue text."
+   },
+   {
+    "name": "P6+ incremental equals clean (outputs and diagnostics)",
+    "statement": "After any sequence of edits, including a no-op edit and an edit followed by its revert, an incremental build produces the same .rmeta/.rlib bytes and the same set of diagnostics as a clean build of the final source.",
+    "subsystem": "incremental",
+    "kind": "differential",
+    "how_to_check": "Use a script per crate: clean build; then incremental builds after (a) a no-op touch, (b) a body edit, (c) a signature edit, (d) reverting to the original. Byte-compare each result with a clean build of the same source. Also compare the --error-format=json diagnostic multisets. A diagnostic that is missing or duplicated only in the incremental build is a failure.",
+    "cost": "moderate (several builds per crate)",
+    "issues": [
+     162407,
+     162901,
+     162585,
+     125564,
+     135062,
+     159677,
+     150464,
+     106571
+    ],
+    "currently_tested": "tests/incremental checks that specific revisions compile or fail and that specific nodes are clean or dirty. It does not compare bytes against a clean build, and it does not compare diagnostics. mirth's P6 does byte comparison for single edits only.",
+    "mirth_fit": "Excellent. P6 exists. Extend it with revert/no-op sequences and a diagnostic diff. mirth's record of which queries were re-executed versus loaded from cache attributes a divergence to a cached query.",
+    "rank_reason": "Many silent wrong-output bugs found this way. Moderate cost. Upstream tests never compare incremental output with a clean build, so the gap is large."
+   },
+   {
+    "name": "MIR passes validation after every pass at every mir-opt-level",
+    "statement": "MIR is well-formed after every pass. Operand types match their places, every local is used only between its StorageLive and StorageDead, no projections remain unnormalized after borrowck, and const arguments have the types their parameters declare. This holds at -Zmir-opt-level=0..4 and with -Zinline-mir.",
+    "subsystem": "mir-build / mir-opt / const-eval",
+    "kind": "invariant",
+    "how_to_check": "Build every crate in the corpus with -Zvalidate-mir -Zlint-mir -Zmir-opt-level={0,2,4} -Zinline-mir and -Cdebug-assertions on the compiler. Any validation failure counts. This uses existing flags; you only need to run them on real crates.",
+    "cost": "cheap (existing flags; one extra build per opt-level)",
+    "issues": [
+     158037,
+     156409,
+     154750,
+     154748,
+     152962,
+     158231,
+     151647,
+     151579,
+     152278,
+     120811
+    ],
+    "currently_tested": "mir-opt tests use the validator, but UI tests and real crates do not run with -Zvalidate-mir by default, and mir-opt-level=4 is rarely exercised on real code.",
+    "mirth_fit": "Moderate. No MIR rewriting is needed because the flags exist. mirth helps by recording which pass first broke validation, and by giving every report one shared corpus and harness.",
+    "rank_reason": "Many bugs, very cheap, and it catches type-mismatch and storage-liveness bugs before they become miscompiles. Upstream runs it only on curated tests."
+   },
+   {
+    "name": "extern \"C\" ABI matches the platform C compiler",
+    "statement": "For every target, a function signature with C-compatible types (structs, unions, floats, bool, small aggregates, varargs) is lowered to the same argument and return passing (registers vs stack, sign/zero extension, splitting) as clang/gcc for the equivalent C declaration.",
+    "subsystem": "codegen / abi",
+    "kind": "differential",
+    "how_to_check": "Generate random C-compatible type signatures, emit matching Rust and C, and cross-call them in both directions (abi-cafe style). Run natively or under qemu for each tier-1/2 target. Optionally diff rustc's FnAbi against clang's LLVM IR attributes per parameter.",
+    "cost": "moderate (cross targets need qemu)",
+    "issues": [
+     121408,
+     162011,
+     163173,
+     163074,
+     163075,
+     160827,
+     151791,
+     122620,
+     115399,
+     147883,
+     158897,
+     159244,
+     159116,
+     43894,
+     161382
+    ],
+    "currently_tested": "tests/ui/abi/compatibility.rs and per-target codegen tests check fixed cases. abi-cafe is not in CI. Most of these bugs were reported by users on less common targets (SPARC, PowerPC, LoongArch).",
+    "mirth_fit": "Low. This is an output-level differential with C compilers. mirth could dump the FnAbi of every extern fn to drive the comparison, but the core harness is abi-cafe plus qemu.",
+    "rank_reason": "High bug count, all silent miscompiles. Moderate cost. Weak upstream coverage. Ranked below the first three because mirth adds little. The FFI-bool and volatile issue IDs in this list were not individually verified."
+   },
+   {
+    "name": "Interned type-system values are well-formed",
+    "statement": "Every interned TraitRef, AliasTy, FnDef or other GenericArgs-carrying value has arguments that match generics_of in count and kind. Every const value's valtree shape matches its type. No ParamEnv contains two conflicting predicates for one parameter (e.g. two ConstArgHasType predicates with different types).",
+    "subsystem": "type-system / const generics",
+    "kind": "invariant",
+    "how_to_check": "In an instrumented release-mode rustc, run the existing debug-only checks at every intern site: debug_assert_args_compatible, a valtree-vs-type conformance check, and a ParamEnv duplicate/conflict scan when param_env is built. Run on the corpus plus the UI suite.",
+    "cost": "cheap per crate (checks at intern sites)",
+    "issues": [
+     150506,
+     150712,
+     150734,
+     151126,
+     158675,
+     158362,
+     157189,
+     137084,
+     150673,
+     150714,
+     150841,
+     151024,
+     151186
+    ],
+    "currently_tested": "Some of these checks exist as debug_assert in debug compilers only. Valtree/type conformance and ParamEnv conflicts are not checked at all. The issues were found as ICEs later in the pipeline.",
+    "mirth_fit": "Good. Inject the checks at the mk_* or intern call sites and record the value, the caller's query and the DefId on failure. This turns a late ICE into a report at the point of creation.",
+    "rank_reason": "Many bugs and a cheap check. However, most of these bugs come from MGCA and other unstable features that real crates do not use, so on a crate corpus it would catch fewer of them than the count suggests. Running it on the UI suite helps."
+   },
+   {
+    "name": "Old and next trait solvers agree",
+    "statement": "On any crate, -Znext-solver=globally and the old solver accept and reject the same items, infer the same types for each body (up to region erasure), and select the same impls.",
+    "subsystem": "trait-system",
+    "kind": "differential",
+    "how_to_check": "Build the corpus with both solvers. Compare exit status and diagnostics, and per body DefPath compare typeck_results (node types, method resolutions) and codegen Instances. Every disagreement is a bug in one of the two solvers.",
+    "cost": "moderate (two full typechecks)",
+    "issues": [
+     102580,
+     90950,
+     152789,
+     151329,
+     151957,
+     151323,
+     151322,
+     151318,
+     138274,
+     137916,
+     151462
+    ],
+    "currently_tested": "The next-solver CI job runs the UI suite with the next solver, and crater runs happen occasionally. Per-body inferred types are never compared.",
+    "mirth_fit": "Good. mirth can record typeck_results and selected impls per DefPath in both configurations, which gives a precise diff instead of only accept/reject.",
+    "rank_reason": "Many bugs, and it is the main verification gap for the solver migration. Moderate cost."
+   },
+   {
+    "name": "Library operations stay sound under injected panics and allocation failures",
+    "statement": "std/alloc operations, including ones given user comparators, closures or allocators, never cause UB, double drops or leaks of already-moved values when a user callback panics or allocation fails. Allocators return pointers with provenance over the full requested size.",
+    "subsystem": "library (alloc/core/std)",
+    "kind": "semantic",
+    "how_to_check": "Run library tests and property tests under Miri with fault injection: closures and comparators that panic on the Nth call (for every N), a failing allocator, and a counting Drop type. Check for no Miri UB, drops equal to constructions, and a structure that is still usable or droppable afterwards.",
+    "cost": "expensive (Miri, N-sweep)",
+    "issues": [
+     162720,
+     162719,
+     158165,
+     157203,
+     155746,
+     152211,
+     114581,
+     160815,
+     161018,
+     43894,
+     161382
+    ],
+    "currently_tested": "Library tests run under Miri in CI, but there is no systematic sweep that panics at every callback position or fails allocation at every point.",
+    "mirth_fit": "Poor. This tests the library, not the compiler. Use Miri plus a fault-injection harness. mirth is not needed.",
+    "rank_reason": "A fair number of real soundness bugs, but it is expensive and outside mirth's scope."
+   },
+   {
+    "name": "P4+ no query reads untracked state",
+    "statement": "No query, not only metadata encoding, reads environment variables, the clock, filesystem metadata or HashMap/HashSet iteration order unless that read is recorded in the dep graph (env_var_os query, tracked file, sorted/stable-hash containers).",
+    "subsystem": "incremental / query system",
+    "kind": "invariant",
+    "how_to_check": "Use mirth instrumentation of env::var*, SystemTime/Instant, fs::metadata, and iteration of std/Fx HashMaps. Attribute every read to the query on top of the stack and flag reads that are not covered by a tracking query. Confirm a finding by perturbing that input and checking whether the query's fingerprint changes.",
+    "cost": "cheap once instrumented",
+    "issues": [
+     162901,
+     162407,
+     159677,
+     160255
+    ],
+    "currently_tested": "Upstream has a lint against unordered iteration (rustc::potential_query_instability) with many allow exceptions. mirth's P4 covers metadata encoding only.",
+    "mirth_fit": "Excellent. This is mirth's core use case: extend the P4 hooks from encode_metadata to every query frame.",
+    "rank_reason": "Fewer issues are attributed here, but it is the root cause behind most P5 and P6 failures. It is cheap and has mirth's best fit, so it is ranked high despite the count."
+   },
+   {
+    "name": "Metadata reads hit entries the writer wrote",
+    "statement": "Every (table, DefIndex) lookup and lazy decode that a dependent crate performs reads an entry the upstream crate's encoder actually wrote. It never silently gets a default or empty value.",
+    "subsystem": "metadata",
+    "kind": "invariant",
+    "how_to_check": "With mirth, log every table write (table, index) in the writer process and every lookup in reader processes across the whole cargo build. Join the logs. A read of an unwritten entry is a bug, except for tables documented as default-on-absent, which need an allowlist.",
+    "cost": "moderate (whole-build logs)",
+    "issues": [
+     163426,
+     159233,
+     159703
+    ],
+    "currently_tested": "Not tested. Missing entries usually decode as defaults with no error.",
+    "mirth_fit": "Excellent. It needs both writer and reader instrumentation across one cargo build, which no other tool can do.",
+    "rank_reason": "It catches silent cross-crate bugs that nothing else sees. Few attributed issues, but very poor upstream coverage."
+   },
+   {
+    "name": "Parallel front end is deterministic",
+    "statement": "-Zthreads=1 and -Zthreads=N give byte-identical outputs and identical diagnostics, and repeated -Zthreads=N runs agree with each other.",
+    "subsystem": "parallel front end",
+    "kind": "differential",
+    "how_to_check": "Build the corpus with -Zthreads=1 once and -Zthreads=8 three times. Byte-compare outputs and diff the JSON diagnostics. When they differ, compare mirth's per-table write logs.",
+    "cost": "cheap",
+    "issues": [
+     129094,
+     150451,
+     153391
+    ],
+    "currently_tested": "A parallel-rustc CI job runs some UI tests. Outputs are not compared against single-threaded builds.",
+    "mirth_fit": "Good. It reuses the P5 harness with a different flag, and mirth's write logs localize the divergence.",
+    "rank_reason": "Cheap, a big upstream gap, and it will matter more as the parallel front end matures. Low current issue count."
+   },
+   {
+    "name": "rustdoc accepts every crate rustc accepts",
+    "statement": "If rustc check succeeds on a crate, rustdoc in every output mode (HTML, --generate-link-to-definition, --output-format json, --document-private-items) also succeeds. Span-map and type-relative path resolution use the body that owns the path, and proc-macro spans do not overwrite source spans.",
+    "subsystem": "rustdoc",
+    "kind": "differential",
+    "how_to_check": "For each crate in the corpus, run cargo check, then cargo rustdoc with each mode. Any rustdoc failure on a crate that checks is a bug. Validate the JSON output against rustdoc-types.",
+    "cost": "cheap",
+    "issues": [
+     156418,
+     156327,
+     149089,
+     150153,
+     147882,
+     147057,
+     158050,
+     157756
+    ],
+    "currently_tested": "docs.rs and crater cover the default HTML mode. --generate-link-to-definition and JSON on real crates are barely exercised.",
+    "mirth_fit": "Low to moderate. This is mostly a harness differential. mirth could record which TypeckResults body was consulted for each path in order to check that it is the owning body.",
+    "rank_reason": "Several bugs, cheap, and modes that are clearly undertested. It finds crashes, not silent errors."
+   },
+   {
+    "name": "Results agree across opt-level, mir-opt-level, codegen-units and LTO",
+    "statement": "A program's observable behaviour (test results, stdout, exit and panic status) and its linkability are the same at -Copt-level 0/3, -Zmir-opt-level 0/4, codegen-units 1/16, lto off/thin/fat, and incremental on/off. Where Miri can run the program, it agrees too.",
+    "subsystem": "mir-opt / codegen / LTO",
+    "kind": "semantic",
+    "how_to_check": "Run cargo test for crates in the corpus under a configuration matrix and diff per-test outcomes. Flag link failures that appear in only one configuration. Run Miri on a subset as the reference.",
+    "cost": "expensive (matrix of full builds plus test runs)",
+    "issues": [
+     163779,
+     163220,
+     162348,
+     153645,
+     153451
+    ],
+    "currently_tested": "Individual mir-opt tests exist. There is no systematic matrix over real crates' test suites, and LTO/codegen-unit link failures are found by users.",
+    "mirth_fit": "Low. It is an output-level differential. mirth could record which MIR pass changed a function that later misbehaves, which helps bisect the cause.",
+    "rank_reason": "Miscompiles are severe, but the check is expensive and few issues are attributed."
+   },
+   {
+    "name": "Every span is valid",
+    "statement": "Every span in diagnostics (including suggestion parts) and in encoded metadata has lo <= hi, lies inside an existing SourceFile, and falls on UTF-8 character boundaries. Each suggestion's substitutions do not overlap.",
+    "subsystem": "span / diagnostics / metadata",
+    "kind": "invariant",
+    "how_to_check": "Two checks. (1) Post-process --error-format=json for every corpus crate, plus a corpus with multibyte identifiers and strings: check byte ranges against the file contents and check that suggestion parts are disjoint. (2) With mirth, validate every span encoded into rmeta against the SourceMap when it is written.",
+    "cost": "cheap",
+    "issues": [
+     151610,
+     151607,
+     147339,
+     131292,
+     156316,
+     155037
+    ],
+    "currently_tested": "There is an internal assertion when a bad span is sliced. Nothing validates spans systematically, and multibyte source is rare in tests.",
+    "mirth_fit": "Good for the metadata half (hook span encoding). The diagnostic half needs only a JSON post-processor.",
+    "rank_reason": "Cheap and broad. Moderate count. Coverage of multibyte source is weak."
+   },
+   {
+    "name": "Semantically neutral edits do not change results",
+    "statement": "Edits that cannot change meaning do not change accept/reject, the lint set or the metadata (apart from spans). Examples: adding an unused `use` of a non-trait item, wrapping an item in an identity macro_rules, replacing a type with a projection or alias that normalizes to it, enabling an unrelated feature gate, or reordering items.",
+    "subsystem": "resolve / lints / trait-system / macros",
+    "kind": "differential",
+    "how_to_check": "Apply automatic rewrites from a fixed catalogue to corpus crates. Compare exit status, the multiset of diagnostics keyed by (code, lint, item DefPath), and rmeta after span normalization.",
+    "cost": "moderate",
+    "issues": [
+     156004,
+     86959,
+     160741,
+     157758,
+     157757,
+     152004,
+     151983
+    ],
+    "currently_tested": "UI tests check isolated forms. No transformation-based differential testing exists.",
+    "mirth_fit": "Moderate. mirth can compare per-query results keyed by DefPath between the original and the rewritten build, which is finer-grained than diagnostics.",
+    "rank_reason": "Catches lint false positives and inference instability that usually need a human to spot. Moderate cost. The rewrite catalogue must be kept truly semantics-preserving."
+   },
+   {
+    "name": "A successful compile contains no error types",
+    "statement": "If a compilation exits 0, no ty::Error, ConstKind::Error or ErrorGuaranteed-carrying value appears in any query result, MIR body or encoded metadata. Equivalently, every error type is created only after an error has been emitted.",
+    "subsystem": "type-system / diagnostics",
+    "kind": "invariant",
+    "how_to_check": "With mirth, hook the construction of Ty::new_error, Const::new_error and region errors and record the creation site. When the session ends with zero errors, any recorded creation is a bug. Also scan encoded metadata for error types.",
+    "cost": "cheap",
+    "issues": [
+     150969,
+     149588,
+     151299,
+     154780
+    ],
+    "currently_tested": "ErrorGuaranteed makes forging an error hard. Delayed bugs ICE at session end only if they were delayed. Silent paths that drop an error are not checked.",
+    "mirth_fit": "Good. It needs one hook at the error constructors and a check at session end.",
+    "rank_reason": "Cheap and catches silent acceptance of bad code. Few attributed issues."
+   },
+   {
+    "name": "Layout views agree",
+    "statement": "Every component's view of a type's size and layout agrees with layout_of: the transmute SizeSkeleton check, const-eval, and wrapper types such as unsafe binders and repr(transparent). A repr(transparent) wrapper has the same ABI as its non-ZST field. A transmute that SizeSkeleton rejects as size-mismatched really does have different concrete sizes.",
+    "subsystem": "layout / type-system",
+    "kind": "invariant",
+    "how_to_check": "With mirth, record layout_of results per type. At each transmute check and each transparent or wrapper type, compare against layout_of of the inner type and flag disagreements. Also feed a generated corpus of repr(align/packed/C/transparent) types.",
+    "cost": "cheap",
+    "issues": [
+     154426,
+     154424,
+     155412,
+     88290
+    ],
+    "currently_tested": "There are debug assertions in layout code and transmute UI tests. Nothing cross-checks SizeSkeleton against layout_of.",
+    "mirth_fit": "Good. Hook layout_of and SizeSkeleton::compute and compare their results.",
+    "rank_reason": "Cheap and catches both false rejects and possible unsoundness. Low count."
+   },
+   {
+    "name": "Each encoded record is written once and hashed after it is final",
+    "statement": "The metadata encoder and the on-disk query cache write each table entry and each dep node at most once. No fingerprint or crate_hash is computed over an output before its encoder has finished.",
+    "subsystem": "metadata / incremental",
+    "kind": "invariant",
+    "how_to_check": "With mirth, log (table, key) and (dep node) writes and fail on any duplicate. Log when crate_hash and the svh are computed relative to the encoder finishing, and fail if hashing happens first.",
+    "cost": "cheap",
+    "issues": [
+     150018,
+     142778,
+     163426
+    ],
+    "currently_tested": "There are a few assertions in the dep-graph encoder. The ordering of hashing relative to encoding is not checked.",
+    "mirth_fit": "Excellent. It uses the same write hooks as the reader-writer property.",
+    "rank_reason": "Cheap and reuses existing hooks. Low count."
+   },
+   {
+    "name": "rustdoc output is the same however an item is re-exported",
+    "statement": "An item documented through a direct definition, a named re-export, a glob re-export or a multi-level re-export shows the same docs, cfg badges and signature, apart from additions made at the re-export site.",
+    "subsystem": "rustdoc",
+    "kind": "differential",
+    "how_to_check": "Use rustdoc JSON. For every re-exported item in the corpus, compare the inlined item's docs, cfg and signature with the original item's (outer docs and cfg added at the re-export are allowed).",
+    "cost": "cheap",
+    "issues": [
+     119965,
+     81893,
+     53724,
+     96166,
+     154921
+    ],
+    "currently_tested": "rustdoc tests cover specific re-export shapes only.",
+    "mirth_fit": "Poor. It is a JSON post-processor.",
+    "rank_reason": "Cheap with a moderate count, but documentation-only impact."
+   },
+   {
+    "name": "#[expect] is fulfilled exactly when the lint fires",
+    "statement": "#[expect(L)] is reported unfulfilled if and only if replacing it with #[warn(L)] would emit no L diagnostic in that scope. This still holds after derive, cfg_attr and macro expansion.",
+    "subsystem": "lints",
+    "kind": "differential",
+    "how_to_check": "For each #[allow] or #[expect] in the corpus, generate the #[warn] and #[expect] variants. Build both and check the pairing: lint emitted exactly when the expectation is fulfilled.",
+    "cost": "moderate (one build per attribute; batchable)",
+    "issues": [
+     152004,
+     151983,
+     152401,
+     152289
+    ],
+    "currently_tested": "There are UI tests for specific cases. No automatic pairing check exists.",
+    "mirth_fit": "Low. A source-rewrite harness is enough.",
+    "rank_reason": "Mechanical, but narrow. The issue attribution is shared with the neutral-edits property."
+   },
+   {
+    "name": "Query results contain no inference variables",
+    "statement": "No value that is returned from a query, hashed into the dep graph or stored in the on-disk cache contains inference variables (type, const or region) or placeholders from an inference context.",
+    "subsystem": "query system / type inference",
+    "kind": "invariant",
+    "how_to_check": "With mirth, at every query return and every HashStable call, check has_infer() and has_placeholders() on the value and record the query and key on failure.",
+    "cost": "cheap",
+    "issues": [
+     153525,
+     153524
+    ],
+    "currently_tested": "There are a few debug assertions at specific sites. No global check exists.",
+    "mirth_fit": "Excellent. One generic hook at the query provider return.",
+    "rank_reason": "Very cheap and fully general, but few attributed bugs."
+   },
+   {
+    "name": "Each diagnostic is emitted once",
+    "statement": "No diagnostic with the same level, code, message and primary span is emitted twice in one session, in either clean or incremental mode.",
+    "subsystem": "diagnostics",
+    "kind": "invariant",
+    "how_to_check": "Post-process JSON diagnostics from corpus builds and from the UI suite run with --error-format=json, and look for duplicate keys.",
+    "cost": "cheap",
+    "issues": [
+     115376,
+     106571
+    ],
+    "currently_tested": "The emitter deduplicates some cases. UI .stderr snapshots would show duplicates, but nothing asserts they are absent.",
+    "mirth_fit": "Poor. It is an output check.",
+    "rank_reason": "Cheap, low impact, low count."
+   },
+   {
+    "name": "Symbol names are injective and stable",
+    "statement": "Distinct monomorphized instances never get the same symbol name, under both v0 and legacy mangling, including for feature-gated type constructors. A v0 symbol demangles to the instance's path.",
+    "subsystem": "symbol mangling",
+    "kind": "invariant",
+    "how_to_check": "With mirth, record (Instance, symbol_name) pairs in every codegen process of a cargo build. Check that the mapping is injective across crates and round-trip each v0 symbol through rustc-demangle against the printed instance.",
+    "cost": "cheap",
+    "issues": [
+     158644
+    ],
+    "currently_tested": "Mangling UI tests cover specific types. There is no whole-build injectivity check.",
+    "mirth_fit": "Good. Hook symbol_name, which is easy, and join the results across crates.",
+    "rank_reason": "Low count, but symbol clashes cause silent link-time misbinding."
+   },
+   {
+    "name": "dyn types have a dyn-compatible principal",
+    "statement": "In a compilation that succeeds, every TyKind::Dynamic that reaches typeck results, MIR or metadata has a dyn-compatible principal trait, including subtraits and associated-type bindings.",
+    "subsystem": "trait-system",
+    "kind": "invariant",
+    "how_to_check": "With mirth, when a Dynamic type is interned, record its principal. At the end of a successful session, assert is_dyn_compatible for each one.",
+    "cost": "cheap",
+    "issues": [
+     154619
+    ],
+    "currently_tested": "Dyn-compatibility is checked at direct dyn-syntax sites. No global check exists.",
+    "mirth_fit": "Good. One intern hook plus a check at session end.",
+    "rank_reason": "A soundness property and cheap, but few bugs are attributed."
+   },
+   {
+    "name": "Machine-applicable suggestions apply cleanly",
+    "statement": "Applying every MachineApplicable suggestion (rustfix) gives code that compiles, and the diagnostic that produced the suggestion is gone.",
+    "subsystem": "diagnostics / lints",
+    "kind": "differential",
+    "how_to_check": "Run cargo fix --broken-code on corpus crates with all warn-by-default lints enabled, then rebuild. Check that it compiles and that the original lint no longer fires.",
+    "cost": "moderate",
+    "issues": [
+     161213,
+     161472
+    ],
+    "currently_tested": "run-rustfix UI tests cover curated cases.",
+    "mirth_fit": "Poor. It is a cargo-level differential.",
+    "rank_reason": "Low count, user-facing breakage only."
+   },
+   {
+    "name": "Polonius accepts at least what NLL accepts, and no more than is sound",
+    "statement": "-Zpolonius=next accepts every program that NLL accepts. Programs that only Polonius accepts run without UB under Miri.",
+    "subsystem": "borrowck",
+    "kind": "differential",
+    "how_to_check": "Borrow-check the corpus with both. Any NLL-accept/Polonius-reject is a bug. For Polonius-only accepts, which mostly come from the UI suite, run under Miri.",
+    "cost": "moderate",
+    "issues": [
+     153215,
+     160669
+    ],
+    "currently_tested": "There is a polonius compare-mode on some UI tests.",
+    "mirth_fit": "Low. It is an accept/reject differential.",
+    "rank_reason": "Low count. Polonius is experimental."
+   },
+   {
+    "name": "Unstable syntax is gated before expansion",
+    "statement": "Every unstable syntactic form is rejected on stable without its feature even inside #[cfg(FALSE)] or unused macro_rules arms, so that removing the gate later cannot break code.",
+    "subsystem": "parser / feature gates",
+    "kind": "invariant",
+    "how_to_check": "Take each feature-gate UI test that exercises syntax, wrap the gated syntax in #[cfg(FALSE)], and compile without the feature. The compile must fail.",
+    "cost": "cheap",
+    "issues": [
+     152501,
+     152499
+    ],
+    "currently_tested": "Some features have cfg(FALSE) tests. It is not enforced for each one.",
+    "mirth_fit": "Poor. It is a source-rewrite harness.",
+    "rank_reason": "Cheap but narrow."
+   },
+   {
+    "name": "Built-in attributes reject malformed arguments",
+    "statement": "Every built-in attribute rejects argument forms its template does not allow. It errors or lints instead of silently ignoring them.",
+    "subsystem": "attribute parsing",
+    "kind": "invariant",
+    "how_to_check": "From the BUILTIN_ATTRIBUTES templates, generate malformed forms for each attribute (extra arguments, list instead of word, name-value instead of word) and assert that a diagnostic is produced.",
+    "cost": "cheap",
+    "issues": [
+     154977
+    ],
+    "currently_tested": "There are per-attribute tests, but not generated from the templates.",
+    "mirth_fit": "Poor.",
+    "rank_reason": "Cheap, generated mechanically, but low impact."
+   },
+   {
+    "name": "Advertised target features exist in LLVM",
+    "statement": "Every target feature that rustc lists for a target, and every feature that an asm register class or intrinsic requires, is recognized by LLVM for that target and is consistent with the target's baseline.",
+    "subsystem": "codegen / targets",
+    "kind": "invariant",
+    "how_to_check": "For every target, enumerate rustc's feature table and query LLVM's feature list. Compile an empty function with each feature enabled and confirm there is no 'unknown feature' warning or spurious requirement.",
+    "cost": "cheap",
+    "issues": [
+     159976
+    ],
+    "currently_tested": "There is a partial tidy-style check.",
+    "mirth_fit": "Poor.",
+    "rank_reason": "Cheap but narrow."
+   },
+   {
+    "name": "Eq and Hash agree for std types",
+    "statement": "For every std type implementing both Eq and Hash, a == b implies hash(a) == hash(b), for every Hasher.",
+    "subsystem": "library",
+    "kind": "semantic",
+    "how_to_check": "Run property tests over generated values of std types, including borrowed forms through Borrow, with several hashers.",
+    "cost": "cheap",
+    "issues": [
+     161651
+    ],
+    "currently_tested": "There are ad hoc tests only.",
+    "mirth_fit": "None. It is a library property test.",
+    "rank_reason": "One attributed bug and library-only."
+   },
+   {
+    "name": "Crash-freedom baseline (no ICE, hang or stack overflow)",
+    "statement": "rustc never panics, hangs or overflows its stack on any input, valid or invalid. For bad input it emits diagnostics and returns a normal error exit.",
+    "subsystem": "whole compiler",
+    "kind": "invariant",
+    "how_to_check": "Run fuzzers (icemaker, fuzz-rustc, tree-splicer) over the UI suite and the corpus, with a debug-assertions compiler, a timeout, and a reduced RUST_MIN_STACK. Exit code 101, a timeout, or SIGSEGV counts as a failure.",
+    "cost": "expensive (fuzzing campaigns)",
+    "issues": [
+     162147,
+     162146,
+     161837,
+     161770,
+     161101,
+     161062,
+     160994,
+     160798,
+     159939,
+     159890,
+     159889,
+     159559,
+     155802,
+     155405,
+     151304,
+     150969,
+     149703,
+     148630,
+     146834,
+     141804,
+     140107,
+     160171,
+     159989,
+     160255,
+     159252,
+     159261,
+     159299,
+     159323,
+     159591,
+     159685,
+     159815,
+     159867,
+     160008,
+     160024,
+     159914,
+     159958,
+     160060,
+     160539,
+     160314,
+     160390,
+     153601,
+     153599,
+     153539,
+     153502,
+     153499,
+     153433,
+     153420,
+     153391,
+     153390,
+     153389,
+     153388,
+     153354,
+     153351,
+     153236,
+     153199,
+     153198,
+     152895,
+     152797,
+     152744,
+     152684,
+     152683,
+     152682,
+     152663,
+     152654,
+     152653,
+     152633,
+     152606,
+     152601,
+     152595,
+     152545,
+     152518,
+     151631,
+     151477,
+     150457,
+     149695,
+     149643,
+     146754,
+     143498,
+     128801,
+     127971,
+     127423,
+     125805,
+     113870,
+     157516,
+     153205,
+     157937,
+     152716,
+     157950,
+     157853,
+     157888,
+     149821,
+     150927,
+     150928,
+     150976,
+     151008,
+     151037,
+     151213,
+     152340,
+     151878,
+     151708,
+     151331,
+     151273,
+     151027,
+     150960,
+     148953,
+     152030,
+     151591,
+     151814,
+     137582,
+     146984,
+     152244,
+     152158,
+     152309,
+     156482,
+     158439,
+     158429,
+     137190,
+     135470,
+     149920,
+     154820,
+     154539,
+     123629,
+     153744,
+     153743,
+     152936
+    ],
+    "currently_tested": "Fuzzers run continuously by volunteers and most of these issues came from them. Crater catches ICEs on published crates.",
+    "mirth_fit": "Poor. An ICE is already its own oracle (exit code 101), so mirth adds no detection. At most it gives earlier localization when an invariant hook above fires first.",
+    "rank_reason": "By raw count this is the largest group. It is ranked last because it is the existing fuzzing baseline, not a property in the requested sense. Most of these bugs need fuzzer-generated invalid code, so a corpus-wide check would not have caught them."
+   }
+  ],
+  "notes": "On your question (is mirth good at catching ICEs?): No, and you are right. An ICE is already its own oracle (exit code 101 plus a panic message), and nearly all of the ~130 ICE issues here came from fuzzers feeding invalid or unstable code. mirth cannot see them unless its inputs trigger them, and a corpus of real crates rarely does. mirth's strength is bugs that never crash: nondeterminism, incremental divergence, writer/reader mismatch, untracked reads, silent error-dropping, and layout or ABI disagreement. It can also turn debug-only assertions into always-on checks in a release-built instrumented compiler, so a violation is reported where it is created instead of as a later ICE. That only helps when the corpus exercises the code. For the MGCA/next-solver invariants, run the UI suite through the instrumented compiler as well as your chosen crates.\n\nConsolidation: 94 candidates became 29 properties.\n- Merged: five determinism candidates into P5+; four incremental ones into P6+; three untracked-state ones into P4+.\n- MIR validator, storage markers, type-const normalization and borrowck normalization became one property: run -Zvalidate-mir and -Zlint-mir on real crates.\n- Valtree, generic-argument count, ParamEnv and const-generic bounds candidates became one intern-time well-formedness property.\n- Lint false-positive and equivalent-form candidates became \"neutral edits do not change results\".\n- Error-not-emitted and TyKind::Error became \"a successful compile contains no error types\".\n\nDropped as one-off fixes or not mechanically checkable: performance consistency, Rc/Arc pointer-compare, become/rust-call, enum-variant generic args, pin_v2 gating, volatile store.\n\nFolded into the crash-freedom baseline because their invariant is already enforced by a panic and mirth adds no detection: HIR-for-queried-DefIds, expect_local on non-local DefIds, DefKind handling, parser recovery (3), glob imports, trait aliases, THIR categorization, typing mode, vtable supertraits, transmute-before-const-eval, diagnostic-arg uniqueness.\n\nCaveats:\n1. Agents assigned issue IDs without checking the issue text against the property. Some lists look wrong:\n   - the const-eval list folded into P5+ (138089, 133966, etc. look like ICEs);\n   - the volatile/FFI IDs folded into ABI;\n   - 43894 and 161382 appear under both ABI and library soundness;\n   - 106571 appears under both determinism and duplicate diagnostics.\n   Rankings by count should be read with this in mind. Verify before citing any number.\n2. Two differentials from the task's own list had no candidate, so no issues support them: check-vs-build diagnostics, and a crate compiled alone vs as a dependency. Both fit mirth's whole-cargo-build model and are worth adding later.\n3. As you requested, rerun the existing P5 and P6 baseline on the patched compiler before extending them. The perturbations and edit sequences in P5+ and P6+ are harness changes on top of what exists.\n\nBest mirth return per unit of effort, given the existing hooks:\n- P5+ and P6+ (extend harnesses);\n- P4+ (move hooks from encode_metadata to every query frame);\n- the read-hits-written and write-once/hash-after-final properties (reuse the table-write logs);\n- no inference variables in query results, and no error types in a successful compile (one hook each).\n\nABI, library fault-injection and rustdoc are real gaps, but they belong to other tools (abi-cafe, Miri, JSON post-processors)."
+ },
+ "raw": [
+  {
+   "issues_read": 100,
+   "candidates": [
+    {
+     "name": "Codegen output determinism",
+     "statement": "The compiler must produce byte-identical output files when run multiple times on the same source, regardless of parallel execution level.",
+     "subsystem": "codegen",
+     "kind": "differential",
+     "how_to_check": "Build a crate with `-Zthreads=1` and `-Zthreads=N` (where N>1), then byte-compare the resulting .rmeta and .o/.rlib files. Repeat the build 2-3 times with same thread count and compare outputs.",
+     "cost": "cheap",
+     "issues": [
+      129094,
+      150451
+     ],
+     "currently_tested": "Partially - rustc has some determinism tests but not comprehensive across all subsystems with parallel execution"
+    },
+    {
+     "name": "Incremental build equivalence",
+     "statement": "An incremental rebuild after a no-op (unchanged source) must produce output files byte-identical to a clean build of the same source.",
+     "subsystem": "incremental",
+     "kind": "differential",
+     "how_to_check": "Build a crate normally, then rebuild incrementally with `-Cincremental=<dir>` and no source changes. Byte-compare the .rmeta files. Also compare with fresh clean build without incremental enabled.",
+     "cost": "moderate",
+     "issues": [
+      162407,
+      162901,
+      162585
+     ],
+     "currently_tested": "Partially - incremental tests exist but focused on correctness; deterministic output comparison less common"
+    },
+    {
+     "name": "ABI compatibility with platform C standard",
+     "statement": "The compiler must emit LLVM IR for function ABIs that matches the platform's standard C calling convention as implemented by major C compilers (GCC/Clang).",
+     "subsystem": "codegen",
+     "kind": "differential",
+     "how_to_check": "For a test function with various struct/union/float parameters, compile with rustc to LLVM IR and with Clang/GCC to LLVM IR. Compare parameter passing conventions (register vs stack, field layout interpretation) for equivalent C and Rust code.",
+     "cost": "moderate",
+     "issues": [
+      121408,
+      162011,
+      163173,
+      163074,
+      163075
+     ],
+     "currently_tested": "Yes - ABI tests exist (check_abi.rs) but may not catch all edge cases like unions with floats"
+    },
+    {
+     "name": "MIR optimization semantic preservation",
+     "statement": "All MIR-level optimizations must preserve the observable semantics of the program, including panic behavior, overflow behavior, and computed values.",
+     "subsystem": "mir-opt",
+     "kind": "semantic",
+     "how_to_check": "For optimized code, run the compiled binary against a reference (unoptimized build or Miri interpretation) and compare output and exit codes. Test with various opt-levels.",
+     "cost": "expensive",
+     "issues": [
+      163779,
+      163220,
+      162348
+     ],
+     "currently_tested": "Partially - MIR-opt tests check output but don't systematically run programs; no regression test suite comparing opt-level outputs"
+    },
+    {
+     "name": "Custom allocator interface soundness",
+     "statement": "When using the allocator_api, the pointer returned from allocate() must have provenance over the entire allocated size, and deallocate() must be called with a pointer having compatible provenance.",
+     "subsystem": "allocators",
+     "kind": "invariant",
+     "how_to_check": "Use Miri with stacked borrows to verify that all allocator calls maintain pointer provenance correctly. Build stdlib and crates that use custom allocators with Miri.",
+     "cost": "expensive",
+     "issues": [
+      162720,
+      162719
+     ],
+     "currently_tested": "No - allocator soundness is not systematically tested; would require instrumented Miri runs"
+    },
+    {
+     "name": "Metadata encoding completeness",
+     "statement": "All compiler-internal queries that read another crate's metadata must have their dependencies on that metadata recorded such that the metadata reader can find all necessary data.",
+     "subsystem": "metadata",
+     "kind": "invariant",
+     "how_to_check": "Instrument the metadata encoder to verify: (1) before reading crate_hash, metadata encoding is complete; (2) every metadata read operation has corresponding encoder writes; (3) incremental invalidation correctly invalidates encoded data.",
+     "cost": "moderate",
+     "issues": [
+      163426
+     ],
+     "currently_tested": "No - metadata invariants are not systematically verified; would require compiler instrumentation"
+    },
+    {
+     "name": "Concurrency-free incremental compilation state",
+     "statement": "The compiler must not read environment variables, filesystem metadata, or clock values during incremental query computation in a way that creates dependencies between the query result and that untracked state.",
+     "subsystem": "incremental",
+     "kind": "invariant",
+     "how_to_check": "Mock/intercept filesystem and clock reads during incremental compilation, and verify that query results are not influenced by values read. Compare incremental build hashes when these are changed but source is identical.",
+     "cost": "expensive",
+     "issues": [
+      162901,
+      162407
+     ],
+     "currently_tested": "No - untracked state reads are not systematically verified; would require compiler instrumentation"
+    }
+   ]
+  },
+  {
+   "issues_read": 100,
+   "candidates": [
+    {
+     "name": "Deterministic metadata encoding",
+     "statement": "Two consecutive clean builds of the same crate should produce byte-identical .rmeta files. Metadata encoding should not depend on untracked state like environment variables, random HashMap iteration order, or clock values.",
+     "subsystem": "metadata",
+     "kind": "differential",
+     "how_to_check": "Build the same crate twice cleanly with identical inputs, compare the resulting .rmeta files byte-by-byte. Use mirth to instrument what state is read during metadata encoding.",
+     "cost": "moderate",
+     "issues": [
+      106571
+     ],
+     "currently_tested": "Partially - rustc has some determinism tests but mirth would provide more comprehensive instrumentation of what state is accessed during encoding"
+    },
+    {
+     "name": "No spurious diagnostics from overlapping suggestions",
+     "statement": "When emitting a diagnostic suggestion, the compiler should not panic or emit incorrect output if suggestion spans overlap. Error messages should remain well-formed even when suggestions cannot be properly generated.",
+     "subsystem": "diagnostics",
+     "kind": "invariant",
+     "how_to_check": "Compile code that triggers overlapping suggestion spans, verify no ICE occurs and error message is sensible. Instrument rustc_errors suggestion generation code.",
+     "cost": "cheap",
+     "issues": [
+      161213,
+      161472
+     ],
+     "currently_tested": "Minimally - mostly caught by individual test cases, not systematic checking of suggestion validity"
+    },
+    {
+     "name": "Lint conditions are accurate and not overly broad",
+     "statement": "Lint rules should fire consistently - if a pattern matches the lint's condition in one context, it should match in all equivalent contexts. False positives should not occur based on syntactic form.",
+     "subsystem": "resolve",
+     "kind": "differential",
+     "how_to_check": "Write equivalent code in different forms (macros vs inline, 2018 vs 2024 edition, different placement), verify lint fires/doesn't fire consistently. Compile with rustc and check lint output across variants.",
+     "cost": "moderate",
+     "issues": [
+      86959,
+      160741
+     ],
+     "currently_tested": "Via UI test suite, but the suite may not cover all equivalent forms systematically"
+    },
+    {
+     "name": "Soundness: No unsound behavior in safe code",
+     "statement": "Code marked #![forbid(unsafe_code)] or code using only safe APIs should never cause undefined behavior, memory corruption, or use-after-free. This includes panic-safety of data structure operations.",
+     "subsystem": "codegen",
+     "kind": "semantic",
+     "how_to_check": "Run Miri on code marked #![forbid(unsafe_code)], check for UB errors. Also run under Valgrind or ASan on compiled binaries to detect memory safety violations.",
+     "cost": "expensive",
+     "issues": [
+      43894,
+      114581,
+      158165,
+      160815,
+      161018,
+      161382
+     ],
+     "currently_tested": "Partially via Miri for some crates, but not systematically for all safe code paths"
+    },
+    {
+     "name": "Panic-safe state consistency",
+     "statement": "If a panicking comparator or allocator is used during a destructive operation, the data structure should either complete the operation or abort entirely - it should never leave the structure in a partially-modified state that causes double-free or data loss.",
+     "subsystem": "codegen",
+     "kind": "invariant",
+     "how_to_check": "Instrument alloc code to trigger panics at various points during split_off, insert, etc. Verify no double-free occurs and data is either fully updated or fully reverted.",
+     "cost": "expensive",
+     "issues": [
+      158165
+     ],
+     "currently_tested": "Via Miri for some code, but panic-safety during comparisons is not systematically tested"
+    },
+    {
+     "name": "Eq-Hash consistency",
+     "statement": "If two values of a type compare as equal via Eq, they must have the same hash value. If hash(a) != hash(b), then a != b must be true.",
+     "subsystem": "codegen",
+     "kind": "invariant",
+     "how_to_check": "Compare Eq and Hash implementations for all std types. Build simple programs that hash and compare values, verify consistency. Check with different hasher implementations.",
+     "cost": "cheap",
+     "issues": [
+      161651
+     ],
+     "currently_tested": "Not systematically - caught only when regressions manifest in real code"
+    },
+    {
+     "name": "ABI consistency within and across platforms",
+     "statement": "The same type should use the same calling convention and layout across all targets that support it. platform-specific ABIs should be consistent with reference implementations (Clang, GCC).",
+     "subsystem": "codegen",
+     "kind": "differential",
+     "how_to_check": "Use abi-cafe or similar cross-platform ABI test suite. Compile FFI test cases targeting different platforms, verify struct layout and calling conventions match reference implementations.",
+     "cost": "expensive",
+     "issues": [
+      43894,
+      161382,
+      160827
+     ],
+     "currently_tested": "Not systematically - mostly caught by abi-cafe crater runs and user reports"
+    },
+    {
+     "name": "No diagnostic duplicates across incremental rebuilds",
+     "statement": "When running in incremental mode with --error-format=json, each unique diagnostic should appear exactly once, not duplicated based on Span::parent relationships.",
+     "subsystem": "incremental",
+     "kind": "differential",
+     "how_to_check": "Compile a crate with --error-format=json in incremental mode, parse JSON output and verify no duplicate error codes/messages. Compare against clean build output.",
+     "cost": "cheap",
+     "issues": [
+      106571
+     ],
+     "currently_tested": "Minimally - test suite doesn't systematically check for diagnostic duplicates in JSON output"
+    },
+    {
+     "name": "Trait solver produces correct results",
+     "statement": "The trait solver should accept or reject the same code consistently. GATs, HRTB bounds, and associated type resolution should work correctly and not require workarounds.",
+     "subsystem": "trait-system",
+     "kind": "invariant",
+     "how_to_check": "Compile trait-heavy codebases (yoke, futures) with old and new solver. Verify same code is accepted/rejected consistently. Check that derive(Clone) works on recursive GATs.",
+     "cost": "expensive",
+     "issues": [
+      102580,
+      90950,
+      102580
+     ],
+     "currently_tested": "Partially - next-solver fixes are tested, but old solver regressions not always caught"
+    },
+    {
+     "name": "Type inference produces deterministic results",
+     "statement": "Type inference should produce the same inferred types regardless of what other types are in scope. Importing a type should not change inference for unrelated type variables.",
+     "subsystem": "trait-system",
+     "kind": "differential",
+     "how_to_check": "Build code with and without importing unrelated types (e.g., serde_json::Value), verify same types are inferred in both cases. Check error messages are helpful.",
+     "cost": "moderate",
+     "issues": [
+      156004
+     ],
+     "currently_tested": "Via UI tests for specific issues, but not systematically for all inference contexts"
+    },
+    {
+     "name": "No spurious lifetime diagnostics",
+     "statement": "The borrow checker should emit exactly the diagnostic errors needed to explain the problem, not spurious duplicates or unrelated lifetime requirements.",
+     "subsystem": "trait-system",
+     "kind": "invariant",
+     "how_to_check": "Compile async functions with lifetime issues, verify exactly one error per constraint violation. Instrument borrowck diagnostics to catch duplicates.",
+     "cost": "cheap",
+     "issues": [
+      115376
+     ],
+     "currently_tested": "Via UI tests, but the test suite doesn't systematically verify absence of spurious diagnostics"
+    },
+    {
+     "name": "Rustdoc generation is consistent across equivalent code",
+     "statement": "Documentation should be generated consistently whether a type is re-exported once, twice, or defined directly. Inner and outer doc comments should not interact incorrectly.",
+     "subsystem": "resolve",
+     "kind": "differential",
+     "how_to_check": "Generate rustdoc for equivalent code with different re-export chains (direct def, one level, two levels of re-export). Compare HTML output and verify consistency.",
+     "cost": "moderate",
+     "issues": [
+      119965,
+      81893,
+      53724
+     ],
+     "currently_tested": "Via rustdoc UI tests, but not systematically for multi-level re-exports"
+    },
+    {
+     "name": "Performance is consistent for equivalent code",
+     "statement": "Two semantically equivalent pieces of code should have similar performance characteristics. Refactorings that should have no semantic impact should not regress performance significantly.",
+     "subsystem": "codegen",
+     "kind": "differential",
+     "how_to_check": "Compile and benchmark code before and after refactorings (e.g., before/after BorrowedBuf changes). Measure wall-clock time and memory usage, verify no regression >10%.",
+     "cost": "expensive",
+     "issues": [
+      158008
+     ],
+     "currently_tested": "Not systematically - performance regressions found via manual benchmarking and crater"
+    },
+    {
+     "name": "ICEs do not occur on valid code",
+     "statement": "The compiler should never panic on valid code. All user code that type-checks should compile without internal compiler errors.",
+     "subsystem": "codegen",
+     "kind": "invariant",
+     "how_to_check": "Compile a diverse set of valid Rust code (benchmark suite, tokio, serde, etc), verify no ICEs occur. Use RUSTFLAGS=-Ztreat-err-as-bug to catch any panics.",
+     "cost": "expensive",
+     "issues": [
+      162147,
+      162146,
+      161837,
+      161770,
+      161213,
+      161101,
+      161062,
+      160994,
+      160798,
+      159939,
+      159890,
+      159889,
+      159559,
+      155802,
+      155405
+     ],
+     "currently_tested": "Partially via test suite and crater, but new code patterns can still trigger ICEs"
+    },
+    {
+     "name": "Feature gates enforce declared feature availability",
+     "statement": "A target should only advertise features in its feature list if those features are actually available. Intrinsics and inline asm register classes should only require features that the target actually has.",
+     "subsystem": "codegen",
+     "kind": "invariant",
+     "how_to_check": "Cross-compile inline asm code to all targets, verify no spurious feature requirement errors. Check declared target features match what LLVM actually provides.",
+     "cost": "moderate",
+     "issues": [
+      159976
+     ],
+     "currently_tested": "Minimally - mostly caught when users report issues on specific platforms"
+    },
+    {
+     "name": "Macro expansions preserve semantic meaning",
+     "statement": "When a macro expands and is used differently (by position, edition, context), the semantic meaning should remain constant. A pattern that requires parens in one edition should not be differently required in another.",
+     "subsystem": "macros",
+     "kind": "differential",
+     "how_to_check": "Expand macros into different contexts (different editions, different scopes), verify the resulting code has the same meaning and parsing rules apply consistently.",
+     "cost": "moderate",
+     "issues": [
+      86959
+     ],
+     "currently_tested": "Via UI tests for specific macro bugs, not systematically for macro semantics"
+    },
+    {
+     "name": "Compilation with -Zpolonius produces sound results",
+     "statement": "The polonius borrow checker variant should never unsoundly accept code that violates lifetime requirements, even when multiple defining uses of the same opaque type occur.",
+     "subsystem": "trait-system",
+     "kind": "invariant",
+     "how_to_check": "Compile code with -Zpolonius=next, run under Miri, verify no UB occurs. Check that dangling references are rejected.",
+     "cost": "expensive",
+     "issues": [
+      160669
+     ],
+     "currently_tested": "Partially via Miri tests, but not systematically for all trait/opaque interactions"
+    }
+   ]
+  },
+  {
+   "issues_read": 100,
+   "candidates": [
+    {
+     "name": "Panic instead of error",
+     "statement": "When presented with invalid code, the compiler should emit a proper diagnostic error rather than panicking (ICEing). If the compiler encounters a situation it cannot handle, it must either recover gracefully or report the error, never panic.",
+     "subsystem": "general/diagnostics",
+     "kind": "invariant",
+     "how_to_check": "Run the compiler on a collection of invalid-but-minimal code samples (like those in the issues), capture both exit code and stderr. No panic messages should appear; instead only error diagnostics with E-codes. Can be tested with: for each issue ICE, extract the minimal reproducer, compile, verify clean error message (no 'panicked at' or 'thread ... panicked').",
+     "cost": "expensive",
+     "issues": [
+      151304,
+      150969,
+      149703,
+      148630,
+      146834,
+      141804,
+      140107,
+      160171,
+      159989,
+      160255,
+      159252,
+      159261,
+      159299,
+      159323,
+      159591,
+      159685,
+      159815,
+      159867,
+      160008,
+      160024,
+      159914,
+      159958,
+      160060,
+      160539,
+      160314,
+      160390
+     ],
+     "currently_tested": "Partially - the rustc test suite has some ICE tests but these are specific regression tests. The issue is that many latent panicking paths aren't exercised by the existing test suite until novel code shapes trigger them. A property-based approach testing structural invariants would be more comprehensive."
+    },
+    {
+     "name": "Error created but not emitted",
+     "statement": "Whenever a {type error} or error constant is created during compilation (e.g., during failed type normalization), a corresponding diagnostic error must be emitted to the user. Silent error suppression hides actual problems from the programmer.",
+     "subsystem": "diagnostics/type-checking",
+     "kind": "invariant",
+     "how_to_check": "Instrument the compiler to track when error types are created (in type normalization, const evaluation, trait solving). Cross-check against emitted diagnostics. Code that creates {type error} should have a matching E-diagnostic emission nearby. Test case: compile code with unsolvable trait bounds and check that diagnostic is emitted, not {type error} left silent.",
+     "cost": "expensive",
+     "issues": [
+      150969,
+      149588,
+      151299
+     ],
+     "currently_tested": "No - error silencing is typically only caught when output differs from expected diagnostic text. A focused test would instrument error sites and verify every creation has a corresponding emission."
+    },
+    {
+     "name": "Metadata determinism",
+     "statement": "Across multiple clean builds of the same code, .rmeta files must be byte-identical. The contents should not depend on: unrelated files in the library search path, HashMap iteration order, environment variables, or random state.",
+     "subsystem": "metadata/incremental",
+     "kind": "differential",
+     "how_to_check": "Build the same crate multiple times with: (1) different library search paths containing unrelated crates, (2) different -Zrandomize-layout/HashMap orderings. Compare the resulting .rmeta file hashes with `sha256sum`. All must match. Code: for a test crate, run rustc 10 times with randomized HashMap seeds, hash the rmeta output, verify all hashes are identical.",
+     "cost": "cheap",
+     "issues": [
+      159677
+     ],
+     "currently_tested": "Yes - there are determinism tests (e.g., P5 mentioned in the task description: 'two clean builds produce byte-identical .rmeta'). However, the specific case of search-path-independence and HashMap-order-independence for DocLinkResMap is now fixed but wasn't being tested before. P6 (incremental vs clean agreement) is related."
+    },
+    {
+     "name": "Incremental vs clean agreement",
+     "statement": "An incremental rebuild after editing code should produce identical metadata and compiled output as a clean rebuild of the edited source. Incremental caches must not introduce divergence.",
+     "subsystem": "incremental",
+     "kind": "differential",
+     "how_to_check": "For a test crate: (1) perform a clean build, (2) make a semantically meaningful edit, (3) perform an incremental rebuild, (4) compare resulting .rmeta and .rlib hashes. Automate by: create a test crate, build it, touch/modify a file, rebuild with `cargo build` (incremental), then compare against `cargo clean && cargo build` (clean). Hashes must match.",
+     "cost": "moderate",
+     "issues": [
+      125564,
+      135062,
+      159677
+     ],
+     "currently_tested": "Yes - property P6 from the task background: 'an incremental rebuild after an edit produces the same metadata as a clean build of the edited source.' This is tested but only as a regression test for specific fixed bugs, not as a systematic property check across all crates."
+    },
+    {
+     "name": "Codegen correctness for volatile and FFI",
+     "statement": "Volatile memory operations and FFI function calls must generate the correct instruction sequences. Volatile stores must use volatile flags, bool types in FFI must use the platform-correct ABI calling convention, and other memory/calling-convention semantics must match the source intent.",
+     "subsystem": "codegen/LLVM",
+     "kind": "semantic",
+     "how_to_check": "Generate assembly code for programs using volatile_store and FFI bool returns, inspect the LLVM IR or final assembly. For volatile: check that LLVM IR includes volatile flag (not plain store), for FFI bool: check calling convention matches platform ABI (e.g., signext/zeroext on some platforms). Test: compile a fn with `volatile_store::<bool>()` and inspect codegen; compile FFI bool return and verify ABI extension.",
+     "cost": "moderate",
+     "issues": [
+      159815,
+      159867,
+      158897,
+      159244,
+      159116
+     ],
+     "currently_tested": "Partially - LLVM IR tests exist for some operations (codegen-llvm tests), but they are regression tests for fixed bugs. Systematic checking of volatile and FFI bool codegen across platforms would require architecture-specific test matrices."
+    },
+    {
+     "name": "No untracked state in metadata encoding",
+     "statement": "Metadata encoding must not depend on untracked compiler state: environment variables (except those explicitly tracked), clock values, randomly-seeded data structures (like HashMap iteration order), or values from unrelated library files. Only explicitly tracked query results should affect metadata.",
+     "subsystem": "metadata/incremental",
+     "kind": "invariant",
+     "how_to_check": "Instrument the compiler to track what data is read during metadata encoding. Cross-check against the incremental dependency graph. Any reads of environment, clock, or HashMap iteration should be logged. Run a metadata encoding pass with different environment states and verify output is identical. Code: use mirth or similar instrumentation to record 'what did the metadata writer read'; verify all reads are from the tracked dependency graph.",
+     "cost": "expensive",
+     "issues": [
+      159677,
+      160255
+     ],
+     "currently_tested": "Yes - property P4 from the task background: 'no environment variable, clock, or randomly seeded HashMap is read while encoding metadata.' This was tested via instrumentation in earlier work; issue #159677 fixed a case where DocLinkResMap HashMap iteration was observable."
+    },
+    {
+     "name": "Reader sees written data from writer",
+     "statement": "Every DefId that a reader queries for must have been written by the writer. If a reader asks for metadata about a definition, that definition must exist in the metadata produced by the writer. No missing or dangling references.",
+     "subsystem": "metadata/incremental",
+     "kind": "invariant",
+     "how_to_check": "Instrument metadata reader and writer. Record all DefIds written during the writer phase. During reader phase, log all DefIds requested. Verify: every DefId in the reader's requests was written by the writer, no mismatches. Can be tested with a fuzzer that generates arbitrary DefId references and checks if they resolve correctly.",
+     "cost": "expensive",
+     "issues": [
+      159233,
+      159703
+     ],
+     "currently_tested": "Yes - property 'tracked': 'every query that reads a dependency's metadata records a dependency on that crate.' This is enforced through the dependency tracking system, but edge cases emerge (issues #159233, #159703) when new language features or query paths aren't properly integrated."
+    },
+    {
+     "name": "Parser error recovery does not cross statement boundaries",
+     "statement": "When the parser encounters a syntax error in one statement and enters recovery mode, that recovery state must be cleared before parsing the next statement. Stale recovery state from a previous statement must not affect parsing of subsequent statements.",
+     "subsystem": "parser",
+     "kind": "invariant",
+     "how_to_check": "Feed the parser a sequence of malformed statements, each on separate lines. Verify that errors are reported only for the statement containing the syntax error, not for subsequent correct statements. Test case: parse code with `fn main() { for<> || {}; for<'a> || |_| {} }` - the error in the first should not affect the second. Automated: run parser on programs with multi-statement error sequences and verify error positions are correct.",
+     "cost": "cheap",
+     "issues": [
+      160171,
+      159989
+     ],
+     "currently_tested": "No - this is a parser internals property that would require parser-specific test infrastructure to verify that recovery state transitions are correct across statement boundaries."
+    }
+   ]
+  },
+  {
+   "issues_read": 100,
+   "candidates": [
+    {
+     "name": "MIR storage marker invariant",
+     "statement": "MIR code must not reference a local variable outside its StorageLive..StorageDead region. Every local use must occur within a region where StorageLive has been executed but StorageDead has not.",
+     "subsystem": "MIR opts",
+     "kind": "invariant",
+     "how_to_check": "Instrument MIR passes to track StorageLive/StorageDead for each local and assert that all Local references occur within valid storage regions. Run on all optimized MIR.",
+     "cost": "cheap",
+     "issues": [
+      158231
+     ],
+     "currently_tested": "Partially: tests may catch crashes, but there is no systematic pass to validate storage invariants across all optimization passes."
+    },
+    {
+     "name": "Symbol mangling feature completeness",
+     "statement": "All type constructors that are syntactically distinct (including feature-gated variations like splat) must produce distinct v0 mangled symbols. Symbol clash indicates a missing mangling component.",
+     "subsystem": "metadata",
+     "kind": "invariant",
+     "how_to_check": "Build two crates using different feature combinations (e.g., with/without splat, splatted vs non-splatted function signatures). Extract exported symbols and verify that semantically different types have different mangled names.",
+     "cost": "moderate",
+     "issues": [
+      158644
+     ],
+     "currently_tested": "Partially: there are mangling tests but they do not systematically cover all feature combinations or validate against symbol clashes across feature variants."
+    },
+    {
+     "name": "Compiler termination on degenerate obligations",
+     "statement": "The trait solver and type system must terminate on all input, including degenerate trait obligations, recursive type constraints, and self-referential type cycles. The compiler must not hang due to infinite loops in obligation processing or layout computation.",
+     "subsystem": "trait-system",
+     "kind": "invariant",
+     "how_to_check": "Run rustc with timeout on test cases involving GAT projections, recursive trait bounds, layout cycles, and self-referential types. Check that all cases either error or complete within a reasonable time bound.",
+     "cost": "moderate",
+     "issues": [
+      157516,
+      153205,
+      157937
+     ],
+     "currently_tested": "Partially: specific hangs may be caught if tests timeout, but there is no systematic property checking for termination."
+    },
+    {
+     "name": "Const evaluation rejects generics in discriminant contexts",
+     "statement": "When evaluating const expressions in discriminants, array lengths, and const pattern matching, the compiler must not attempt to const-evaluate expressions containing unresolved type parameters. It should reject or error rather than panic.",
+     "subsystem": "const-eval",
+     "kind": "invariant",
+     "how_to_check": "Attempt const pattern matching on const values with generic types (e.g., StructuralPartialEq impls with PhantomData<T> where T is a type parameter). Verify no ICE occurs and appropriate error is emitted.",
+     "cost": "cheap",
+     "issues": [
+      150296,
+      148891
+     ],
+     "currently_tested": "Partially: some const evaluation errors are caught, but there is no systematic check that generics in const paths are rejected before const evaluation attempts them."
+    },
+    {
+     "name": "Parameter environment consistency",
+     "statement": "A parameter environment must not contain duplicate or conflicting predicates. Specifically, there must not be multiple ConstArgHasType predicates for the same const parameter with different types.",
+     "subsystem": "type-system",
+     "kind": "invariant",
+     "how_to_check": "After constructing parameter environments, scan for duplicates and conflicts. Build parameter environments from function delegations, trait impls, and generic contexts, and assert no duplicates exist.",
+     "cost": "cheap",
+     "issues": [
+      158675,
+      158362
+     ],
+     "currently_tested": "Partially: the ICE was caught in this batch, but there is no assertion preventing duplicate predicates during param-env construction."
+    },
+    {
+     "name": "MIR typing mode correctness in body context",
+     "statement": "When building MIR for a function body, the typing environment must use body-level typing mode (reveal opaque types in this crate), not non_body_analysis mode. Using the wrong mode causes assertion failures and incorrect type normalization.",
+     "subsystem": "MIR opts",
+     "kind": "invariant",
+     "how_to_check": "Before MIR construction, assert that the typing environment is set to the correct mode for the current context. Test with next-solver enabled and type_alias_impl_trait features.",
+     "cost": "cheap",
+     "issues": [
+      158439,
+      158429
+     ],
+     "currently_tested": "Partially: the specific context (MIR building with next-solver) may not be systematically tested in the test suite."
+    },
+    {
+     "name": "Opaque type region liveness captures outlived regions",
+     "statement": "Region liveness analysis for opaque types must include not just the regions that the opaque outlives, but also any regions that outlive the opaque type and are constrained by use<> bounds or captured in the opaque's definition.",
+     "subsystem": "borrow-checker",
+     "kind": "invariant",
+     "how_to_check": "Run borrowck with polonius next on code with opaque types capturing outer lifetimes. Verify that loan invalidation and region liveness correctly account for captured regions beyond just outlives bounds.",
+     "cost": "moderate",
+     "issues": [
+      153215
+     ],
+     "currently_tested": "Partially: opaque type handling is tested but not systematically for region liveness with polonius mode enabled."
+    },
+    {
+     "name": "Arc/Rc make_mut panic safety under alloc failure",
+     "statement": "Arc::make_mut and Rc::make_mut must not leave the Arc/Rc in an inconsistent state if allocation fails or handle_alloc_error unwinds. The strong/weak count must remain valid for further operations.",
+     "subsystem": "allocator",
+     "kind": "invariant",
+     "how_to_check": "Build with custom allocator that fails on demand. Call Arc::make_mut and Rc::make_mut with weak references held, trigger allocation failure, catch panic, and verify the Arc/Rc can still be safely dropped and counted.",
+     "cost": "moderate",
+     "issues": [
+      157203,
+      155746
+     ],
+     "currently_tested": "Partially: these issues were caught but require nightly and custom allocator hooks to reproduce; general test suite does not systematically test panic-safety of Arc::make_mut."
+    },
+    {
+     "name": "Metadata determinism across clean rebuilds",
+     "statement": "Two clean builds of the same crate with identical sources and compiler state must produce byte-identical .rmeta files. Non-determinism in metadata indicates untracked state reads (HashMap iteration, environment variables, clocks, or random sources).",
+     "subsystem": "metadata",
+     "kind": "differential",
+     "how_to_check": "Build the same crate twice cleanly and compare .rmeta byte-for-byte. Use instrumented rustc to verify no untracked state is read during metadata encoding.",
+     "cost": "cheap",
+     "issues": [
+      157743,
+      157747,
+      158602
+     ],
+     "currently_tested": "Partially: determinism is tested in existing tests but not as a systematic property check on all builds."
+    }
+   ]
+  },
+  {
+   "issues_read": 100,
+   "candidates": [
+    {
+     "name": "MIR type validity before codegen",
+     "statement": "Every value in MIR before codegen must have a concrete type that was assigned during type inference or explicit monomorphization. Type errors must be reported before MIR validation, not discovered during codegen.",
+     "subsystem": "codegen, mir-opt, const-eval",
+     "kind": "invariant",
+     "how_to_check": "Instrument rustc to track when types are assigned to MIR values vs. when MIR is validated. Check that any type mismatch is detected during type-checking or normalization, before reaching MIR validation. Build affected crates (e.g., regex_syntax with various flags) and verify no span_bug fires for type mismatches.",
+     "cost": "moderate",
+     "issues": [
+      158037,
+      156409,
+      154750,
+      154748
+     ],
+     "currently_tested": "No; MIR validation ICEs on bad types happen at validation time, not earlier. There's no systematic pre-validation type-checking."
+    },
+    {
+     "name": "Parser recovery should not panic",
+     "statement": "Parser error recovery paths must emit diagnostics and stop gracefully, never reaching assertion failures or panic points. Any recovery path that encounters tokens it cannot handle should close the recovery scope cleanly.",
+     "subsystem": "parser",
+     "kind": "invariant",
+     "how_to_check": "Fuzz the parser with incomplete/malformed input targeting recovery paths (e.g., `&raw` without `const`/`mut`, trailing commas in recovery, nested delimiters). Verify all result in user errors, not ICE. Test specifically: `&raw x,)`, `&raw 2` in arrays, `&raw` in various nesting contexts.",
+     "cost": "cheap",
+     "issues": [
+      157950,
+      157853,
+      157888
+     ],
+     "currently_tested": "Partially; parser has isolated tests but recovery is not systematically fuzzed end-to-end."
+    },
+    {
+     "name": "Lint checks must consult trait solver when correctness matters",
+     "statement": "Lints that claim to check a semantic property (e.g., trait implementation) must query the trait solver, not use fast-path lookups that can miss alias types, projections, or blanket implementations.",
+     "subsystem": "lints, trait-system",
+     "kind": "invariant",
+     "how_to_check": "Test lints against code where a trait is implemented via an alias type, projection, or blanket impl. For `missing_debug_implementations`, check impl on `<T as Identity>::Output` where `Identity` projects to the type. Verify lint does not fire falsely.",
+     "cost": "moderate",
+     "issues": [
+      157758,
+      157757
+     ],
+     "currently_tested": "No; lints skip trait solving in some cases as an optimization, leading to false positives."
+    },
+    {
+     "name": "Generic argument counts must match trait generics in suggestions",
+     "statement": "When building a trait ref for diagnostics (e.g., method suggestions), the argument list must be compatible with the trait's generic parameters. Fresh inference variables must be provided for missing generics.",
+     "subsystem": "trait-system, diagnostics",
+     "kind": "invariant",
+     "how_to_check": "Call a method that doesn't exist on a type, where the matching trait (e.g., `Borrow`) has extra generics beyond `Self`. Verify suggestion builds trait ref correctly without ICE. Test: `.borrow()` on dyn closure type.",
+     "cost": "cheap",
+     "issues": [
+      157189
+     ],
+     "currently_tested": "No; only caught by debug assertions in trait ref construction."
+    },
+    {
+     "name": "Type const normalization must preserve type invariants",
+     "statement": "Normalizing a type const (in const-arg context) must not change the semantic type of the resulting value. If normalization changes the type, a `ConstArgHasType` mismatch error must be reported during normalization, before MIR validation.",
+     "subsystem": "const-eval, trait-system",
+     "kind": "invariant",
+     "how_to_check": "Compile code with type consts that normalize differently when used in const arguments vs. their definition site. Example: `foo::<{projection_const}>` where projection normalizes to a different type. Verify error is reported at normalization time, not at MIR validation.",
+     "cost": "moderate",
+     "issues": [
+      152962,
+      154750,
+      154748
+     ],
+     "currently_tested": "Partially; `ConstArgHasType` exists but normalization ordering can skip it."
+    },
+    {
+     "name": "Spans from synthesized code must not override source spans",
+     "statement": "When a proc macro generates code (e.g., impl blocks), the spans it assigns must not propagate backward to override the spans of the original item being defined. Intra-doc links and other source-based lookups must use the original source span, not a synthesized span.",
+     "subsystem": "macros, rustdoc",
+     "kind": "invariant",
+     "how_to_check": "Compile code with a `derive` proc macro that generates impl blocks referencing the item. Check that intra-doc links still resolve to the correct item's documentation page, not the generated impl. Test with `--generate-link-to-definition`.",
+     "cost": "moderate",
+     "issues": [
+      158050,
+      157756
+     ],
+     "currently_tested": "No; rustdoc span-map management is not systematically validated against proc-macro-generated code."
+    },
+    {
+     "name": "Expression categorization must be consistent in THIR and MIR",
+     "statement": "If an expression is categorized as a `Place` in THIR, its lowering to MIR must follow the place-lowering path. If it's `Rvalue`, it must follow the rvalue path. No expression should be categorized differently, leading to unreachable code in place-lowering or rvalue-lowering.",
+     "subsystem": "mir-build, thir",
+     "kind": "invariant",
+     "how_to_check": "Build MIR for expressions with uncommon categorization (e.g., reborrow, as_place calls on certain types). Instrument expr_as_place to log all paths taken. Verify categorization matches actual lowering for reborrow and other special expressions. Test generic reborrow expressions.",
+     "cost": "moderate",
+     "issues": [
+      156482
+     ],
+     "currently_tested": "No; THIR and MIR lowering are separate, and consistency is not monitored."
+    },
+    {
+     "name": "Recovery diagnostics must not leave parsing state ambiguous",
+     "statement": "After a recovery path closes, the parser's token position and state must be well-defined. The next token must either be a close delimiter, EOF, or something the parser can interpret without ambiguity in the current context.",
+     "subsystem": "parser",
+     "kind": "invariant",
+     "how_to_check": "Test recovery scenarios where the recovery path stops before reaching a delimiter, then check that parsing resumes correctly. Example: `&raw x,)` recovery should consume `x` and the comma, leaving `)` as the next token, not causing parse_token_tree to be called on it.",
+     "cost": "cheap",
+     "issues": [
+      157950,
+      157888
+     ],
+     "currently_tested": "No; parser state after recovery is not systematically validated."
+    },
+    {
+     "name": "Unsafe semantics must be enforced through feature gates",
+     "statement": "Features that require unsafe invariants (e.g., `#[pin_v2]` for structural pinning) must enforce those invariants wherever the feature is used. Implicit paths (e.g., match-ergonomics) and explicit paths (e.g., `&pin` patterns) must both check the same gate.",
+     "subsystem": "trait-system, mir-build",
+     "kind": "invariant",
+     "how_to_check": "Compile code using pin-ergonomics patterns on a type that does not opt into `#[pin_v2]`, in both explicit (`&pin mut`) and implicit reborrow-through-match forms. Verify both reject the code if `#[pin_v2]` is missing.",
+     "cost": "cheap",
+     "issues": [
+      157634,
+      157011
+     ],
+     "currently_tested": "Partially; `#[pin_v2]` checking exists but didn't cover explicit patterns initially."
+    },
+    {
+     "name": "FFI function parameters with unusual ABIs must reject unsound patterns",
+     "statement": "Tail calls (`become`) via `extern \"rust-call\"` or other ABIs that don't support explicit stack manipulation must be rejected by the compiler, not allowed to compile and miscompile at runtime.",
+     "subsystem": "codegen, abi",
+     "kind": "invariant",
+     "how_to_check": "Compile code using `become` with a `rust-call` extern function and check that it's rejected. Test also with default ABI. Verify at -O0 and -O3, no miscompilation occurs (wrong values computed).",
+     "cost": "cheap",
+     "issues": [
+      158017
+     ],
+     "currently_tested": "No; `become` support is incomplete and tail calls are not validated against ABIs before codegen."
+    }
+   ]
+  },
+  {
+   "issues_read": 100,
+   "candidates": [
+    {
+     "name": "rustdoc type-relative path body owner correctness",
+     "statement": "When rustdoc resolves type-dependent paths (method calls, type-relative paths) in non-body items nested in bodies, it must use the correct body owner, not an enclosing body's TypeckResults.",
+     "subsystem": "rustdoc",
+     "kind": "invariant",
+     "how_to_check": "Instrument rustdoc's SpanMapVisitor to track the active body context and verify that type-relative path resolution always uses the correct body. Assert that TypeckResults queries are never made for paths in a different body than they belong to.",
+     "cost": "moderate",
+     "issues": [
+      156418,
+      156327,
+      149089,
+      150153,
+      147882,
+      147057
+     ],
+     "currently_tested": "Covered by rustdoc tests but not as a systematic invariant check. Regression tests exist for individual cases but no property-level checking."
+    },
+    {
+     "name": "attribute argument validation completeness",
+     "statement": "All attributes where arguments are not expected must validate and reject any provided arguments, emitting clear errors rather than silently ignoring them.",
+     "subsystem": "attribute parsing",
+     "kind": "invariant",
+     "how_to_check": "After attribute parsing, assert via a debug assertion that every meta-item in an attribute that claims to accept no arguments has had its arguments checked. Build a debug harness that parses attributes and verifies this invariant on all builtin attributes.",
+     "cost": "cheap",
+     "issues": [
+      154977
+     ],
+     "currently_tested": "Individual attributes have their own tests but no systematic property-level checking. Some attributes silently ignored invalid args before the fix."
+    },
+    {
+     "name": "transmute size check accounts for repr flags",
+     "statement": "Transmute size checks must account for all repr flags (align, pack, etc.) that affect type size, not just for bare struct/enum cases.",
+     "subsystem": "type system",
+     "kind": "invariant",
+     "how_to_check": "Build a test harness that generates transmute expressions between types with various repr flags and verifies that rejected transmutes are those with provably different sizes. Compare output against a reference implementation that correctly accounts for all repr flags.",
+     "cost": "moderate",
+     "issues": [
+      155412,
+      88290
+     ],
+     "currently_tested": "Some transmute tests exist but they do not comprehensively cover repr flag interactions. No systematic property-level checking."
+    },
+    {
+     "name": "UTF-8 span boundaries never mid-sequence",
+     "statement": "All span calculations must result in spans whose boundaries never point into the middle of a UTF-8 character sequence.",
+     "subsystem": "span",
+     "kind": "invariant",
+     "how_to_check": "Instrument span construction to validate that byte positions always align with UTF-8 character boundaries. Test with source files containing multibyte Unicode characters at span boundaries and verify no out-of-bounds assertions occur.",
+     "cost": "cheap",
+     "issues": [
+      156316,
+      155037
+     ],
+     "currently_tested": "Partially covered by parser error recovery tests but not as a systematic invariant. No comprehensive check for all span construction paths."
+    },
+    {
+     "name": "rustdoc cfg propagation to all reexports",
+     "statement": "rustdoc must propagate cfg attributes consistently to all reexported items, including those from glob reexports, with the same visibility and formatting as explicitly named reexports.",
+     "subsystem": "rustdoc",
+     "kind": "invariant",
+     "how_to_check": "Generate test cases with various reexport patterns (glob, explicit, inline) and verify that cfg badges appear consistently. Compare rendered HTML for equivalent item references via different reexport paths.",
+     "cost": "moderate",
+     "issues": [
+      96166,
+      154921
+     ],
+     "currently_tested": "Covered by rustdoc rendering tests but not as a systematic property. Regression tests added after fixes but no property-level checking."
+    },
+    {
+     "name": "vtable construction handles unsatisfied supertraits",
+     "statement": "VTable iteration and construction must not panic when a supertrait of a trait object is not implemented; it should emit a proper error instead.",
+     "subsystem": "trait system",
+     "kind": "invariant",
+     "how_to_check": "Construct trait objects with impossible trait bounds (supertrait constraints that cannot be satisfied) and verify that compilation fails with a user-visible error, not an ICE.",
+     "cost": "moderate",
+     "issues": [
+      137190,
+      135470
+     ],
+     "currently_tested": "Regression tests exist but not as a property-level invariant. The fix checked for this specific case but no broader invariant checking."
+    },
+    {
+     "name": "transmute validation before const evaluation",
+     "statement": "Transmute expressions with mismatched sizes must be validated and rejected during type-checking, before const evaluation runs, to prevent ICEs in the interpreter.",
+     "subsystem": "const eval",
+     "kind": "invariant",
+     "how_to_check": "Compile transmute expressions with size mismatches under -Z mir-enable-passes and other const eval triggers. Verify that a proper diagnostic is emitted, not an interpreter ICE.",
+     "cost": "moderate",
+     "issues": [
+      149920
+     ],
+     "currently_tested": "No systematic check. Regression tests exist but the property is not checked during normal compilation."
+    },
+    {
+     "name": "array map/try_map drops all elements",
+     "statement": "Array operations like map and try_map must drop all unmapped elements when the closure panics or early-returns, including ZSTs.",
+     "subsystem": "library",
+     "kind": "semantic",
+     "how_to_check": "Build arrays of types with side-effectful Drop implementations, call map/try_map with closures that panic or return early, and verify drop is called the correct number of times using a drop counter.",
+     "cost": "cheap",
+     "issues": [
+      152211
+     ],
+     "currently_tested": "Covered by library tests but not as a property-level invariant across all array methods. The fix uses a strategy from slice::IterMut that should apply broadly."
+    },
+    {
+     "name": "Rc/Arc pointer comparison for all sized types",
+     "statement": "Rc and Arc equality should use pointer comparison as an optimization for all types, including unsized types (DSTs), not just sized types.",
+     "subsystem": "library",
+     "kind": "invariant",
+     "how_to_check": "Create Rc and Arc instances pointing to the same allocation (via Rc::clone and Arc::clone) with unsized inner types (str, dyn Trait, etc.), and verify pointer comparison is used rather than deep equality.",
+     "cost": "cheap",
+     "issues": [
+      154998
+     ],
+     "currently_tested": "Library tests exist but do not systematically cover DST cases. No property-level checking for pointer comparison optimization."
+    },
+    {
+     "name": "enum variant path generic args only on enum segment",
+     "statement": "Generic arguments in enum variant paths (e.g., `Enum::<T>::Variant`) should only be accepted on the enum segment; they must not be accepted on module or other non-enum path segments even if they reexport the variant.",
+     "subsystem": "HIR type lowering",
+     "kind": "invariant",
+     "how_to_check": "Construct variant paths through module reexports and attempt to apply generic arguments to the module segment. Verify that a clear error is emitted, not silently accepted.",
+     "cost": "cheap",
+     "issues": [
+      154962
+     ],
+     "currently_tested": "Regression test added but not as a systematic property. The fix validates the penultimate segment's def for enum-ness when args are present."
+    }
+   ]
+  },
+  {
+   "issues_read": 100,
+   "candidates": [
+    {
+     "name": "HIR-for-queried-items",
+     "statement": "Every DefId that a query accesses must have fully lowered HIR available, even if code containing that DefId had errors during lowering.",
+     "subsystem": "metadata",
+     "kind": "invariant",
+     "how_to_check": "Before any query that accesses a DefId (layout, discriminant, generics_of, etc.), verify the item's HIR was lowered. If a query on DefId D succeeds, then HIR lookup for D must not panic. Instrument with mirth to record all DefId queries and HIR lookups; cross-check that no query accesses unmapped DefIds.",
+     "cost": "moderate",
+     "issues": [
+      154820,
+      154539,
+      123629,
+      153744,
+      153743
+     ],
+     "currently_tested": "The compiler has assertions on some query boundaries but not comprehensive coverage. rustc_hir::map lookups panic on missing entries, but these panics aren't caught before they occur. No continuous check across all queries."
+    },
+    {
+     "name": "TyKind-Error-error-emitted",
+     "statement": "Whenever TyKind::Error is constructed, an error diagnostic must have been emitted before that point.",
+     "subsystem": "type-system",
+     "kind": "invariant",
+     "how_to_check": "Instrument ty::Error construction to require a preceding error emission. Use mirth to track all TyKind::Error creations and cross-reference with the diagnostic buffer; for each Error, verify at least one error was emitted in an earlier pass or same pass before the type was created.",
+     "cost": "cheap",
+     "issues": [
+      154780
+     ],
+     "currently_tested": "Partial: rustc has a span_bug! that fires when TyKind::Error appears without an error, but only in debug builds and only when that specific condition is checked. No systematic instrumentation of all Error creations."
+    },
+    {
+     "name": "Layout-wrapper-consistency",
+     "statement": "Layout computation on wrapper types (like UnsafeBinder<T>) must compute the layout of the inner type, not of the wrapper itself.",
+     "subsystem": "codegen",
+     "kind": "invariant",
+     "how_to_check": "For types with transparent wrappers, compare the reported layout of the wrapper against the layout of the inner type: they must match. Build with mirth to instrument layout queries and verify layout(Wrapper<T>) == layout(T) where Wrapper is defined as transparent.",
+     "cost": "cheap",
+     "issues": [
+      154426,
+      154424
+     ],
+     "currently_tested": "Debug-only assertions exist in layout.rs, but these don't fire until the layout is actually used. No ahead-of-time check that layout rules are consistent."
+    },
+    {
+     "name": "Diagnostic-arg-uniqueness",
+     "statement": "Diagnostic arguments must not be added with duplicate names in a single diagnostic.",
+     "subsystem": "diagnostics",
+     "kind": "invariant",
+     "how_to_check": "In the diagnostic builder, before emitting, scan all added arguments for duplicate names. On duplicate, use mirth to record the call stack and issue that produced it. Simple check: before emit(), call set of arg names must equal total count.",
+     "cost": "cheap",
+     "issues": [
+      152936
+     ],
+     "currently_tested": "Yes, partially. rustc_errors has a debug assertion that fires on duplicate arg names, but only in debug builds and only on emit(). Should be checked earlier in the build phase."
+    },
+    {
+     "name": "Dyn-incompatible-no-trait-objects",
+     "statement": "Traits marked with #[rustc_dyn_incompatible_trait] cannot be used as trait object bounds.",
+     "subsystem": "trait-system",
+     "kind": "semantic",
+     "how_to_check": "When a trait object is created (via dyn T or type Assoc = dyn Trait), check that the trait is dyn-compatible. Use mirth to instrument dyn-compatibility checks and verify that dyn_incompatible traits never appear in object bounds in final metadata or code.",
+     "cost": "cheap",
+     "issues": [
+      154619
+     ],
+     "currently_tested": "Partially. Dyn-compatibility is checked in rustc_hir_analysis, but only for direct dyn usage, not for subtraits. The unsoundness came from creating trait objects of subtraits that weren't checked."
+    },
+    {
+     "name": "Trait-object-bounds-consistency",
+     "statement": "When solving trait predicates involving trait objects, the solver must use the trait object's declared bounds (from the dyn syntax), not bounds from the proof goal context.",
+     "subsystem": "trait-system",
+     "kind": "differential",
+     "how_to_check": "Compile code with both old and next solvers; trait object predicate solutions must agree. For any dyn T that implements goal G, verify the solution comes from bounds declared on T (or T's supertrait bounds), not from unrelated goals. Build a test suite of trait object code and run with two different solver backends.",
+     "cost": "moderate",
+     "issues": [
+      152789,
+      151329
+     ],
+     "currently_tested": "No. The trait system has no automated cross-solver verification. The bug was caught only because code panicked when the solver couldn't prove something it thought it should."
+    },
+    {
+     "name": "Type-wrapper-query-forwarding",
+     "statement": "Query results for wrapper types (e.g., unsafe binders, type aliases) must forward to inner/aliased types for predicates like discriminant_for_variant() and layout operations.",
+     "subsystem": "type-system",
+     "kind": "invariant",
+     "how_to_check": "For each wrapper/alias type, call discriminant/layout queries on both wrapper and inner. Results must agree (for transparent wrappers) or the wrapper must have its own explicit implementation. Use mirth to instrument query calls and verify that wrapper queries don't panic when the inner type query would succeed.",
+     "cost": "moderate",
+     "issues": [
+      154424
+     ],
+     "currently_tested": "Partially via debug assertions in specific query implementations, but no comprehensive check across all query types."
+    },
+    {
+     "name": "No-untracked-state-in-encoded-metadata",
+     "statement": "Metadata encoding must not depend on untracked state: environment variables, system clock, HashMap iteration order, or randomness seeded outside the compiler's control.",
+     "subsystem": "metadata",
+     "kind": "invariant",
+     "how_to_check": "Instrument metadata encoding with mirth to log all external state reads (env vars, clock, RNG). Compare two metadata encodes in different processes with different clocks and env; .rmeta bytes must match if inputs are identical. Use a determinism test harness.",
+     "cost": "expensive",
+     "issues": [],
+     "currently_tested": "Partially. The compiler has some checks (P4 mentioned in context), but these are not comprehensive. The batch doesn't include specific P4 violations, but it's a known property from earlier testing."
+    },
+    {
+     "name": "Incremental-matches-clean-rebuild",
+     "statement": "An incremental rebuild after a source edit, plus rebuild of the original, must produce byte-identical .rmeta and intermediate metadata files.",
+     "subsystem": "incremental",
+     "kind": "differential",
+     "how_to_check": "Given a crate, perform three builds: (1) clean, (2) clean again. Then (3) edit a non-semantic line, (4) incremental rebuild, (5) revert edit, (6) incremental rebuild. Compare byte-wise: rmeta from step 6 must equal rmeta from step 1. Use mirth to capture dependency graphs and metadata writes to verify they match.",
+     "cost": "expensive",
+     "issues": [],
+     "currently_tested": "Partially. The P6 property mentioned in context exists as a property idea but not as a continuous check. The batch doesn't contain specific P6 violations detected here."
+    },
+    {
+     "name": "Deterministic-metadata-across-builds",
+     "statement": "Two independent clean builds of the same crate with identical inputs (source, deps, target) must produce byte-identical .rmeta files.",
+     "subsystem": "metadata",
+     "kind": "invariant",
+     "how_to_check": "Build the same crate twice in separate processes with identical inputs; compare .rmeta files byte-wise. Use mirth to instrument metadata writing and verify the sequence of writes is identical. Test on crates of various sizes and complexity.",
+     "cost": "moderate",
+     "issues": [],
+     "currently_tested": "Partially. This is mentioned as P5 in context and is tested in some cases, but not as a continuous property check. No regression seen in this batch."
+    }
+   ]
+  },
+  {
+   "issues_read": 100,
+   "candidates": [
+    {
+     "name": "No unwrap/expect panics on reachable code paths",
+     "statement": "Critical compiler algorithms should not panic via unwrap/expect/assert on inputs that are syntactically and semantically valid according to Rust's rules.",
+     "subsystem": "MIR optimization, trait resolution, metadata, codegen, incremental",
+     "kind": "invariant",
+     "how_to_check": "Instrument rustc with mirth to record all unwrap/expect/assert calls. Compile a large test suite (e.g., cargo/clippy/miri) and flag any panics that occurred on code that passed the parser. Verify the panic happened on a path that should not be reachable for valid code.",
+     "cost": "expensive",
+     "issues": [
+      153601,
+      153599,
+      153539,
+      153525,
+      153524,
+      153502,
+      153499,
+      153433,
+      153420,
+      153391,
+      153390,
+      153389,
+      153388,
+      153354,
+      153351,
+      153236,
+      153199,
+      153198,
+      152895,
+      152797,
+      152744,
+      152684,
+      152683,
+      152682,
+      152663,
+      152654,
+      152653,
+      152633,
+      152606,
+      152601,
+      152595,
+      152545,
+      152518,
+      151631,
+      151477,
+      150457,
+      149695,
+      149643,
+      146754,
+      143498,
+      128801,
+      127971,
+      127423,
+      125805,
+      113870
+     ],
+     "currently_tested": "No. The rustc test suite catches some panics but many ICEs only appear on specific crate combinations or with specific compiler flags (-Zthreads=N, -Znext-solver, etc.). A comprehensive instrumentation would catch many more."
+    },
+    {
+     "name": "DefId classification before local-only operations",
+     "statement": "DefIds must be correctly classified as local vs non-local before operations like expect_local() are called. A non-local DefId (from external crates) should never reach a code path that asserts it is local.",
+     "subsystem": "resolve, stability, delegation, trait-system",
+     "kind": "invariant",
+     "how_to_check": "Instrument the compiler to track DefId origins (local vs non-local). Before any call to expect_local or similar local-only operations, verify the DefId is actually local. Flag any violations where non-local DefIds reach these operations. Test on code using features that reference external crates (fn_delegation with std items, staged_api with dependency crates).",
+     "cost": "moderate",
+     "issues": [
+      153599,
+      153502,
+      153433,
+      153499,
+      143498,
+      152633
+     ],
+     "currently_tested": "Partially. The stability and delegation systems test with standard library items, but not systematically across all code paths."
+    },
+    {
+     "name": "Inference variables resolved before hashing/caching",
+     "statement": "Inference variables (type variables ?0t, const variables ?0c) must never be included in values that are hashed or entered into the query cache. All inference must be resolved before the value is cached.",
+     "subsystem": "type inference, const generics, query system",
+     "kind": "invariant",
+     "how_to_check": "Instrument const/type lowering and query caching to detect when inference variables appear in values being hashed. Compile test cases with const generics featuring min_generic_const_args and generic_const_parameter_types. Any hash/cache operation on a value containing ?Nt or ?Nc should be flagged.",
+     "cost": "cheap",
+     "issues": [
+      153525,
+      153524
+     ],
+     "currently_tested": "No. The incremental compilation testing doesn't specifically check for inference variable leakage into the cache."
+    },
+    {
+     "name": "Symbol availability after optimization",
+     "statement": "All symbols that the linker expects to find (because they were in the object files or referenced in metadata) must remain present after optimization passes, even with aggressive LTO.",
+     "subsystem": "codegen, LTO, symbol export",
+     "kind": "differential",
+     "how_to_check": "Compile crates with different optimization levels and LTO settings (opt-level 0/1/3, lto off/thin/fat, codegen-units 1/16). Verify all symbols referenced in metadata are present in final artifacts. Use nm/llvm-nm to check symbol tables. Flag symbols that disappear with higher optimization or LTO.",
+     "cost": "moderate",
+     "issues": [
+      153645,
+      153451
+     ],
+     "currently_tested": "Partially. The testsuite checks that EII code works, but doesn't systematically compare symbol presence across LTO settings."
+    },
+    {
+     "name": "Recursion depth limits on deeply nested types",
+     "statement": "Recursive compiler algorithms that traverse type structures must have explicit recursion depth limits to prevent stack overflow on valid code with arbitrarily deep nesting.",
+     "subsystem": "trait resolution, type normalization",
+     "kind": "invariant",
+     "how_to_check": "Construct deeply nested type expressions (e.g., nested type aliases, complex trait bounds with projections). Try bounds like `T: for<'a> Proj<'a, Assoc = for<'b> fn(<T as Proj<'b>>::Assoc)>`. Monitor stack depth during compilation. Flag any algorithm that recurses proportionally to type nesting without a explicit depth check.",
+     "cost": "cheap",
+     "issues": [
+      152716
+     ],
+     "currently_tested": "No. There are only a few existing tests for stack overflow on nested types."
+    },
+    {
+     "name": "Deterministic compilation with parallel threads",
+     "statement": "Parallel and single-threaded compilation of the same code must produce identical outputs. No race conditions or non-deterministic state reads.",
+     "subsystem": "parallel front end, incremental",
+     "kind": "differential",
+     "how_to_check": "Compile a test suite with -Zthreads=1 and -Zthreads=8. Compare the resulting .rmetadata, .o files, and binaries byte-for-byte. Flag any differences. Also instrument for HashMap iteration order and timestamp reads during compilation.",
+     "cost": "expensive",
+     "issues": [
+      153391
+     ],
+     "currently_tested": "Partially. The incremental test suite runs with threads but doesn't always compare against single-threaded output."
+    },
+    {
+     "name": "Pre-expansion feature gating for new syntax",
+     "statement": "New syntactic forms must be gated with pre-expansion gating (checked before macro expansion) rather than post-expansion, to prevent forward compatibility issues with #[cfg(false)] code.",
+     "subsystem": "parser, feature gates",
+     "kind": "invariant",
+     "how_to_check": "For each new syntax feature, verify it is gated with check_crate_and_resolve_attrs or equivalent pre-expansion checks. Test that syntax is rejected in #[cfg(false)] blocks and in macros without the feature. Parse the AST before macro expansion to ensure gating happens early.",
+     "cost": "cheap",
+     "issues": [
+      152501,
+      152499
+     ],
+     "currently_tested": "Partially. The feature gate tests check syntax is gated, but don't systematically verify pre-expansion vs post-expansion timing for all features."
+    }
+   ]
+  },
+  {
+   "issues_read": 100,
+   "candidates": [
+    {
+     "name": "Deterministic const evaluation",
+     "statement": "Const evaluation should produce byte-identical results across multiple builds of the same crate, with no dependence on build order, hashmap iteration order, or other untracked state.",
+     "subsystem": "const-eval",
+     "kind": "differential",
+     "how_to_check": "Run `rustc` twice on the same crate with the same inputs and compare the encoded const values in rmeta. Compute hashes of const evaluation results during monomorphization. No difference should exist between runs.",
+     "cost": "cheap",
+     "issues": [
+      151537,
+      142152,
+      141540,
+      141313,
+      138910,
+      138089,
+      133966,
+      151625,
+      150983
+     ],
+     "currently_tested": "const eval has test suite but not differential builds; incremental testing exists but doesn't specifically check const determinism across clean builds"
+    },
+    {
+     "name": "Complete trait solver on all goals",
+     "statement": "The next trait solver should not panic or ICE when evaluating valid trait goals, including goals involving stalled coroutine obligations and type alias impl trait.",
+     "subsystem": "trait-system",
+     "kind": "invariant",
+     "how_to_check": "Compile crates with -Znext-solver=globally enabled and instrument the solver to track all goals attempted. Check that no panic/ICE occurs; goals should either resolve or emit proper diagnostic errors, never internal crashes.",
+     "cost": "moderate",
+     "issues": [
+      151957,
+      151323,
+      151322,
+      151318,
+      138274,
+      137916,
+      151462
+     ],
+     "currently_tested": "next-solver has limited test coverage; stalled obligation tests exist but not comprehensive across all trait patterns"
+    },
+    {
+     "name": "Type checking handles all DefKinds",
+     "statement": "Every DefKind that appears in a crate should be correctly handled in type checking, const eval, and code generation without calling invalid query functions or panicking.",
+     "subsystem": "type-system",
+     "kind": "invariant",
+     "how_to_check": "Instrument type checking and const eval phases to log which DefKinds are encountered. Verify that no internal API contracts are violated (e.g., codegen_fn_attrs called only on items that have codegen attrs, generics_of called on valid parents). Compile diverse crates and check that all DefKinds are handled.",
+     "cost": "moderate",
+     "issues": [
+      152340,
+      151878,
+      151708,
+      151331,
+      151273,
+      151027,
+      150960,
+      148953
+     ],
+     "currently_tested": "type checking tests cover common cases but not comprehensive DefKind coverage; const items are newer so less tested"
+    },
+    {
+     "name": "Graceful layout computation error handling",
+     "statement": "Layout computation should never panic on invalid layouts (overflow, unsized, etc); it should return error types or emit diagnostic errors instead.",
+     "subsystem": "layout",
+     "kind": "invariant",
+     "how_to_check": "Compile crates with intentionally invalid layouts (oversized arrays, unsized in repr(C), etc) and verify that the compiler either reports an error diagnostic or gracefully handles the layout without panicking. Instrument layout computation to track panics.",
+     "cost": "cheap",
+     "issues": [
+      152030,
+      151591,
+      151814,
+      137582,
+      146984
+     ],
+     "currently_tested": "layout tests exist but don't comprehensively cover edge cases that cause panics; no CI test for panic-free error handling"
+    },
+    {
+     "name": "Consistent trait alias resolution",
+     "statement": "Trait aliases should be expanded identically in all compilation phases (resolve_bound_vars, HIR lowering, trait checking). An unexpanded trait alias in one phase should not cause an ICE in another.",
+     "subsystem": "trait-system",
+     "kind": "invariant",
+     "how_to_check": "Compile crates using trait aliases (especially with return type notation and complex bounds) and instrument trait resolution to verify that trait aliases are expanded at all sites where they are encountered. Check that phase-specific resolution doesn't skip alias expansion.",
+     "cost": "moderate",
+     "issues": [
+      152244,
+      152158,
+      152309
+     ],
+     "currently_tested": "trait alias tests exist but limited coverage for cross-phase consistency; no test for RTN with trait aliases"
+    },
+    {
+     "name": "Normalization completeness in borrowck",
+     "statement": "When normalizing projections in borrowck, both type AND const projections must be fully normalized to completion, not partially left as unevaluated consts.",
+     "subsystem": "trait-system",
+     "kind": "differential",
+     "how_to_check": "Compile crates that use generic const items with associated const references in borrowck context. Verify that when borrowck normalizes, const projections are fully evaluated. Compare incremental vs clean builds to ensure both produce identical normalized forms.",
+     "cost": "moderate",
+     "issues": [
+      151647,
+      151579,
+      152278,
+      120811
+     ],
+     "currently_tested": "normalization tests exist but don't cover const projection normalization; incremental vs clean comparison not done for this property"
+    },
+    {
+     "name": "Diagnostic span validity",
+     "statement": "All diagnostic spans must be non-empty (unless explicitly allowed) and non-overlapping. Spans must originate from files that exist in the source tree.",
+     "subsystem": "diagnostics",
+     "kind": "invariant",
+     "how_to_check": "Instrument all diagnostic creation to validate that spans satisfy invariants: non-empty, disjoint, valid file references. Compile large crates and collect all emitted diagnostics, verifying span properties. Check that no panic occurs from span construction.",
+     "cost": "cheap",
+     "issues": [
+      151610,
+      151607,
+      147339,
+      131292
+     ],
+     "currently_tested": "diagnostic tests exist but don't validate span invariants comprehensively; no instrumentation to catch invalid spans"
+    },
+    {
+     "name": "Deterministic ABI and layout computation",
+     "statement": "ABI and layout computation should produce identical results across builds, with no dependence on floating-point precision details, hashmap iteration order, or platform-specific undefined behavior.",
+     "subsystem": "codegen",
+     "kind": "differential",
+     "how_to_check": "Compile the same crate twice and compare the computed ABIs and layouts for all types. Use structured instrumentation to track ABI computation for all function signatures and struct layouts. No differences should exist between runs.",
+     "cost": "moderate",
+     "issues": [
+      151791,
+      122620,
+      115399,
+      147883
+     ],
+     "currently_tested": "ABI tests exist but don't compare across full builds; determinism not checked; SPARC ABI issues show it was never deterministic"
+    },
+    {
+     "name": "Metadata encoder state consistency",
+     "statement": "Each dependency node should be encoded exactly once into the metadata. Attempting to encode the same node twice indicates a compiler bug.",
+     "subsystem": "incremental",
+     "kind": "invariant",
+     "how_to_check": "Instrument the metadata encoder to track which dep nodes have been written. Before writing each node, assert that it hasn't already been encoded. Run builds and verify no assertions fire. Compare with clean builds to ensure no spurious duplicate-write assertions.",
+     "cost": "cheap",
+     "issues": [
+      150018,
+      142778
+     ],
+     "currently_tested": "incremental tests exist but don't instrument encoder for duplicate-write detection; query system tests don't validate this invariant"
+    },
+    {
+     "name": "Lint analysis consistency across features",
+     "statement": "Lint detection should be consistent: if a lint triggers on code without experimental features, it should trigger identically on the same code with those features enabled (or explicitly exclude them). Lint expectations should not be lost during macro expansion.",
+     "subsystem": "lints",
+     "kind": "differential",
+     "how_to_check": "Compile the same crate with and without various feature flags (e.g., min_generic_const_args). Collect lint violations and verify they match. Check that #[expect] attributes survive derive and cfg_attr expansion without creating spurious unfulfilled-lint-expectations.",
+     "cost": "moderate",
+     "issues": [
+      152004,
+      151983,
+      152401,
+      152289
+     ],
+     "currently_tested": "lint tests exist but don't compare across feature flags; attribute survival through macros not tested systematically"
+    }
+   ]
+  },
+  {
+   "issues_read": 100,
+   "candidates": [
+    {
+     "name": "Glob import processing does not panic",
+     "statement": "The glob import resolution and overwriting process must not panic or fail assertions on any valid Rust code, including code with macro-expanded extern crates and complex glob hierarchies.",
+     "subsystem": "resolve",
+     "kind": "invariant",
+     "how_to_check": "Compile a set of crates with complex glob import patterns (macro-expanded items, nested glob imports, glob overwriting) using a rustc instrumented to catch panics and assertions; verify zero panics. Use existing test crates like polars-plan, chumsky, diesel that triggered original issues.",
+     "cost": "moderate",
+     "issues": [
+      149821,
+      150927,
+      150928,
+      150976,
+      151008,
+      151037,
+      151213
+     ],
+     "currently_tested": "Partially through UI tests but not systematically as a panic-checking property"
+    },
+    {
+     "name": "Const generic bounds checking",
+     "statement": "Generic argument processing must perform bounds checks before array indexing to prevent panics when processing const generics with function pointers, arrays, or tuples.",
+     "subsystem": "const-eval",
+     "kind": "invariant",
+     "how_to_check": "Compile Rust code using const generic features (min_generic_const_args) with function pointers, arrays, and tuples as arguments; instrument generic argument processing with bounds assertions; verify no index-out-of-bounds panics occur.",
+     "cost": "cheap",
+     "issues": [
+      137084,
+      150673,
+      150714,
+      150841,
+      151024,
+      151186
+     ],
+     "currently_tested": "Some through const-generics UI tests but not as systematic invariant"
+    },
+    {
+     "name": "Valtree type consistency",
+     "statement": "Const value tree (valtree) construction and pretty-printing must validate that the value's type matches the expected type before encoding or printing, preventing mismatches like 'expected leaf got branch'.",
+     "subsystem": "const-eval",
+     "kind": "invariant",
+     "how_to_check": "Compile Rust code with MGCA (min_generic_const_args) features and complex const generics; instrument valtree pretty-printing code to add type assertions before format operations; verify assertions pass on all code.",
+     "cost": "cheap",
+     "issues": [
+      150506,
+      150712,
+      150734,
+      151126
+     ],
+     "currently_tested": "Limited; mostly found through ICE regression tests"
+    },
+    {
+     "name": "Compiler operations do not panic on input errors",
+     "statement": "The compiler should emit proper errors instead of panics when encountering type mismatches in const evaluation, invalid const generics, or malformed patterns. Type errors should be converted to errors immediately rather than delayed bugs.",
+     "subsystem": "hir-analysis",
+     "kind": "semantic",
+     "how_to_check": "Compile invalid Rust code that triggers type mismatches in const contexts; verify compiler emits E-series errors (not panics or delayed bugs) that can be caught by CI systems and reported to users.",
+     "cost": "cheap",
+     "issues": [
+      151024,
+      150841,
+      150506,
+      150657,
+      149746
+     ],
+     "currently_tested": "Yes, through error codegen, but not systematically checked that all ICE-prone paths error instead"
+    },
+    {
+     "name": "Incremental builds match clean builds",
+     "statement": "Incremental builds after edits must produce the same compiled metadata as clean builds of the edited source, particularly for const evaluation and const block promotion.",
+     "subsystem": "incremental",
+     "kind": "differential",
+     "how_to_check": "For const-heavy crates, build with -Cincr=full and with clean, comparing the produced query results and metadata checksums; flag any differences.",
+     "cost": "moderate",
+     "issues": [
+      150464
+     ],
+     "currently_tested": "Yes through incremental test suite but not focused on const blocks"
+    },
+    {
+     "name": "Two clean builds produce identical output",
+     "statement": "Two consecutive clean builds of the same Rust code must produce byte-identical .rmeta files, indicating deterministic compilation without HashMap iteration order or other non-deterministic behavior.",
+     "subsystem": "metadata",
+     "kind": "differential",
+     "how_to_check": "Build each crate twice cleanly and compare .rmeta file contents; additionally instrument to detect HashMap iteration, environment variable reads, or clock reads during metadata encoding.",
+     "cost": "moderate",
+     "issues": [
+      89911,
+      150409,
+      150419
+     ],
+     "currently_tested": "P5 property mentioned in memory; some tooling exists"
+    }
+   ]
+  }
+ ]
+}

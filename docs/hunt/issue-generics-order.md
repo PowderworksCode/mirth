@@ -77,21 +77,31 @@ every round trip; keys that don't collide are stable.
 - It hides other incremental bugs from anyone comparing incremental and clean outputs. I
   found it while doing that, and it masked a second issue (#…).
 
+The instability was known in one place: `impl Debug for Generics` collects and sorts the map
+before printing it, under `#[expect(rustc::potential_query_instability)]` and the comment
+"ironically, we get this warning because of what we're trying to fix". The encoding was
+not given the same treatment.
+
 ### Suggested fix
 
 Keep the map's order deterministic across encoding and decoding. Making the field an
 `FxIndexMap<DefId, u32>` does that: an `IndexMap` iterates in insertion order, and decoding
-inserts in the encoded order, so a round trip is the identity. It is a two-line change
-(`compiler/rustc_middle/src/ty/generics.rs`), and every construction site uses `.collect()`
+inserts in the encoded order, so a round trip is the identity. It is a small change
+(`compiler/rustc_middle/src/ty/generics.rs`; the `#[expect]` in the `Debug` impl then has
+nothing to expect and goes too), and every construction site uses `.collect()`
 and every use is `get` or indexing. Another option is not to encode the map at all and
 rebuild it from `own_params` when decoding.
 
 With the `FxIndexMap` change, the reproduction, the four crates above, and nine of ten edits
 to a larger test fixture give identical metadata after an incremental rebuild. (The tenth is
-the other issue, #….) With this change and the one suggested there applied together,
-`tests/incremental` (180), the metadata-related UI
-(532) and run-make (46) tests, `tests/ui/{consts,statics,const-generics}` (1844) and
-`tests/codegen-llvm` (1122) still pass; the full test suite was not run. The `Generics`
+the issue about string literals, #….)
+
+With all three changes proposed in this series applied (this one and the two in #… and
+#…), each attached regression test passes, and each fails when only its own change is
+removed. These rustc tests still pass: `tests/incremental` (180), the UI tests in
+`tests/ui/{deprecation,crate-loading,rmeta,extern,cross-crate}` (532), 46 metadata-related
+`tests/run-make` tests, `tests/ui/{consts,statics,const-generics}` (1844) and
+`tests/codegen-llvm` (1122). The full test suite was not run. FUZZ_NUMBERS The `Generics`
 struct is the only one I found that derives `TyEncodable`/`Encodable`, reaches metadata and
 has a `HashMap` field; the others with such fields (`TypeckResults::used_trait_imports`,
 `CrateInfo`, the on-disk cache footer) do not reach `.rmeta`.
