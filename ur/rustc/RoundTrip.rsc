@@ -11,6 +11,7 @@ classify("hashOrderEncoded", "a hash-ordered collection in a type that derives a
 classify("hashOrderAlias", "a type alias for a hash-ordered collection: anything encoding a value of it writes iteration order");
 classify("decodedFresh", "a decoder that reserves a fresh identity, where creation may have deduplicated");
 classify("untrackedWhileEncoding", "an encoder reading untracked state: the session, its source map, the environment, the clock");
+classify("sourceContentRead", "a read of a source file's contents or their hash, which nothing tracks");
 
 data Rewrite = rewrite(str function, str description);
 rewrite("never", "rewrites nothing");
@@ -61,3 +62,13 @@ str untrackedWhileEncoding(Call c) = callee
   when let callee = unparse(c.operand),
        endsWith(callee, "env::var") || endsWith(callee, "env::var_os") || callee == "SystemTime::now" || callee == "Instant::now",
        inEncoder(c);
+
+// A source file's contents or their hash, read outside the code that tracks them: output
+// built from it is reused when the file changes without changing anything tracked (a reused
+// codegen unit's debuginfo keeps the old checksum, hunt.md finding 6; reused metadata kept the
+// old source map, finding 4).
+set[str] sourceContents = {"src_hash", "src", "external_src", "checksum_hash", "unnormalized_source_len"};
+
+str sourceContentRead(Field f) = unparse(f.operand) + "." + name
+  when let name = unparse(f.field),
+       name in sourceContents;

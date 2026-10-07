@@ -1,0 +1,19 @@
+diff --git a/compiler/rustc_codegen_llvm/src/debuginfo/metadata.rs b/compiler/rustc_codegen_llvm/src/debuginfo/metadata.rs
+index a3bcce345..ae8647888 100644
+--- a/compiler/rustc_codegen_llvm/src/debuginfo/metadata.rs
++++ b/compiler/rustc_codegen_llvm/src/debuginfo/metadata.rs
+@@ -618,6 +618,14 @@ fn alloc_new_file_metadata<'ll>(
+             rustc_span::SourceFileHashAlgorithm::Blake3 => llvm::ChecksumKind::None,
+         };
+         let hash_value = hex_encode(source_file.src_hash.hash_bytes());
++        // mirth: testing only. A reused codegen unit keeps the checksum of the file as it was
++        // when the unit was compiled (hunt.md, finding 6); leave it out of incremental sessions
++        // so that the difference does not hide others.
++        let (hash_kind, hash_value) = if cx.sess().opts.incremental.is_some() {
++            (llvm::ChecksumKind::None, String::new())
++        } else {
++            (hash_kind, hash_value)
++        };
+ 
+         let mut source = None;
+         let external_src;

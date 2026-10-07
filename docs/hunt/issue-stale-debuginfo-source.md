@@ -86,6 +86,11 @@ agree, and with `-Cdebuginfo=0` the rebuild agrees with the clean build.
 I expected the rebuilt objects to equal the clean build's, as they do when the same edit
 is made with debuginfo off.
 
+The Cranelift backend reads the same fields (`debuginfo/line_info.rs` in
+`rustc_codegen_cranelift`) and gives the same result: with `-Zcodegen-backend=cranelift` added
+to the first reproduction, the rebuilt object embeds the old `lib.rs` and the clean one the
+current file.
+
 ### Consequences
 
 - With `-Zembed-source`, a debugger that shows embedded source shows a file that no longer

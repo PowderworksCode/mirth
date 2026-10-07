@@ -21,6 +21,7 @@ Ur `ba84ca7`.
 | `hashOrderAlias` | a type alias for such a collection, which anything encoding a value of it writes in iteration order | #159677 (`DocLinkResMap`), from before its fix | 14 | none reach an encoder today |
 | `decodedFresh` | a decoder calling a function that reserves a fresh identity (`reserve*`, `fresh*`, `*next_id*`) where neither its name nor its definition deduplicates | the string literal decoded twice ([report](hunt/issue-literal-dedup.md)) | 1 | the bug |
 | `untrackedWhileEncoding` | inside an encoder (an `Encode*` impl or a function named `encode*`), a read of the session, the environment or the clock | stale metadata from the untracked source map ([report](hunt/issue-stale-metadata-reuse.md)) | 23 | the bug, and one more read of the same data; the rest benign |
+| `sourceContentRead` | a read of a source file's contents or their hash (`src`, `src_hash`, `external_src`, `checksum_hash`, `unnormalized_source_len`) | reused codegen units keep an edited file's old checksum and embedded source ([report](hunt/issue-stale-debuginfo-source.md)) | 58 | the bug, the same bug in the Cranelift backend, and the metadata site of the stale-metadata bug; the rest are the source map itself, the lexer, dep-info written fresh each session, debugger visualizers (an edited script reaches the rebuild), and fields named `src` that are not source files |
 
 **Each query finds the bug it came from.** `hashOrderAlias` also finds #159677, a bug fixed
 in July 2026: with `DocLinkResMap` put back to the `UnordMap` it was before #159718, the
