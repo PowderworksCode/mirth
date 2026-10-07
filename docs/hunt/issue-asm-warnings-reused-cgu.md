@@ -1,4 +1,4 @@
-# Warnings from inline assembly disappear when an incremental rebuild reuses the codegen unit
+# Warnings from inline assembly (and optimization remarks) disappear when an incremental rebuild reuses the codegen unit
 
 <!-- Draft issue for rust-lang/rust. Seen on 1.60.0 through nightly-2026-10-06. -->
 
@@ -55,8 +55,19 @@ coordinator's `SharedEmitter` while a module is compiled, and a work product (th
 the `.bc` for ThinLTO) records nothing of them. A reused unit is never compiled, so its
 warnings are lost, for as long as the unit stays reused.
 
-Inline assembly is the case found here; any other warning LLVM reports while compiling a
-module would be lost the same way.
+Optimization remarks go the same way. With this `m.rs` instead:
+
+```rust
+pub fn f(n: usize) -> usize {
+    (0..n).map(|i| i * 3).sum()
+}
+```
+
+and `main.rs` printing `m::f(std::env::args().count())`, the same three builds with
+`-C opt-level=2 -C remark=all -C debuginfo=1` print 14 remarks located in `m.rs` the first
+time and in the clean build, and none in the rebuild. Remarks are arguably a debugging aid,
+but they are what `-C remark` is for, and an incremental build silently drops them for every
+reused unit.
 
 ### Possible fixes
 
