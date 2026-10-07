@@ -167,8 +167,11 @@ The reuse check printed only the known allocation-sharing pattern in all of them
 **Threads.** With `-Zthreads=8`, two clean builds of `fixtures/sink` already differ
 (#162202: the definitions made for `impl Trait` and `async fn` in traits get indices in a
 nondeterministic order). [`fixtures/sink-threads.patch`](../fixtures/sink-threads.patch)
-turns the two such trait methods into boxed iterators and futures; with it, clean threaded
-builds agree. With only one of the two changed, clean builds agreed but incremental rebuilds
+turns the two such trait methods into boxed iterators and futures, and the free `async fn`s
+into functions returning `impl Future` (once the fuzzer duplicated an `async fn`, clean
+threaded builds of the crate differed six ways in six builds, as in #162202's first
+example); with it, clean threaded builds agree. The fuzzer now builds clean a second time
+whenever anything differs, and reports P5 rather than P6 if the two clean builds disagree. With only one of the two changed, clean builds agreed but incremental rebuilds
 differed from clean ones about half the time: the same out-of-order indices, made in one
 session and kept by the next (the incremental tables for the made-up associated types ended
 two indices earlier). That is #162202 reaching incremental sessions, not a new bug.
