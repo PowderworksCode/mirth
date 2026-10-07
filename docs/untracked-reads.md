@@ -77,6 +77,17 @@ Building the ten replayed crates at their latest commits (all targets, tests inc
 | `-Ztrim-diagnostic-paths` | lint passes, `typeck_root` | minor: how paths print in a warning; a replayed warning keeps the previous session's form (the same class as `-Zfuture-incompat-test`) |
 | `-Zunpretty`, `-Zquery-dep-graph` | `trimmed_def_paths` | benign: they only decide whether to record that trimmed paths were computed |
 
+The fuzzer on `fixtures/sink`, serde and regex adds two more groups, neither a new bug:
+
+- `-Zincremental-verify-ich` and `-Zquery-dep-graph`, read in nearly every query: they are
+  incremental compilation's own checking and debugging switches (the fuzzer passes the
+  first), deciding whether to verify or record, not what to compute.
+- `-Zcheck-cfg-all-expected`, `-Zidentify-regions`, `-Zui-testing` and
+  `-Zwrite-long-types-to-disk`, read in lint passes and type checking: like
+  `-Ztrim-diagnostic-paths`, they change only how a warning is worded, so a replayed
+  warning keeps the previous session's wording. Minor, and all but the first are for
+  rustc's own tests.
+
 Environment variables and files are read almost only before the first query (option
 parsing, crate loading) or while linking, which happens again on every build; the few
 exceptions (a manifest for GPU offload, the Apple deployment target) were not hooked.
