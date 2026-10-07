@@ -1,4 +1,4 @@
-# With `-Zmir-opt-level=3` and debuginfo, an incremental rebuild encodes an allocation twice where a clean build encodes it once
+# With `-Zmir-opt-level=3`, an incremental rebuild encodes an allocation from inlined `core` MIR twice where a clean build encodes it once
 
 <!-- Draft issue for rust-lang/rust. Seen on 1.60.0 through nightly-2026-10-06. Related to the
 string-literal case in hunt/issue-literal-dedup.md: an allocation shared in a clean session is
@@ -10,48 +10,57 @@ rebuild's metadata has one more entry in its allocation table.
 ### Reproduction
 
 ```sh
-cat > lib.rs <<'EOF'
-pub fn first_n<const N: usize>(v: &[u8]) -> Option<[u8; N]> {
-    v.get(..N)?.try_into().ok()
-}
-EOF
-F="--edition 2021 --crate-type lib --crate-name x --emit=metadata,link -Zmir-opt-level=3 -Cdebuginfo=2"
+echo 'pub fn f<T>(v: &[T]) -> Option<&[T]> { v.get(..3) }' > lib.rs
+F="--edition 2021 --crate-type lib --crate-name x --emit=metadata,link -Zmir-opt-level=3"
 rustc $F -C incremental=incr  --out-dir rebuilt lib.rs
-cat >> lib.rs <<'EOF'
-pub fn first_m<const N: usize>(v: &[u8]) -> Option<[u8; N]> {
-    v.get(..N)?.try_into().ok()
-}
-EOF
+echo 'pub fn g<T>(v: &[T]) -> Option<&[T]> { v.get(..3) }' >> lib.rs
 rustc $F -C incremental=incr  --out-dir rebuilt lib.rs
 rustc $F -C incremental=clean --out-dir clean   lib.rs
 cmp rebuilt/libx.rmeta clean/libx.rmeta   # differ
 ```
 
 I expected the two to be identical. With `-Zmeta-stats`, the whole difference is in
-`interpret-alloc-index` (18 bytes on a larger crate). Two clean builds agree; without
-`-Cdebuginfo=2`, or at `-Zmir-opt-level=2` and below (so also at `-Copt-level=3`), the rebuild
-agrees with the clean build. It reproduces on 1.60.0, 1.65.0, 1.70.0, 1.75.0, 1.80.0, 1.85.0,
-1.90.0 and `nightly-2026-10-06` (with `RUSTC_BOOTSTRAP=1` on stable).
+`interpret-alloc-index`: the rebuild's metadata has an extra allocation. Two clean builds agree.
+
+| variation | result |
+|---|---|
+| as above, on `nightly-2026-10-06` | differs |
+| `-Zmir-opt-level=2`, or `-Copt-level=3` alone | same |
+| `-Zmir-opt-level=3 -Zinline-mir=no` | same |
+| the same result from a generic local `#[inline]` helper instead of `get` (`if v.len() >= 3 { Some(&v[..3]) } else { None }`) | same |
+| non-generic (`v: &[u8]`) | same |
+
+An earlier form of the reproduction (`v.get(..N)?.try_into().ok()` with a const parameter and
+`-Cdebuginfo=2`) also differs on 1.60.0, 1.65.0, 1.70.0, 1.75.0, 1.80.0, 1.85.0 and 1.90.0
+(with `RUSTC_BOOTSTRAP=1`).
 
 ### What differs
 
-The optimized MIR of `first_n` at this level has a constant `Option::<&[u8]>::None` held in a
-16-byte allocation (`_4 = const Option::<&[u8]>::None;` with `--emit=mir`). In a clean session
-`first_n` and `first_m` refer to the same allocation, so the metadata encodes it once. In the
-rebuild, `first_n` is green and its optimized MIR is decoded from the incremental cache, where
-its allocations were encoded as plain memory; decoding gives it a new `AllocId`, while
-`first_m`, computed fresh, refers to the shared one. Metadata then encodes both.
+At this level `f`'s optimized MIR returns a constant held in an allocation, because `T` is
+generic and the value cannot be a scalar:
 
-Where the shared allocation comes from I have not confirmed. Interning a constant for
-propagation does not deduplicate (`intern_with_temp_alloc`), so the sharing more likely comes
-from MIR inlined from `core` (here `<[u8]>::get`): allocations decoded from a crate's metadata
-are decoded once per session and shared by every function that inlines that MIR, but the
-incremental cache stores a copy, not a reference to the upstream crate's allocation. That would
-also explain why debuginfo matters (the constant appears in inlined debuginfo) and why only
-`-Zmir-opt-level=3` and above (more inlining).
+```text
+_0 = const Indirect { alloc_id: alloc1, offset: Size(0 bytes) }: Option<&[T]>;
+```
+
+In a clean session `f` and `g` refer to the same allocation, so the metadata encodes it once.
+In the rebuild, `f` is green and its optimized MIR is decoded from the incremental cache,
+where the allocation was encoded as plain memory; decoding gives it a new `AllocId`, while
+`g`, computed fresh, refers to the shared one. Metadata then encodes both.
+
+The sharing most likely comes from inlining: the constant arrives with the MIR of
+`<[T]>::get` and its `SliceIndex` impl, inlined from `core`. Allocations decoded from a crate's
+metadata are decoded once per session and shared by every function that inlines that MIR, but
+the incremental cache stores a copy rather than a reference to `core`'s allocation. This fits
+every variation above: no inlining, no difference; a generic local helper (whose MIR is not
+decoded from another crate), no difference; a non-generic function (where the value is a
+scalar), no difference. I
+have not confirmed it in the compiler's code.
 
 The string-literal case ([report](issue-literal-dedup.md)) is the same kind of loss: an
-allocation shared by deduplication is not shared again after a round trip through the cache.
+allocation shared in a clean session is not shared again after a round trip through the cache.
+A fix along the same lines would encode, in the incremental cache, an allocation that came
+from another crate's metadata as a reference to it rather than as a copy.
 
 ### How it was found
 
@@ -65,4 +74,4 @@ rustc-verify-reuse: allocation shared differently: query `optimized_mir` for Def
   allocation: memory, 16 bytes, align 8, [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 ```
 
-The test workspace was then reduced automatically to the three lines above.
+The test workspace was then reduced automatically, and by hand to the one line above.
