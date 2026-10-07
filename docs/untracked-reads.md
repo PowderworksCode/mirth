@@ -69,6 +69,18 @@ finds finding 6 without an edit or a clean build to compare with. The metadata r
 caused the stale-metadata bug shows up as declared; with the fix reverted it would be
 reported.
 
+Building the ten replayed crates at their latest commits (all targets, tests included) adds:
+
+| read | while computing | verdict |
+|---|---|---|
+| `-Zunstable-options` | lint passes, `check_mod_deathness`, `mir_borrowck` | minor: it decides whether rustc's internal lints run, which matters only to crates that use them |
+| `-Ztrim-diagnostic-paths` | lint passes, `typeck_root` | minor: how paths print in a warning; a replayed warning keeps the previous session's form (the same class as `-Zfuture-incompat-test`) |
+| `-Zunpretty`, `-Zquery-dep-graph` | `trimmed_def_paths` | benign: they only decide whether to record that trimmed paths were computed |
+
+Environment variables and files are read almost only before the first query (option
+parsing, crate loading) or while linking, which happens again on every build; the few
+exceptions (a manifest for GPU offload, the Apple deployment target) were not hooked.
+
 ## Limits
 
 - Only reads that call the hook are seen. Options and source files are covered; other
