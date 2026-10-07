@@ -6,6 +6,8 @@ built incrementally on top of the previous commit's build, then built again
 from scratch, and the two are compared:
 
   P6     every .rmeta Cargo reports for a workspace member is identical
+  rlib   every rlib's members are identical, object code included
+  diag   both builds printed the same diagnostics
   ICE    neither build crashed the compiler
   split  both builds succeed or both fail
 
@@ -27,8 +29,12 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import time
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import artifacts  # noqa: E402
 
 p = argparse.ArgumentParser()
 p.add_argument("--rustc", required=True)
@@ -102,6 +108,7 @@ def build(target_dir):
         "log": log[-6000:],
         "rmetas": rmetas,
         "fresh": fresh,
+        "art": artifacts.collect(r.stdout, target_dir),
     }
 
 
@@ -159,6 +166,11 @@ for i, commit in enumerate(commits):
     if inc["ok"] and clean["ok"] and not clean["fresh"]:
         a, b = inc["rmetas"], clean["rmetas"]
         differ = sorted(rel for rel in set(a) | set(b) if a.get(rel) != b.get(rel))
+        # More oracles: object code in the rlibs and the diagnostics.
+        for kind, detail in artifacts.compare(inc["art"], clean["art"]).items():
+            if kind in ("rlib", "diag"):
+                problems.append(kind)
+                (keep_dir(i, commit) / f"{kind}.txt").write_text("\n".join(detail))
         if differ:
             problems.append("P6")
             for rel in differ:

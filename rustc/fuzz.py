@@ -10,6 +10,9 @@ Each worker keeps one copy of the fixture and repeats:
   3. build the same source from scratch, at the same path;
   4. compare:
        P6     every .rmeta Cargo reports for a workspace member
+       rlib   every rlib's members, object code included (artifacts.py)
+       exe    the binary's bytes
+       diag   the diagnostics each crate printed
        run    the binaries' output and exit status
        ICE    neither build crashed the compiler
        split  both builds succeed or both fail
@@ -32,8 +35,12 @@ import random
 import re
 import shutil
 import subprocess
+import sys
 import time
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import artifacts  # noqa: E402
 
 p = argparse.ArgumentParser()
 p.add_argument("--rustc", required=True)
@@ -306,6 +313,7 @@ def build(src, target):
         "ice": "internal compiler error" in log or "the compiler unexpectedly panicked" in log,
         "hang": hang,
         "secs": time.time() - t, "log": log, "rmetas": rmetas, "exe": exe,
+        "art": artifacts.collect(r.stdout, target),
     }
 
 
@@ -432,6 +440,10 @@ def worker(k):
                 stats["findings"]["P6-stale-reuse"] = stats["findings"].get("P6-stale-reuse", 0) + 1
             elif differ:
                 report("P6", differ, inc, clean)
+            # More oracles: object code in the rlibs, the binary, and the diagnostics.
+            for kind, detail in artifacts.compare(inc["art"], clean["art"]).items():
+                if kind != "rmeta":
+                    report(kind, detail[:10], inc, clean)
             ra = run_exe(str(inc["exe"]).replace(str(target), str(inc_target)) if inc["exe"] else None)
             rb = run_exe(clean["exe"])
             if ra != rb:
