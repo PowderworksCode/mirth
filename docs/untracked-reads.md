@@ -92,6 +92,18 @@ Environment variables and files are read almost only before the first query (opt
 parsing, crate loading) or while linking, which happens again on every build; the few
 exceptions (a manifest for GPU offload, the Apple deployment target) were not hooked.
 
+## Printing modes inherited from the caller
+
+Printing has thread-local modes (`with_no_trimmed_paths!`, `with_reduced_queries!` and
+seven more), and a query runs on the thread of whatever forced it. A query that starts with
+one of these set, and prints, could compute a result that depends on who asked first. Each
+task records the modes it started with, and the modes' getters report a read of an inherited
+one.
+
+On `fixtures/sink`, 18 kinds of query start with an inherited mode (`with_reduced_queries`
+from printing in `explicit_item_bounds`, `with_no_trimmed_paths` from debug output), but none
+reads it, there or in the ten crates: those queries do not print.
+
 ## Limits
 
 - Only reads that call the hook are seen. Options and source files are covered; other

@@ -1405,6 +1405,30 @@ index 10693448e..70fa9ba41 100644
              if !OptionsTargetModifiers::is_target_modifier(flag_name) {
                  tcx.dcx().emit_err(diagnostics::UnknownTargetModifierUnsafeAllowed {
                      flag_name: flag_name.clone(),
+diff --git a/compiler/rustc_metadata/src/dependency_format.rs b/compiler/rustc_metadata/src/dependency_format.rs
+index 4a6c23a10..7ab211e3a 100644
+--- a/compiler/rustc_metadata/src/dependency_format.rs
++++ b/compiler/rustc_metadata/src/dependency_format.rs
+@@ -254,6 +254,9 @@ fn calculate_type(tcx: TyCtxt<'_>, ty: CrateType) -> DependencyList {
+     // form.
+     //
+     // Things like panic runtimes may not have been activated quite yet, so do so here.
++    // Which panic runtime was injected is decided by the crate graph (`crates`, which is
++    // `eval_always`), each crate's dependency kind (a query) and `-C panic` (tracked).
++    rustc_middle::dep_graph::declare_untracked_input("crate store");
+     activate_injected_dep(CStore::from_tcx(tcx).injected_panic_runtime(), &mut ret, &|cnum| {
+         tcx.is_panic_runtime(cnum)
+     });
+@@ -363,6 +366,9 @@ fn attempt_static(tcx: TyCtxt<'_>, unavailable: &mut Vec<CrateNum>) -> Option<De
+     // Our panic runtime may not have been linked above if it wasn't explicitly
+     // linked, which is the case for any injected dependency. Handle that here
+     // and activate it.
++    // Which panic runtime was injected is decided by the crate graph (`crates`, which is
++    // `eval_always`), each crate's dependency kind (a query) and `-C panic` (tracked).
++    rustc_middle::dep_graph::declare_untracked_input("crate store");
+     activate_injected_dep(CStore::from_tcx(tcx).injected_panic_runtime(), &mut ret, &|cnum| {
+         tcx.is_panic_runtime(cnum)
+     });
 diff --git a/compiler/rustc_metadata/src/fs.rs b/compiler/rustc_metadata/src/fs.rs
 index ed177708f..fb8b0e57c 100644
 --- a/compiler/rustc_metadata/src/fs.rs
@@ -1653,18 +1677,22 @@ index 03493d0e1..6c65d6650 100644
              tcx.resolutions(())
                  .doc_link_resolutions
 diff --git a/compiler/rustc_middle/src/dep_graph/graph.rs b/compiler/rustc_middle/src/dep_graph/graph.rs
-index dcb5775f2..711ef1b99 100644
+index dcb5775f2..211d1d6f5 100644
 --- a/compiler/rustc_middle/src/dep_graph/graph.rs
 +++ b/compiler/rustc_middle/src/dep_graph/graph.rs
-@@ -390,6 +390,7 @@ pub fn with_task<'tcx, OP, R>(
+@@ -390,7 +390,11 @@ pub fn with_task<'tcx, OP, R>(
              let task_deps = Lock::new(TaskDeps::new(
                  #[cfg(debug_assertions)]
                  Some(dep_node),
 +                Some(dep_node.kind),
              ));
++            if rustc_data_structures::untracked::UNTRACKED_READ_HOOK.get().is_some() {
++                task_deps.lock().inherited_print_modes = crate::ty::print::non_default_print_modes();
++            }
              (with_deps(TaskDepsRef::Allow(&task_deps), op), Some(task_deps.into_inner()))
          };
-@@ -428,6 +429,7 @@ fn with_anon_task_inner<'tcx, OP, R>(
+ 
+@@ -428,6 +432,7 @@ fn with_anon_task_inner<'tcx, OP, R>(
          let task_deps = Lock::new(TaskDeps::new(
              #[cfg(debug_assertions)]
              None,
@@ -1672,7 +1700,7 @@ index dcb5775f2..711ef1b99 100644
          ));
          let result = with_deps(TaskDepsRef::Allow(&task_deps), op);
          let task_deps = task_deps.into_inner();
-@@ -1311,15 +1313,22 @@ pub struct TaskDeps {
+@@ -1311,15 +1316,25 @@ pub struct TaskDeps {
      node: Option<DepNode>,
  
      reads: TaskReads,
@@ -1681,6 +1709,8 @@ index dcb5775f2..711ef1b99 100644
 +    /// task, and the untracked state it has declared as an input it tracks another way.
 +    pub(super) kind: Option<DepKind>,
 +    pub(super) declared: Vec<&'static str>,
++    /// Printing modes that were set when the task started, by whatever forced it.
++    pub(super) inherited_print_modes: Vec<&'static str>,
  }
  
  impl TaskDeps {
@@ -1693,14 +1723,15 @@ index dcb5775f2..711ef1b99 100644
              reads: TaskReads::new(),
 +            kind,
 +            declared: Vec::new(),
++            inherited_print_modes: Vec::new(),
          }
      }
  
 diff --git a/compiler/rustc_middle/src/dep_graph/mod.rs b/compiler/rustc_middle/src/dep_graph/mod.rs
-index e63a28100..f531e5e71 100644
+index e63a28100..7f303ae7d 100644
 --- a/compiler/rustc_middle/src/dep_graph/mod.rs
 +++ b/compiler/rustc_middle/src/dep_graph/mod.rs
-@@ -77,6 +77,56 @@ fn read_deps<OP>(op: OP)
+@@ -77,6 +77,107 @@ fn read_deps<OP>(op: OP)
      })
  }
  
@@ -1724,6 +1755,54 @@ index e63a28100..f531e5e71 100644
 +    }
 +}
 +
++/// Untracked options whose reads are not reported (except with `RUSTC_REPORT_UNTRACKED=all`):
++/// they only make the compiler write debugging output, print statistics, check more, or keep
++/// data around longer, so a result reused without them is still correct.
++const DEBUGGING_OPTIONS: &[&str] = &[
++    "dump_mir",            // MIR dumps
++    "dump_mir_dataflow",   // dataflow dumps
++    "mir_include_spans",   // in MIR dumps
++    "nll_facts",           // borrowck fact dumps
++    "input_stats",         // statistics
++    "meta_stats",          // statistics
++    "print_type_sizes",    // printing
++    "profile_closures",    // printing
++    "validate_mir",        // checks only
++    "lint_mir",            // checks only
++    "no_steal_thir",       // keeps THIR in memory
++];
++
++/// Notes that printing read `mode`, a printing mode that is set. If the current task inherited
++/// it from whatever forced the task, the task's result may depend on who asked first.
++pub fn note_print_mode_read(mode: &'static str) {
++    if rustc_data_structures::untracked::UNTRACKED_READ_HOOK.get().is_none() {
++        return;
++    }
++    let mut found = None;
++    read_deps(|task_deps| {
++        if let TaskDepsRef::Allow(deps) = task_deps {
++            let deps = deps.lock();
++            if deps.inherited_print_modes.contains(&mode) {
++                found = deps.kind;
++            }
++        }
++    });
++    if let Some(kind) = found {
++        report_once(format!(
++            "rustc-untracked-read: printing mode `{mode}`, inherited from the caller and read, while computing `{kind:?}`, whose result incremental compilation may reuse"
++        ));
++    }
++}
++
++fn report_once(line: String) {
++    static SEEN: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
++    let mut seen = SEEN.lock().unwrap();
++    if !seen.contains(&line) {
++        eprintln!("{line}");
++        seen.push(line);
++    }
++}
++
 +fn report_untracked_read(what: &'static str, at: &'static panic::Location<'static>) {
 +    static SEEN: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
 +    static ALL: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| {
@@ -1740,6 +1819,9 @@ index e63a28100..f531e5e71 100644
 +        }
 +    });
 +    let Some((kind, declared)) = found else { return };
++    if !*ALL && DEBUGGING_OPTIONS.iter().any(|o| what.strip_prefix("the untracked option ") == Some(o)) {
++        return;
++    }
 +    let line = if declared {
 +        format!("rustc-untracked-read-declared: {what}, read at {at}, while computing `{kind:?}`")
 +    } else {
@@ -2122,10 +2204,56 @@ index 353ac74bd..5c52883cf 100644
          stabilized_hashmap.sort_by_key(|(_, v)| **v);
          f.debug_struct("Generics")
 diff --git a/compiler/rustc_middle/src/ty/print/pretty.rs b/compiler/rustc_middle/src/ty/print/pretty.rs
-index cafe93c59..5da0ec74c 100644
+index cafe93c59..c2bc8681b 100644
 --- a/compiler/rustc_middle/src/ty/print/pretty.rs
 +++ b/compiler/rustc_middle/src/ty/print/pretty.rs
-@@ -453,7 +453,7 @@ fn try_print_trimmed_def_path(&mut self, def_id: DefId) -> Result<bool, PrintErr
+@@ -53,6 +53,32 @@ pub enum RtnMode {
+     ForSuggestion,
+ }
+ 
++/// For testing incremental compilation (`rustc_data_structures::untracked`): the printing
++/// modes that are not at their defaults. Each is thread-local state set by the caller, so a
++/// query that starts with one set may compute a result that depends on who asked first.
++pub fn non_default_print_modes() -> Vec<&'static str> {
++    let mut out = Vec::new();
++    let flags: [(&'static str, &'static std::thread::LocalKey<Cell<bool>>); 8] = [
++        ("with_forced_impl_filename_line", &FORCE_IMPL_FILENAME_LINE),
++        ("with_crate_prefix", &SHOULD_PREFIX_WITH_CRATE),
++        ("with_resolve_crate_name", &SHOULD_PREFIX_WITH_CRATE_NAME),
++        ("with_no_trimmed_paths", &NO_TRIMMED_PATH),
++        ("with_forced_trimmed_paths", &FORCE_TRIMMED_PATH),
++        ("with_reduced_queries", &REDUCED_QUERIES),
++        ("with_no_visible_paths", &NO_VISIBLE_PATH),
++        ("with_no_visible_paths_if_doc_hidden", &NO_VISIBLE_PATH_IF_DOC_HIDDEN),
++    ];
++    for (name, flag) in flags {
++        if flag.get() {
++            out.push(name);
++        }
++    }
++    if !matches!(RTN_MODE.get(), RtnMode::ForDiagnostic) {
++        out.push("with_types_for_signature");
++    }
++    out
++}
++
+ macro_rules! define_helper {
+     ($($(#[$a:meta])* fn $name:ident($helper:ident, $tl:ident);)+) => {
+         $(
+@@ -80,7 +106,11 @@ fn drop(&mut self) {
+             }
+ 
+             pub fn $name() -> bool {
+-                $tl.get()
++                let set = $tl.get();
++                if set {
++                    crate::dep_graph::note_print_mode_read(stringify!($name));
++                }
++                set
+             }
+         )+
+     }
+@@ -453,7 +483,7 @@ fn try_print_trimmed_def_path(&mut self, def_id: DefId) -> Result<bool, PrintErr
          if with_forced_trimmed_paths() && self.force_print_trimmed_def_path(def_id)? {
              return Ok(true);
          }
@@ -2134,7 +2262,7 @@ index cafe93c59..5da0ec74c 100644
              && self.tcx().sess.opts.trimmed_def_paths
              && !with_no_trimmed_paths()
              && !with_crate_prefix()
-@@ -721,7 +721,7 @@ fn pretty_print_closure_inner(
+@@ -721,7 +751,7 @@ fn pretty_print_closure_inner(
      ) -> Result<(), PrintError> {
          if self.should_truncate() {
              write!(self, "@...")
@@ -2143,7 +2271,7 @@ index cafe93c59..5da0ec74c 100644
              write!(self, "@")?;
              self.print_def_path(did, args)
          } else if let Some(did) = did.as_local() {
-@@ -2585,7 +2585,7 @@ fn should_print_optional_region(&self, region: ty::Region<'tcx>) -> bool {
+@@ -2585,7 +2615,7 @@ fn should_print_optional_region(&self, region: ty::Region<'tcx>) -> bool {
              return false;
          }
  
@@ -2152,7 +2280,7 @@ index cafe93c59..5da0ec74c 100644
  
          match region.kind() {
              ty::ReEarlyParam(ref data) => data.is_named(),
-@@ -2648,7 +2648,7 @@ pub fn pretty_print_region(&mut self, region: ty::Region<'tcx>) -> Result<(), fm
+@@ -2648,7 +2678,7 @@ pub fn pretty_print_region(&mut self, region: ty::Region<'tcx>) -> Result<(), fm
              return Ok(());
          }
  
