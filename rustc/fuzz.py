@@ -60,6 +60,7 @@ p.add_argument("--seed", type=int, default=0)
 p.add_argument("--timeout", type=int, default=180, help="seconds before a build counts as hung")
 p.add_argument("--p5-builds", type=int, default=1,
                help="clean builds made again when anything differs, to tell nondeterminism from P6")
+p.add_argument("--min-free-gb", type=int, default=20, help="stop when the disk has less free")
 p.add_argument("--check", action="store_true",
                help="cargo check instead of cargo build: metadata only, no code or binaries")
 p.add_argument("--no-verify-reuse", action="store_true",
@@ -435,6 +436,9 @@ def worker(k):
         return stats
     started = time.time()
     while stats["edits"] < args.edits and not (WORK / "STOP").exists():
+        if shutil.disk_usage(WORK).free < args.min_free_gb * 2**30:
+            print(f"worker {k}: less than {args.min_free_gb} GB free, stopping", flush=True)
+            break
         if len([h for h in history if h["kept"]]) >= args.reset and not reset():
             break
         n = stats["edits"]
