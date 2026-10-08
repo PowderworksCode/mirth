@@ -67,6 +67,8 @@ p.add_argument("--check", action="store_true",
                help="cargo check instead of cargo build: metadata only, no code or binaries")
 p.add_argument("--no-verify-reuse", action="store_true",
                help="do not set RUSTC_VERIFY_REUSE (needs a compiler with docs/hunt/verify-reuse.patch)")
+p.add_argument("--target", default=None,
+               help="pass --target to cargo, so RUSTFLAGS skip build scripts and proc macros")
 p.add_argument("--pause-on-finding", action="store_true",
                help="stop all workers at the first finding (writes <work>/PAUSED); patch rustc and "
                     "run again to resume")
@@ -102,7 +104,8 @@ def build(src, target):
     t = time.time()
     proc = subprocess.Popen(
         ["cargo", f"+{args.toolchain}", "check" if args.check else "build", "--workspace", "--offline", "-j", "4",
-         "--target-dir", str(target), "--message-format=json-render-diagnostics"],
+         "--target-dir", str(target), "--message-format=json-render-diagnostics",
+         *(["--target", args.target] if args.target else [])],
         cwd=src, env=env(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
         start_new_session=True)
     hang = False
