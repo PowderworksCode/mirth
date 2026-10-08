@@ -107,7 +107,8 @@ def build(src, target, rustflags):
         if msg.get("reason") == "compiler-artifact" and msg.get("executable") and msg["target"]["name"] == FIXTURE.name:
             exe = msg["executable"]
     return {"ok": rc == 0, "log": log,
-            "ice": "internal compiler error" in log or "the compiler unexpectedly panicked" in log,
+            "ice": "internal compiler error" in log or "the compiler unexpectedly panicked" in log
+                   or "rustc interrupted by SIG" in log,
             "reuse": sorted({l.split(":", 1)[1].strip()[:200] for l in log.splitlines()
                              if l.startswith("rustc-verify-reuse:")}),
             "untracked": sorted({l.strip() for l in log.splitlines() if l.startswith("rustc-untracked-read:")}),

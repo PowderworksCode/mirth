@@ -13,7 +13,7 @@ With --cargo the model is for building a Cargo workspace (flag-walk.py): it leav
 values in CARGO_DROP, which fail there for reasons of Cargo or this machine, not the options.
 
 Combinations that hit bugs already in docs/hunt.md are excluded, so walks look for new
-ones; --allow-known keeps them.
+ones; --allow-known keeps those that have a local stopgap (for a compiler with them).
 
 With --transitions every parameter appears twice, A_ before and B_ after, for covering the
 changes between two sessions.
@@ -45,17 +45,25 @@ CARGO_DROP = {
     "-Zretpoline-external-thunk": None,  # link fails: no thunk
     "-Ztiny-const-eval-limit": None,  # the fixture's const evaluation exceeds it
     "-Cpanic": ["immediate-abort"],  # core is built with unwind
-    "-Crelocation-model": ["static", "ropi", "rwpi", "ropi-rwpi"],  # dylib cannot link; rwpi: finding 12
     "-Ccode-model": ["tiny"],  # LLVM ERROR: not supported on x86_64
     "-Ztls-model": ["local-exec", "emulated"],  # dylib cannot link
+    # the dylib cannot link (static, pie, ropi); rwpi: finding 12
+    "-Crelocation-model": ["static", "pie", "ropi", "rwpi", "ropi-rwpi"],
     "-Clto": None,  # rejected for rlibs and dylibs; Cargo's profile applies it to final artifacts only
 }
 # Constraints that only a real workspace shows: a binary, a dylib, Cargo's own flags.
 CARGO_NEEDS = [
     ("-Cprefer-dynamic", "yes", ["-Cpanic"], '[Cpanic] <> "abort"'),  # libstd.so has panic_unwind
     ("-Cprefer-dynamic", "yes", ["-Clto"], '[Clto] IN {"absent","no","off"}'),
-    # Finding 9 in docs/hunt.md: without the default passes, local ThinLTO leaves undefined
-    # hidden symbols (with -Zshare-generics=no or -Clink-dead-code).
+    # Findings 13 and 14 (in LLVM, not patched): retpolines with the machine outliner, or with
+    # the large code model.
+    ("-Zretpoline", "yes", ["-Cllvm-args", "-Ccode-model"],
+     '[Cllvm_args] <> "-enable-machine-outliner" AND [Ccode_model] <> "large"'),
+]
+# Bugs in docs/hunt.md that have a local stopgap: excluded unless --allow-known (for a
+# compiler with the stopgaps).
+KNOWN_NEEDS = [
+    # Finding 9: without the default passes, local ThinLTO leaves undefined hidden symbols.
     ("-Cno-prepopulate-passes", "present", ["-Zthinlto", "-Copt-level"],
      '[Zthinlto] <> "yes" AND [Copt_level] IN {"absent","0"}'),
 ]
@@ -119,7 +127,7 @@ def main():
     keep = [k for k in sorted(domains)
             if subset == "all" or (subset == "untracked") == (opts[k]["tracking"] == "UNTRACKED")]
     cons = []
-    for k, v, needs, cond in NEEDS + (CARGO_NEEDS if cargo else []):
+    for k, v, needs, cond in NEEDS + (CARGO_NEEDS if cargo else []) + (KNOWN_NEEDS if known else []):
         if k not in keep:
             continue
         if all(n in keep for n in needs):
