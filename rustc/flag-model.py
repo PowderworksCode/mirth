@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Write a PICT model of rustc's option universe from flag-universe.py's results.
 
-    rustc/flag-model.py <work> <all|untracked|tracked> <out> [--transitions] [--cargo]
+    rustc/flag-model.py <work> <all|untracked|tracked> <out> [--transitions] [--cargo] [--allow-known]
 
 One parameter per option. Its values are absence, the values rustc accepted alone, the
 values it accepts once `-Cunsafe-allow-abi-mismatch` names every target modifier (FLAG_BASE,
@@ -11,6 +11,9 @@ A value whose need lies outside the subset is dropped.
 
 With --cargo the model is for building a Cargo workspace (flag-walk.py): it leaves out the
 values in CARGO_DROP, which fail there for reasons of Cargo or this machine, not the options.
+
+Combinations that hit bugs already in docs/hunt.md are excluded, so walks look for new
+ones; --allow-known keeps them.
 
 With --transitions every parameter appears twice, A_ before and B_ after, for covering the
 changes between two sessions.
@@ -93,6 +96,7 @@ def main():
     work, subset, out = sys.argv[1:4]
     transitions = "--transitions" in sys.argv[4:]
     cargo = "--cargo" in sys.argv[4:]
+    known = "--allow-known" not in sys.argv[4:]
     opts = {o["flag"] + o["name"]: o for o in json.load(open(work + "/options.json"))}
     domains = {}
     for s in json.load(open(work + "/singles.json")):
@@ -122,6 +126,9 @@ def main():
     if transitions:
         params = [f"{t}_{p}" for t in "AB" for p in params]
         cons = [re.sub(r"\[(\w+)\]", lambda m: f"[{t}_{m.group(1)}]", c) for t in "AB" for c in cons]
+        if known and "-Zprint-type-sizes" in keep:
+            # Finding 11 in docs/hunt.md: the rebuild ICEs once -Zprint-type-sizes is dropped.
+            cons.append('IF [A_Zprint_type_sizes] = "yes" THEN [B_Zprint_type_sizes] = "yes";')
     open(out, "w").write("\n".join(params) + "\n\n" + "\n".join(cons) + "\n")
     print(f"{len(params)} parameters, {len(cons)} constraints")
 

@@ -20,9 +20,11 @@ rebuild differs from the clean build, or which crashed.
 
 import argparse
 import csv
+import difflib
 import importlib.util
 import json
 import os
+import random
 import shutil
 import subprocess
 import sys
@@ -31,6 +33,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 import artifacts  # noqa: E402
+import mutations  # noqa: E402
 
 spec = importlib.util.spec_from_file_location("flag_model", Path(__file__).with_name("flag-model.py"))
 flag_model = importlib.util.module_from_spec(spec)
@@ -47,6 +50,8 @@ p.add_argument("--toolchain", default="nightly-2026-10-06")
 p.add_argument("--target", default="x86_64-unknown-linux-gnu")
 p.add_argument("--timeout", type=int, default=600)
 p.add_argument("--rows", default="", help="a:b, a slice of the table")
+p.add_argument("--edits", type=int, default=0, help="random source edits between A and B (fuzz.py's)")
+p.add_argument("--seed", type=int, default=0)
 p.add_argument("--p5-builds", type=int, default=12, help="clean rebuilds before a difference counts as reuse")
 args = p.parse_args()
 
@@ -113,6 +118,27 @@ def run_exe(exe):
         return ["timeout", ""]
 
 
+def edit(src, rng, n):
+    """Apply n random edits to the fixture's sources; returns the unified diff."""
+    diff = ""
+    for k in range(n):
+        paths = sorted(p for p in src.rglob("*.rs") if "target" not in p.parts)
+        for _ in range(20):
+            path = rng.choice(paths)
+            fn = rng.choices([e for e, _ in mutations.EDITS], weights=[w for _, w in mutations.EDITS])[0]
+            if fn in (mutations.str_literal, mutations.int_literal) and path.name == "build.rs":
+                continue  # as in fuzz.py: stale OUT_DIR files, or a build script that loops
+            old = path.read_text()
+            new = fn(old, rng, k)
+            if new is not None and new != old:
+                path.write_text(new)
+                rel = str(path.relative_to(src))
+                diff += "".join(difflib.unified_diff(old.splitlines(True), new.splitlines(True),
+                                                     "a/" + rel, "b/" + rel))
+                break
+    return diff
+
+
 def walk(i_row):
     i, row = i_row
     home = WORK / f"r{i}"
@@ -128,6 +154,7 @@ def walk(i_row):
     if first["ice"]:
         findings.append("ICE in clean A")
     if first["ok"]:
+        res["diff"] = edit(src, random.Random(args.seed * 1_000_003 + i), args.edits)
         inc = build(src, target, b)
         target.rename(inc_target)
         clean = build(src, target, b)
@@ -169,6 +196,8 @@ def walk(i_row):
             d = WORK / "findings" / f"r{i}"
             d.mkdir(parents=True, exist_ok=True)
             (d / "row.json").write_text(json.dumps({**res, "findings": findings}, indent=1))
+            if res.get("diff"):
+                (d / "edit.diff").write_text(res["diff"])
             (d / "inc.log").write_text(inc["log"][-20000:])
             (d / "clean.log").write_text(clean["log"][-20000:])
     else:
