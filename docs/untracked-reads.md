@@ -93,6 +93,23 @@ Environment variables and files are read almost only before the first query (opt
 parsing, crate loading) or while linking, which happens again on every build; the few
 exceptions (a manifest for GPU offload, the Apple deployment target) were not hooked.
 
+## Top-level options and other session state
+
+The `Options` struct's own untracked fields (`--extern`, `-L`, the sysroot, `-Z threads` as
+`jobs`, the diagnostic width and others) get the same accessors, and 80 reads were rewritten
+to them; reads of a proc macro's quoted spans are reported too. Over `fixtures/sink` and the
+ten crates, built normally and with `-Zthreads=4`, inside reusable tasks:
+
+| read | where | verdict |
+|---|---|---|
+| `jobs` | the query system, in every query | benign: decides whether to check the cache before starting a query on a parallel front end |
+| `incremental` | MIR inlining, cross-crate inlinability, partitioning, metadata | benign: only whether incremental compilation is on, which cannot change between two incremental sessions |
+| `cli_forced_codegen_units`, `cli_forced_local_thinlto_off` | the number of codegen units | benign: partitioning is redone every session (and changing `-C codegen-units` gave the same output in the option audit) |
+| proc macro quoted spans | `Metadata` | covered: positions in the proc-macro crate's own files, which the source-file fingerprint of the stale-metadata fix tracks |
+
+Nothing new. The compiler patches are kept locally (`~/mirth-work/patches`), not in this
+repository: they are LLM-generated test instruments, not meant for contribution.
+
 ## Source text
 
 Spans are tracked by position, not by the text they cover. `SourceMap::span_to_source`, under
