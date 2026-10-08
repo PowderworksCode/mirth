@@ -27,7 +27,9 @@ builds' differing files and logs.
 
     rustc/fuzz.py --rustc <rustc> --fixture fixtures/sink --work <dir> [--workers 8] [--edits N]
 
-Stop it early by creating <work>/STOP. Progress is in <work>/stats.json.
+Stop it early by creating <work>/STOP. Progress is in <work>/stats.json. With
+--pause-on-finding all workers stop at the first finding (<work>/PAUSED says which); patch
+rustc and run again with the patched compiler.
 """
 
 import argparse
@@ -65,6 +67,9 @@ p.add_argument("--check", action="store_true",
                help="cargo check instead of cargo build: metadata only, no code or binaries")
 p.add_argument("--no-verify-reuse", action="store_true",
                help="do not set RUSTC_VERIFY_REUSE (needs a compiler with docs/hunt/verify-reuse.patch)")
+p.add_argument("--pause-on-finding", action="store_true",
+               help="stop all workers at the first finding (writes <work>/PAUSED); patch rustc and "
+                    "run again to resume")
 args = p.parse_args()
 
 WORK = Path(args.work).resolve()
@@ -222,6 +227,10 @@ def worker(k):
 
     def report(kind, detail, inc, clean, extra=None):
         stats["findings"][kind] = stats["findings"].get(kind, 0) + 1
+        if args.pause_on_finding:
+            (WORK / "PAUSED").write_text(json.dumps({"worker": k, "edit": stats["edits"], "kind": kind,
+                                                     "detail": detail}, indent=1))
+            (WORK / "STOP").touch()
         key = kind + ":" + ",".join(sorted(detail))
         if kept.get(key, 0) >= args.keep:
             return
@@ -345,6 +354,8 @@ def worker(k):
 
 if __name__ == "__main__":
     WORK.mkdir(parents=True, exist_ok=True)
+    for f in ("STOP", "PAUSED"):
+        (WORK / f).unlink(missing_ok=True)
     with multiprocessing.Pool(args.workers) as pool:
         results = pool.map(worker, range(args.workers))
     total = {"edits": sum(r["edits"] for r in results), "built": sum(r["built"] for r in results),
