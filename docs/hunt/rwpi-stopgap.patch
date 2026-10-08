@@ -1,0 +1,16 @@
+--- a/compiler/rustc_session/src/session.rs
++++ b/compiler/rustc_session/src/session.rs
+@@ -1748,6 +1754,13 @@
+         }
+     }
+ 
++    // LLVM crashes emitting debuginfo for writable statics with these models on other targets.
++    if matches!(sess.opts.cg.relocation_model, Some(RelocModel::Rwpi | RelocModel::RopiRwpi))
++        && sess.target.arch != Arch::Arm
++    {
++        sess.dcx().err("`-Crelocation-model=rwpi` and `ropi-rwpi` are only supported on ARM");
++    }
++
+     if sess.opts.unstable_opts.branch_protection.is_some() && sess.target.arch != Arch::AArch64 {
+         sess.dcx().emit_err(diagnostics::BranchProtectionRequiresAArch64);
+     }

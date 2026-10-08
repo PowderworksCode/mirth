@@ -1,0 +1,29 @@
+--- a/compiler/rustc_codegen_ssa/src/back/write.rs
++++ b/compiler/rustc_codegen_ssa/src/back/write.rs
+@@ -782,6 +782,15 @@
+     Green { wp: WorkProduct, bitcode_path: PathBuf },
+ }
+ 
++impl<B: WriteBackendMethods> ThinLtoInput<B> {
++    fn name(&self) -> &str {
++        match self {
++            ThinLtoInput::Red { name, .. } => name,
++            ThinLtoInput::Green { wp, .. } => &wp.cgu_name,
++        }
++    }
++}
++
+ /// Actual LTO type we end up choosing based on multiple factors.
+ pub(crate) enum ComputedLtoType {
+     No,
+@@ -1745,6 +1754,10 @@
+             for (bitcode_path, wp) in lto_import_only_modules {
+                 needs_thin_lto.push(ThinLtoInput::Green { wp, bitcode_path })
+             }
++            // Modules arrive in the order their codegen finished. ThinLTO keeps the first
++            // definition of a linkonce symbol, so sort to make the output independent of
++            // thread timing.
++            needs_thin_lto.sort_by(|a, b| a.name().cmp(b.name()));
+ 
+             if cgcx.lto == Lto::ThinLocal {
+                 compiled_modules.extend(do_thin_lto::<B>(

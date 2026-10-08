@@ -1,0 +1,11 @@
+--- a/compiler/rustc_ty_utils/src/layout.rs
++++ b/compiler/rustc_ty_utils/src/layout.rs
+@@ -1050,7 +1050,7 @@
+                         // Include the type name if there is no field name, or if the name is the
+                         // __awaitee placeholder symbol which means a child future being `.await`ed.
+                         type_name: (field_name.is_none() || field_name == Some(sym::__awaitee))
+-                            .then(|| Symbol::intern(&field_layout.ty.to_string())),
++                            .then(|| Symbol::intern(&with_no_trimmed_paths!(field_layout.ty.to_string()))),
+                     }
+                 })
+                 .chain(upvar_fields.iter().copied())

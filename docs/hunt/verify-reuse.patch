@@ -1,5 +1,5 @@
 diff --git a/compiler/rustc_codegen_llvm/src/back/llvm_backend.rs b/compiler/rustc_codegen_llvm/src/back/llvm_backend.rs
-index 8780af2f6..374c78070 100644
+index 8780af2f6..b5d721623 100644
 --- a/compiler/rustc_codegen_llvm/src/back/llvm_backend.rs
 +++ b/compiler/rustc_codegen_llvm/src/back/llvm_backend.rs
 @@ -74,6 +74,39 @@ fn compile_codegen_unit(
@@ -42,6 +42,24 @@ index 8780af2f6..374c78070 100644
  }
  
  impl WriteBackendMethods for LlvmCodegenBackend {
+@@ -191,7 +224,7 @@ fn init(&mut self, sess: &EarlySession) -> CodegenBackendInit {
+ 
+             use crate::back::lto::enable_autodiff_settings;
+             if sess.opts.unstable_opts.autodiff.contains(&AutoDiff::Enable) {
+-                match llvm::EnzymeWrapper::get_or_init(&sess.opts.sysroot) {
++                match llvm::EnzymeWrapper::get_or_init(&(*sess.opts.read_sysroot())) {
+                     Ok(_) => {}
+                     Err(llvm::EnzymeLibraryError::NotFound { err }) => {
+                         sess.dcx().emit_fatal(crate::diagnostics::AutoDiffComponentMissing { err });
+@@ -339,7 +372,7 @@ fn codegen_crate<'tcx>(&self, tcx: TyCtxt<'tcx>) -> Box<dyn Any> {
+         if tcx.sess.opts.unstable_opts.offload.iter().any(|o| matches!(o, Offload::Device(_)))
+             || tcx.sess.opts.unstable_opts.offload.iter().any(|o| matches!(o, Offload::Host(_)))
+         {
+-            match llvm::RustOffloadWrapper::get_or_init(&tcx.sess.opts.sysroot) {
++            match llvm::RustOffloadWrapper::get_or_init(&(*tcx.sess.opts.read_sysroot())) {
+                 Ok(_) => {}
+                 Err(llvm::RustOffloadLibraryError::NotFound { err }) => {
+                     tcx.sess
 diff --git a/compiler/rustc_codegen_llvm/src/base.rs b/compiler/rustc_codegen_llvm/src/base.rs
 index 77cb37ede..4bd2556f3 100644
 --- a/compiler/rustc_codegen_llvm/src/base.rs
@@ -331,7 +349,7 @@ index f576f29a1..bc9ce9580 100644
      pub(crate) fn LLVMIsMultithreaded() -> Bool;
  
 diff --git a/compiler/rustc_codegen_ssa/src/base.rs b/compiler/rustc_codegen_ssa/src/base.rs
-index f9dfd04fa..fea558316 100644
+index f9dfd04fa..d6f8447fe 100644
 --- a/compiler/rustc_codegen_ssa/src/base.rs
 +++ b/compiler/rustc_codegen_ssa/src/base.rs
 @@ -1,4 +1,5 @@
@@ -340,6 +358,15 @@ index f9dfd04fa..fea558316 100644
  use std::sync::Arc;
  use std::time::{Duration, Instant};
  use std::{cmp, iter};
+@@ -820,7 +821,7 @@ pub fn codegen_crate<
+     // This likely is a temporary measure. Once we don't have to support the
+     // non-parallel compiler anymore, we can compile CGUs end-to-end in
+     // parallel and get rid of the complicated scheduling logic.
+-    let mut pre_compiled_cgus = if let Some(threads) = tcx.sess.opts.jobs.frontend {
++    let mut pre_compiled_cgus = if let Some(threads) = (*tcx.sess.opts.read_jobs()).frontend {
+         tcx.sess.time("compile_first_CGU_batch", || {
+             // Try to find one CGU to compile per thread.
+             let cgus: Vec<_> = cgu_reuse
 @@ -847,6 +848,7 @@ pub fn codegen_crate<
          FxHashMap::default()
      };
@@ -465,9 +492,18 @@ index e06ac36fd..1fea1d7c8 100644
 +    }
  }
 diff --git a/compiler/rustc_incremental/src/persist/save.rs b/compiler/rustc_incremental/src/persist/save.rs
-index 46f47d6c8..69ea0af7a 100644
+index 46f47d6c8..dec36c5cd 100644
 --- a/compiler/rustc_incremental/src/persist/save.rs
 +++ b/compiler/rustc_incremental/src/persist/save.rs
+@@ -26,7 +26,7 @@ pub(crate) fn save_dep_graph(tcx: TyCtxt<'_>) {
+     debug!("save_dep_graph()");
+     tcx.dep_graph.with_ignore(|| {
+         let sess = tcx.sess;
+-        if sess.opts.incremental.is_none() {
++        if (*sess.opts.read_incremental()).is_none() {
+             return;
+         }
+         // This is going to be deleted in finalize_session_directory, so let's not create it.
 @@ -41,6 +41,7 @@ pub(crate) fn save_dep_graph(tcx: TyCtxt<'_>) {
  
          sess.time("assert_dep_graph", || assert_dep_graph(tcx));
@@ -476,8 +512,17 @@ index 46f47d6c8..69ea0af7a 100644
  
          par_join(
              move || {
+@@ -96,7 +97,7 @@ pub fn save_work_product_index(
+     dep_graph: &DepGraph,
+     new_work_products: WorkProductMap,
+ ) {
+-    if sess.opts.incremental.is_none() {
++    if (*sess.opts.read_incremental()).is_none() {
+         return;
+     }
+     // This is going to be deleted in finalize_session_directory, so let's not create it
 diff --git a/compiler/rustc_metadata/src/rmeta/encoder.rs b/compiler/rustc_metadata/src/rmeta/encoder.rs
-index 03493d0e1..0adb62f8e 100644
+index 03493d0e1..77ba6f59c 100644
 --- a/compiler/rustc_metadata/src/rmeta/encoder.rs
 +++ b/compiler/rustc_metadata/src/rmeta/encoder.rs
 @@ -52,6 +52,9 @@
@@ -503,6 +548,15 @@ index 03493d0e1..0adb62f8e 100644
  
          let unhashed = stat!("final", || {
              // Indexed by dependency `CrateNum`, matching the numbering `encode_crate_deps` uses.
+@@ -1940,7 +1947,7 @@ fn encode_mir(&mut self) {
+         // save the query traffic.
+         if tcx.sess.opts.output_types.should_codegen()
+             && tcx.sess.opts.optimize != OptLevel::No
+-            && tcx.sess.opts.incremental.is_none()
++            && (*tcx.sess.opts.read_incremental()).is_none()
+         {
+             for &local_def_id in tcx.mir_keys(()) {
+                 if let DefKind::AssocFn | DefKind::Fn = tcx.def_kind(local_def_id) {
 @@ -2561,6 +2568,10 @@ pub fn encode_metadata(tcx: TyCtxt<'_>, path: &Path, ref_path: Option<&Path>) {
          let hash = blob.expect("file already created").get_crate_hash();
          tcx.untracked().local_crate_hash.set(hash).expect("local_crate_hash set twice");
@@ -514,6 +568,15 @@ index 03493d0e1..0adb62f8e 100644
          // Generate the metadata stub manually, as that is a small file compared to full metadata.
          if let Some(ref_path) = ref_path {
              let _prof_timer = tcx.prof.verbose_generic_activity("generate_crate_metadata_stub");
+@@ -2579,7 +2590,7 @@ pub fn encode_metadata(tcx: TyCtxt<'_>, path: &Path, ref_path: Option<&Path>) {
+         return;
+     };
+ 
+-    if tcx.sess.opts.jobs.frontend.is_some() {
++    if (*tcx.sess.opts.read_jobs()).frontend.is_some() {
+         // Prefetch some queries used by metadata encoding.
+         // This is not necessary for correctness, but is only done for performance reasons.
+         // It can be removed if it turns out to cause trouble or be detrimental to performance.
 @@ -2638,6 +2649,15 @@ fn with_encode_metadata_header(
      tcx: TyCtxt<'_>,
      path: &Path,
@@ -627,9 +690,18 @@ index 7bccc34db..71f2341b1 100644
      /// This checks non-recursive runtime validity.
      hook validate_scalar_in_layout(scalar: crate::ty::ScalarInt, ty: Ty<'tcx>) -> bool;
 diff --git a/compiler/rustc_middle/src/query/on_disk_cache.rs b/compiler/rustc_middle/src/query/on_disk_cache.rs
-index 956c59012..957ddcb20 100644
+index 956c59012..04a593b5d 100644
 --- a/compiler/rustc_middle/src/query/on_disk_cache.rs
 +++ b/compiler/rustc_middle/src/query/on_disk_cache.rs
+@@ -153,7 +153,7 @@ impl OnDiskCache {
+     /// The serialized cache has some basic integrity checks, if those checks indicate that the
+     /// on-disk data is corrupt, an error is returned.
+     pub fn new(sess: &Session, data: Mmap, start_pos: usize) -> Result<Self, ()> {
+-        assert!(sess.opts.incremental.is_some());
++        assert!((*sess.opts.read_incremental()).is_some());
+ 
+         let mut decoder = MemDecoder::new(&data, start_pos)?;
+ 
 @@ -756,6 +756,51 @@ pub struct CacheEncoder<'tcx> {
      side_effects_index: Vec<(SerializedDepNodeIndex, AbsoluteBytePos)>,
  }

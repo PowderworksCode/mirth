@@ -132,6 +132,25 @@ Not bugs: `-Csplit-debuginfo=packed|unpacked` objects name `.dwo` files by sessi
 walk skips object and binary comparison there); `-Zlint-llvm-ir` aborts on a known LLVM lint
 finding ([#59793](https://github.com/rust-lang/rust/issues/59793)).
 
+## Staying at the frontier
+
+A walk that keeps hitting a known bug finds nothing behind it, and excluding the bug from the
+model loses the coverage. So a found bug is patched locally and the walk resumes:
+
+1. `flag-walk.py --pause-on-finding` stops taking rows at the first finding and writes
+   `PAUSED` (the row and what it found); rows in flight finish.
+2. Minimize (`flag-min.py` for failing rows, delta debugging by hand for differences),
+   reproduce with plain rustc, write the facts (`docs/hunt/`).
+3. Patch `~/mirth-work/rust` (a stopgap in `docs/hunt/*-stopgap.patch`; the reproduction in
+   `docs/hunt/repro.sh` must change), build stage 1, freeze it as a new toolchain.
+4. Rerun with `--rustc <new> --recheck`: the rows with findings run first, then the rest.
+   Done rows are never repeated.
+
+`rustc/flag-campaign.sh <dir>` strings walks together this way: it exits 3 when a walk pauses,
+reads the compiler from the `<dir>/rustc` symlink, and resumes on the next run. With the
+stopgaps for findings 9–12 (`rustc-verify6`), the 37 rows of the untracked three-way walk
+that hit finding 11 all compare equal, and the reproductions of 9–12 no longer fail.
+
 ## Cost
 
 `fixtures/sink` builds clean in about 2 seconds (dev profile), so one transition row (clean

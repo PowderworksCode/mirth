@@ -16,6 +16,11 @@ set, for a compiler with mirth's local patches.
 
 Writes <work>/results.jsonl (one line per row) and <work>/findings/<row>/ for each row whose
 rebuild differs from the clean build, or which crashed.
+
+To stay at the frontier: with --pause-on-finding the walk stops taking rows at the first
+finding not marked known and writes <work>/PAUSED. Patch the compiler, then run the same
+command with --rustc <patched> --recheck: the rows with findings run again first, then the
+rows not yet walked. A rerun never repeats rows that are done.
 """
 
 import argparse
@@ -52,6 +57,10 @@ p.add_argument("--timeout", type=int, default=600)
 p.add_argument("--rows", default="", help="a:b, a slice of the table")
 p.add_argument("--edits", type=int, default=0, help="random source edits between A and B (fuzz.py's)")
 p.add_argument("--seed", type=int, default=0)
+p.add_argument("--pause-on-finding", action="store_true",
+               help="stop taking rows at the first finding not marked known; rerun to resume")
+p.add_argument("--recheck", action="store_true",
+               help="on resume, run the rows that had findings again first (after patching rustc)")
 p.add_argument("--p5-builds", type=int, default=12, help="clean rebuilds before a difference counts as reuse")
 args = p.parse_args()
 
@@ -141,6 +150,8 @@ def edit(src, rng, n):
 
 def walk(i_row):
     i, row = i_row
+    if (WORK / "PAUSED").exists() or (WORK / "STOP").exists():
+        return None
     home = WORK / f"r{i}"
     if home.exists():
         shutil.rmtree(home)
@@ -189,8 +200,6 @@ def walk(i_row):
                     if p5 or not again["ok"]:
                         break
                 kind = "P5 " if p5 else ""
-                if p5 and "-Zthinlto=yes" in b:
-                    kind = "known P5 (finding 10) "  # ThinLTO input in codegen completion order
                 findings += [f"{kind}{k}: {v[:5]}" for k, v in diff.items()]
         res["error"] = inc["error"] or clean["error"]
         res["errors"] = inc["errors"] or clean["errors"]
@@ -206,6 +215,10 @@ def walk(i_row):
         res["error"] = first["error"]
         res["errors"] = first["errors"]
     res["findings"] = findings
+    res["rustc"] = args.rustc
+    new = [f for f in findings if not f.startswith("known")]
+    if new and args.pause_on_finding:
+        (WORK / "PAUSED").write_text(json.dumps({"row": i, "findings": new}, indent=1))
     shutil.rmtree(home)
     with open(WORK / "results.jsonl", "a") as f:
         f.write(json.dumps(res) + "\n")
@@ -216,15 +229,38 @@ def walk(i_row):
     return res
 
 
+def latest():
+    """The last result of each row, from <work>/results.jsonl."""
+    out = {}
+    path = WORK / "results.jsonl"
+    if path.exists():
+        for line in path.read_text().splitlines():
+            r = json.loads(line)
+            out[r["row"]] = r
+    return out
+
+
 if __name__ == "__main__":
     WORK.mkdir(parents=True, exist_ok=True)
+    (WORK / "PAUSED").unlink(missing_ok=True)
     rows = list(csv.DictReader(open(args.table), delimiter="\t"))
     idx = list(range(len(rows)))
     if args.rows:
         lo, hi = (int(x) if x else None for x in args.rows.split(":"))
         idx = idx[lo:hi]
+    # Resume: rows with a result are done, except, with --recheck, those with findings, which
+    # run first.
+    done = latest()
+    again = [i for i in idx if i in done and done[i]["findings"]] if args.recheck else []
+    idx = again + [i for i in idx if i not in done]
+    if again:
+        print(f"rechecking rows {again}", flush=True)
     with ThreadPoolExecutor(args.workers) as ex:
-        results = list(ex.map(walk, [(i, rows[i]) for i in idx]))
-    print(json.dumps({"rows": len(results), "A ok": sum(r["A_ok"] for r in results),
-                      "compared": sum(bool(r.get("inc_ok") and r.get("clean_ok")) for r in results),
-                      "findings": sum(bool(r["findings"]) for r in results)}))
+        list(ex.map(walk, [(i, rows[i]) for i in idx]))
+    results = list(latest().values())
+    summary = {"rows": len(rows), "done": len(results), "A ok": sum(r["A_ok"] for r in results),
+               "compared": sum(bool(r.get("inc_ok") and r.get("clean_ok")) for r in results),
+               "findings": sum(bool(r["findings"]) for r in results)}
+    if (WORK / "PAUSED").exists():
+        summary["paused"] = json.loads((WORK / "PAUSED").read_text())
+    print(json.dumps(summary))

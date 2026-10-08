@@ -1,0 +1,15 @@
+--- a/compiler/rustc_session/src/session.rs
++++ b/compiler/rustc_session/src/session.rs
+@@ -1036,6 +1036,12 @@
+             return config::Lto::No;
+         }
+ 
++        // Without the default passes, local ThinLTO internalizes definitions that another
++        // codegen unit still references, and linking fails.
++        if self.opts.cg.no_prepopulate_passes {
++            return config::Lto::No;
++        }
++
+         // If `-Z thinlto` specified process that, but note that this is mostly
+         // a deprecated option now that `-C lto=thin` exists.
+         if let Some(enabled) = self.opts.unstable_opts.thinlto {
