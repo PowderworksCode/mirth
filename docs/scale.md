@@ -111,7 +111,13 @@ directory without `CACHEDIR.TAG`.
 - `sink-mid`, using all three kinds of proc macro and the exported macros, with nested
   modules and restricted visibility, re-exports, and generic code dependents instantiate;
 - `sink-dy`, built as a dylib too;
-- `sink`, a binary that exercises everything and checks 60 results, so a miscompile fails.
+- `sink`, a binary that exercises everything and checks 66 results, so a miscompile fails.
+
+Later, `sink_core::extras` added what the edit fuzzer cannot create on its own: statics
+holding references and nested allocations, `include_str!`/`include_bytes!`, a `#[path]`
+module, `#[no_mangle]` and `#[used]`, `cfg_attr`, `Any`, a glob re-export, an exported macro
+using `$crate`, a proc macro with a `mixed_site` binding, and a generic `#[inline]` function
+that `sink-mid` inlines from the metadata.
 
 `rustc/fuzz.py --rustc <rustc> --fixture fixtures/sink --work <dir> [--workers N]`
 

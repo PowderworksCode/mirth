@@ -28,6 +28,12 @@ fn main() {
     check("index", V2 { x: 3.0, y: 4.0 }[1] == 4.0);
     check("gat", vec![1, 2, 3].first_matching(|x| **x > 1) == Some(&2));
     check("rpitit", sink_mid::labels(&[sq]) == vec!["square 2".to_string()]);
+    check("statics", sink_core::extras::WORDS[1] == "beta" && sink_core::extras::NESTED[2] == [1, 2, 3]);
+    check("include", sink_core::extras::DATA.trim() == "included text" && sink_core::extras::BYTES.len() == 14);
+    check("no_mangle", sink_core::extras::sink_extras_add(2, 3) == 5);
+    check("path mod", sink_core::extras::inner::twice(4) == 8 && sink_core::find(2) == Some("two"));
+    check("any", sink_core::extras::kind(&5u32) == "u32" && sink_core::extras::kind(&"x") == "str");
+    check("inline across crates", sink_mid::first_two(&[1, 2, 3]) == Some(&[1, 2][..]) && sink_mid::words() == 3 && sink_mid::hygienic(4) == 5);
     check("hrtb", shapes::apply_to_all(&["ab".into(), "cde".into()], |s| s.trim()) == vec![2, 3]);
 
     check("pipeline", algo::Pipeline::new().then(|x: i32| x + 1).then(|x| x * 10).run(1) == 20);
