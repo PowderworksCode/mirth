@@ -59,6 +59,9 @@ CARGO_NEEDS = [
     # the large code model.
     ("-Zretpoline", "yes", ["-Cllvm-args", "-Ccode-model"],
      '[Cllvm_args] <> "-enable-machine-outliner" AND [Ccode_model] <> "large"'),
+    # Not a bug: -Zmir-opt-bisect-limit counts pass runs across the session, so with a
+    # parallel frontend which bodies stay under the limit depends on thread timing.
+    ("-Zthreads", "4", ["-Zmir-opt-bisect-limit"], '[Zmir_opt_bisect_limit] = "absent"'),
 ]
 # Bugs in docs/hunt.md that have a local stopgap: excluded unless --allow-known (for a
 # compiler with the stopgaps).

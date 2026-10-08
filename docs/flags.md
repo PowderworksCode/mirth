@@ -130,7 +130,9 @@ crashed, 9 from rows that would not link:
 
 Not bugs: `-Csplit-debuginfo=packed|unpacked` objects name `.dwo` files by session (the
 walk skips object and binary comparison there); `-Zlint-llvm-ir` aborts on a known LLVM lint
-finding ([#59793](https://github.com/rust-lang/rust/issues/59793)).
+finding ([#59793](https://github.com/rust-lang/rust/issues/59793)). With `-Zthreads=4`, `-Zmir-opt-bisect-limit`
+makes metadata differ from run to run: the limit counts pass runs across the session, so which
+bodies stay under it depends on thread timing (excluded from the models).
 
 ## Staying at the frontier
 
