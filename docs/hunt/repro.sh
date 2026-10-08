@@ -136,3 +136,8 @@ RS
 echo 'pub fn g() {}' >> "$d/pt/lib.rs"
 if "$rustc" --edition 2021 --crate-type lib -Cincremental="$d/pt/inc" --out-dir "$d/pt" "$d/pt/lib.rs" > "$d/pt/log" 2>&1
 then echo builds; else echo "ICE: $(grep -o 'trimmed_def_paths. called[^.]*' "$d/pt/log")"; fi
+
+echo -n "rwpi-segfault, -g -Crelocation-model=rwpi on a static mut: "
+echo 'pub static mut M: u32 = 0;' > "$d/rw.rs"
+"$rustc" --crate-type lib -g -Crelocation-model=rwpi "$d/rw.rs" -o "$d/rw.rlib" > /dev/null 2>&1
+rc=$?; if [ $rc = 0 ]; then echo builds; else echo "exit $rc"; fi

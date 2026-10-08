@@ -19,6 +19,12 @@ fails the same way. A bin and a staticlib link. `-Copt-level=1` with
 `-Cno-prepopulate-passes -Zshare-generics=no` (local ThinLTO is on by default there) fails
 too. With `-Clto=thin` it links. Not specific to incremental compilation.
 
+**Variant.** `-Clink-dead-code=yes` in place of `-Zshare-generics=no` fails too, and then a
+binary and a cdylib fail as well (a dylib links): `rustc --crate-type bin
+-Ccodegen-units=16 -Clink-dead-code=yes -Cno-prepopulate-passes -Zthinlto=yes` on a `main`
+calling `core::mem::swap`. Found by minimizing the link failures of the pairwise walk
+(`rustc/flag-min.py`).
+
 **Versions.** Stable releases with `RUSTC_BOOTSTRAP=1`: links on 1.53.0 through 1.77.0,
 fails on 1.78.0 through 1.98.1 and nightly-2026-10-06. 1.78 is when these `ub_checks`
 helpers appeared in `core`, so older releases may only lack a function that shows it.

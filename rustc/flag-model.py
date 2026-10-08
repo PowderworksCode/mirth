@@ -45,14 +45,19 @@ CARGO_DROP = {
     "-Zretpoline-external-thunk": None,  # link fails: no thunk
     "-Ztiny-const-eval-limit": None,  # the fixture's const evaluation exceeds it
     "-Cpanic": ["immediate-abort"],  # core is built with unwind
+    "-Crelocation-model": ["static", "ropi", "rwpi", "ropi-rwpi"],  # dylib cannot link; rwpi: finding 12
+    "-Ccode-model": ["tiny"],  # LLVM ERROR: not supported on x86_64
+    "-Ztls-model": ["local-exec", "emulated"],  # dylib cannot link
     "-Clto": None,  # rejected for rlibs and dylibs; Cargo's profile applies it to final artifacts only
 }
 # Constraints that only a real workspace shows: a binary, a dylib, Cargo's own flags.
 CARGO_NEEDS = [
     ("-Cprefer-dynamic", "yes", ["-Cpanic"], '[Cpanic] <> "abort"'),  # libstd.so has panic_unwind
     ("-Cprefer-dynamic", "yes", ["-Clto"], '[Clto] IN {"absent","no","off"}'),
-    # Finding 9 in docs/hunt.md: a dylib fails to link (undefined hidden symbols).
-    ("-Cno-prepopulate-passes", "present", ["-Zshare-generics"], '[Zshare_generics] <> "no"'),
+    # Finding 9 in docs/hunt.md: without the default passes, local ThinLTO leaves undefined
+    # hidden symbols (with -Zshare-generics=no or -Clink-dead-code).
+    ("-Cno-prepopulate-passes", "present", ["-Zthinlto", "-Copt-level"],
+     '[Zthinlto] <> "yes" AND [Copt_level] IN {"absent","0"}'),
 ]
 # Rejected alone; accepted with FLAG_BASE or with the needs below.
 EXTRA = {"-Zindirect-branch-cs-prefix": ["yes"], "-Zretpoline-external-thunk": ["yes"],

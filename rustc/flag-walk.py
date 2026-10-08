@@ -189,6 +189,8 @@ def walk(i_row):
                     if p5 or not again["ok"]:
                         break
                 kind = "P5 " if p5 else ""
+                if p5 and "-Zthinlto=yes" in b:
+                    kind = "known P5 (finding 10) "  # ThinLTO input in codegen completion order
                 findings += [f"{kind}{k}: {v[:5]}" for k, v in diff.items()]
         res["error"] = inc["error"] or clean["error"]
         res["errors"] = inc["errors"] or clean["errors"]

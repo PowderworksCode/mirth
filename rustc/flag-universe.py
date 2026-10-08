@@ -60,6 +60,31 @@ FREE = {"parse_string", "parse_opt_string", "parse_string_push", "parse_opt_path
         "parse_location_detail", "parse_coverage_options", "parse_codegen_retag_options"}
 
 
+# Values for options whose parser takes a string or whose description lists no values, picked
+# by hand (`rustc --print code-models` etc. for the enumerations).
+SAMPLES = {
+    "-Copt-level": ["0", "1", "2", "3", "s", "z"],
+    "-Ccode-model": ["tiny", "small", "kernel", "medium", "large"],
+    "-Crelocation-model": ["static", "pic", "pie", "dynamic-no-pic", "ropi", "rwpi", "ropi-rwpi", "default"],
+    "-Ztls-model": ["global-dynamic", "local-dynamic", "initial-exec", "local-exec", "emulated"],
+    "-Ctarget-cpu": ["generic", "native", "x86-64-v2", "x86-64-v3", "x86-64-v4"],
+    "-Ctarget-feature": ["+avx2", "+avx512f", "-sse4.2", "+crt-static"],
+    "-Ztune-cpu": ["generic", "znver4"],
+    "-Zthreads": ["1", "4"],
+    "-Zlocation-detail": ["none", "file", "line,column"],
+    "-Zmin-function-alignment": ["16", "64"],
+    "-Zpatchable-function-entry": ["4", "4,2"],
+    "-Zmir-enable-passes": ["+Inline", "-GVN", "+DeadStoreElimination-final"],
+    "-Zremap-cwd-prefix": ["/remapped"],
+    "-Zsimulate-remapped-rust-src-base": ["/rustc/simulated"],
+    "-Zhint-msrv": ["1.60.0"],
+    "-Cmetadata": ["mirth"],
+    "-Zinstrument-xray": ["always", "never"],
+    "-Cllvm-args": ["-unroll-threshold=0", "-enable-machine-outliner"],
+    "-Zcrate-attr": ["allow(unused)"],
+}
+
+
 def enum_values(parser):
     vals = re.findall(r"`([^`]+)`", descs.get(parser, ""))
     out = []
@@ -89,8 +114,9 @@ for flag, grp in (("-C", "CodegenOptions"), ("-Z", "UnstableOptions")):
             values = []
         else:
             values = enum_values(parser)
+        values = SAMPLES.get(flag + name.replace("_", "-"), values)
         options.append({"flag": flag, "name": name, "parser": parser, "tracking": tracking,
-                        "values": values, "free": parser in FREE or not values})
+                        "values": values, "free": not values})
 
 
 def arg(o, v):
@@ -118,14 +144,15 @@ print(f"{len(options)} options: {len(walkable)} with enumerable values, "
       f"{len(options) - len(walkable)} free-form")
 
 singles_path = work / "singles.json"
-if singles_path.exists():
-    singles = json.loads(singles_path.read_text())
-else:
-    jobs = [(o, v) for o in walkable for v in o["values"]]
+singles = json.loads(singles_path.read_text()) if singles_path.exists() else []
+# Try the values not tried yet (all of them on a first run).
+done = {s["arg"] for s in singles}
+jobs = [(o, v) for o in walkable for v in o["values"] if arg(o, v) not in done]
+if jobs:
     with ThreadPoolExecutor(args.jobs) as ex:
         results = list(ex.map(lambda ov: run([arg(*ov)]), jobs))
-    singles = [{"arg": arg(o, v), "option": o["flag"] + o["name"], "value": v, **r}
-               for (o, v), r in zip(jobs, results)]
+    singles += [{"arg": arg(o, v), "option": o["flag"] + o["name"], "value": v, **r}
+                for (o, v), r in zip(jobs, results)]
     singles_path.write_text(json.dumps(singles, indent=1))
 accepted = {}
 for s in singles:

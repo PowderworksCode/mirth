@@ -16,7 +16,11 @@ builds cover every pair or triple of option values? Pinned compiler: nightly-202
 
 An option's domain is absence plus: `yes`/`no` for a boolean, present for an option without a
 value, the backticked values in its parser's description for an enumerated one, `1` and `16`
-for a number. Strings, paths, lists, target features, passes and the like are left out.
+for a number. Strings, paths, lists, target features, passes and the like are left out,
+except 19 options with hand-picked samples (`SAMPLES` in `flag-universe.py`): the first tables
+below were made before these were added, and left out `-Copt-level` (its parser takes a
+string), so the walks there ran at opt-level 0. With the samples, 235 options are enumerable,
+556 values were tried alone and 508 accepted; the pairs were not tried again.
 
 Every value was tried alone on a one-function lib with `--emit=metadata`: 499 values, 452
 accepted, 212 options with at least one accepted value. Then every pair of accepted values of
