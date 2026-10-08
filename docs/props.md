@@ -57,3 +57,25 @@ compile-fail suites) are the same errors the same number of times under both sol
 With [`hunt/threads-def-order-stopgap.patch`](hunt/threads-def-order-stopgap.patch) working
 around #162202, the fuzzer on the unmodified `fixtures/sink` with `-Zthreads=8` compared 644
 incremental rebuilds with clean builds and found no difference.
+
+## More flags through the fuzzer
+
+`fixtures/sink` (with `sink_core::extras`), two workers, 60 edits each, every check on, one
+run per flag set: about 100 rebuilds compared with clean builds each.
+
+| flags | result |
+|---|---|
+| `-Copt-level=1`; `=2`; `=3 -Ccodegen-units=1` | nothing |
+| `-Cdebuginfo=0`; `-Copt-level=2 -Cdebuginfo=line-tables-only` | nothing |
+| `-Zinline-mir=yes` | nothing |
+| `-Copt-level=2 -Zinline-mir=yes -Zinline-mir-threshold=200` | no difference in output, but the reuse check's sharing report of finding 8 (19 times): the same lost sharing, here not reaching the metadata |
+| `-Zcross-crate-inline-threshold=always`; `-Zshare-generics=no`; `-Cprefer-dynamic` | nothing |
+| `-Cpanic=abort -Copt-level=2`; `-Ctarget-cpu=native`; `-Ctarget-feature=+avx2,+bmi2` | nothing |
+| `-Cforce-frame-pointers=yes`; `-Coverflow-checks=off -Cdebug-assertions=off` | nothing |
+| `-Zmir-opt-level=2`; `-Csymbol-mangling-version=v0` | nothing |
+| `-Ccodegen-units=2`; `=64` | nothing (two codegen-unit reports, the known end-of-file pattern) |
+| `-Crelocation-model=static` | does not link the fixture's dylib and proc macro: not tested |
+
+So the two flags that found bugs earlier (`-Copt-level=2` before the debuginfo stopgap, and
+`-Zmir-opt-level=4`) were the productive ones; with findings 6 and 8 accounted for, the other
+common flags find nothing more on this fixture.
