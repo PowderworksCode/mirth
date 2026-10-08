@@ -47,6 +47,7 @@ p.add_argument("--toolchain", default="nightly-2026-10-06")
 p.add_argument("--target", default="x86_64-unknown-linux-gnu")
 p.add_argument("--timeout", type=int, default=600)
 p.add_argument("--rows", default="", help="a:b, a slice of the table")
+p.add_argument("--p5-builds", type=int, default=12, help="clean rebuilds before a difference counts as reuse")
 args = p.parse_args()
 
 FIXTURE = Path(args.fixture).resolve()
@@ -145,12 +146,23 @@ def walk(i_row):
                 # dwo_id hashed from it), so two clean builds differ too.
                 diff.pop("rlib", None)
                 diff.pop("exe", None)
-            if diff:
-                findings += [f"{k}: {v[:5]}" for k, v in diff.items()]
             ra = run_exe(inc["exe"].replace(str(target), str(inc_target)) if inc["exe"] else None)
             rb = run_exe(clean["exe"])
             if ra != rb:
                 findings.append(f"run: {ra} vs {rb}")
+            if diff:
+                # Clean builds may differ among themselves (P5), sometimes only one time in
+                # five: build clean again up to --p5-builds times before calling it reuse.
+                p5 = {}
+                for _ in range(args.p5_builds):
+                    shutil.rmtree(target)
+                    again = build(src, target, b)
+                    if again["ok"]:
+                        p5 = artifacts.compare(clean["art"], again["art"])
+                    if p5 or not again["ok"]:
+                        break
+                kind = "P5 " if p5 else ""
+                findings += [f"{kind}{k}: {v[:5]}" for k, v in diff.items()]
         res["error"] = inc["error"] or clean["error"]
         res["errors"] = inc["errors"] or clean["errors"]
         if findings:

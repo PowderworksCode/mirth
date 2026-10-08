@@ -94,6 +94,40 @@ single-option change `x: v → w` and every "x = v before, y = w after":
 
 Each row is a clean build with A, then a rebuild with B, compared with a clean build with B.
 
+## Walking transitions on sink
+
+`rustc/flag-walk.py` takes a table from `flag-model.py --transitions --cargo` and, per row,
+builds `fixtures/sink` clean with the A options, rebuilds with the B options, builds clean
+with the B options, and compares (metadata, object code, binaries, diagnostics, the
+program's output). A difference is checked against up to 12 more clean builds first, and
+reported as P5 (nondeterminism) if clean builds differ among themselves.
+
+A real workspace adds constraints the trivial crate does not show (`CARGO_DROP` and
+`CARGO_NEEDS` in `flag-model.py`): `-Clto` is rejected for rlibs and dylibs, Cargo's target
+probe fails on values that need another option, there are no sanitizer runtimes here,
+`-Cprefer-dynamic` with `-Cpanic=abort` or LTO cannot link, and so on. Single values on sink:
+428 of 466 build; no single option, set the same in both sessions, changes a rebuild.
+
+| walk | rows | compared | findings |
+|---|---|---|---|
+| all options, pairwise transitions | 207 | 190 | 2 rows: P5, finding 10 |
+| untracked options, three-way transitions | 345 | 308 | 37 rows: one ICE, finding 11 |
+
+Three new compiler bugs came out of minimizing rows: 10 and 11 from rows that differed or
+crashed, 9 from rows that would not link:
+
+- **9**: with `-Cno-prepopulate-passes -Zshare-generics=no -Zthinlto=yes`, a dylib fails to
+  link ([facts](hunt/no-prepopulate-link.md)). Not incremental.
+- **10**: with `-g -Clto=thin` and incremental compilation, ThinLTO's input is in codegen
+  completion order, so clean builds differ from run to run
+  ([facts](hunt/thinlto-module-order.md)).
+- **11**: a session with `-Zprint-type-sizes` leaves a dependency that makes the next
+  session after an edit panic ([facts](hunt/print-type-sizes-trimmed-paths.md)).
+
+Not bugs: `-Csplit-debuginfo=packed|unpacked` objects name `.dwo` files by session (the
+walk skips object and binary comparison there); `-Zlint-llvm-ir` aborts on a known LLVM lint
+finding ([#59793](https://github.com/rust-lang/rust/issues/59793)).
+
 ## Cost
 
 `fixtures/sink` builds clean in about 2 seconds (dev profile), so one transition row (clean
@@ -109,3 +143,6 @@ each is about a day.
     rustc/flag-model.py <dir> all model.txt              # or untracked / tracked, --transitions
     pict model.txt /o:2 /r:1 > rows.tsv
     rustc/flag-rows.py <dir> rows.tsv <rustc> --emit=metadata
+    rustc/flag-model.py <dir> untracked tr.txt --transitions --cargo
+    pict tr.txt /o:3 /r:1 > tr.tsv
+    rustc/flag-walk.py --rustc <rustc> --fixture fixtures/sink --flags <dir> --table tr.tsv --work <walk dir>
