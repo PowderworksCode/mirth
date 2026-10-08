@@ -6,6 +6,7 @@ here=$(cd "$(dirname "$0")" && pwd)
 rustc=${RUSTC:-$(rustc +nightly-2026-10-06 --print sysroot)/bin/rustc}
 d=$(mktemp -d)
 trap 'rm -rf "$d"' EXIT
+cd "$d"  # rustc writes ICE reports to the working directory
 rc() { "$rustc" --edition 2024 "$@" 2> "$d/err" || { cat "$d/err"; exit 1; }; }
 
 echo -n "threads-rpitit, 8 builds with -Zthreads=8, distinct .rmeta files: "
