@@ -50,6 +50,10 @@ CARGO_DROP = {
     # the dylib cannot link (static, pie, ropi); rwpi: finding 12
     "-Crelocation-model": ["static", "pie", "ropi", "rwpi", "ropi-rwpi"],
     "-Clto": None,  # rejected for rlibs and dylibs; Cargo's profile applies it to final artifacts only
+    # LLVM's pass listing from codegen threads interleaves with rustc's lines on stderr; a split
+    # -Ztime-passes-format=json line then reaches Cargo as a bare JSON message.
+    "-Zprint-llvm-passes": ["yes"],
+    "-Ztime-passes-format": ["json"],
 }
 # Constraints that only a real workspace shows: a binary, a dylib, Cargo's own flags.
 CARGO_NEEDS = [

@@ -132,7 +132,10 @@ Not bugs: `-Csplit-debuginfo=packed|unpacked` objects name `.dwo` files by sessi
 walk skips object and binary comparison there); `-Zlint-llvm-ir` aborts on a known LLVM lint
 finding ([#59793](https://github.com/rust-lang/rust/issues/59793)). With `-Zthreads=4`, `-Zmir-opt-bisect-limit`
 makes metadata differ from run to run: the limit counts pass runs across the session, so which
-bodies stay under it depends on thread timing (excluded from the models).
+bodies stay under it depends on thread timing (excluded from the models). Rarely, a clean build
+reports an extra empty diagnostic: LLVM's `-Zprint-llvm-passes` listing, written from codegen
+threads, splits a `-Ztime-passes-format=json` line on stderr and Cargo reads the JSON half as
+a message (both left out of `--cargo` models).
 
 ## Staying at the frontier
 
