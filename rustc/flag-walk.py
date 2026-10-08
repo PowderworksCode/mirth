@@ -215,6 +215,11 @@ def walk(i_row):
     else:
         res["error"] = first["error"]
         res["errors"] = first["errors"]
+        if findings:
+            d = WORK / "findings" / f"r{i}"
+            d.mkdir(parents=True, exist_ok=True)
+            (d / "row.json").write_text(json.dumps({**res, "findings": findings}, indent=1))
+            (d / "a.log").write_text(first["log"][-20000:])
     res["findings"] = findings
     res["rustc"] = args.rustc
     new = [f for f in findings if not f.startswith("known")]

@@ -38,6 +38,7 @@ WALK = Path(args.walk)
 def signature(line):
     """An error line with paths, symbols, hashes and quoted names removed."""
     line = re.sub(r"_R\w+|/\S+|`[^`]*`|\b[0-9a-f]{16}\b", "…", line)
+    line = re.sub(r"\d+", "N", line)
     return line[:120]
 
 

@@ -26,6 +26,16 @@ gives the same crash.
 **Versions.** 1.71.0, 1.87.0 (target features), 1.93.0, 1.98.1, nightly-2026-10-06
 (`-Zretpoline`).
 
+**The outliner fails in other combinations too** (minimized from walk rows with
+`rustc/flag-min.py`, on sink):
+
+- `-Cllvm-args=-enable-machine-outliner -Copt-level=3 -Zcf-protection=full
+  -Zpatchable-function-entry=4,2 -Cdebuginfo=none`: SIGSEGV.
+- `-Cllvm-args=-enable-machine-outliner -Copt-level=2 -Ccode-model=large` (with a few more
+  options): `error: symbol '.L6$pb' can not be undefined in a subtraction expression`.
+
+The models now leave the outliner out entirely (`DROP` in `rustc/flag-model.py`).
+
 ## 14: `-Ccode-model=large` with retpolines cannot link a dylib
 
 **Repro.**

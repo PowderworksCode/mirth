@@ -57,8 +57,7 @@ CARGO_NEEDS = [
     ("-Cprefer-dynamic", "yes", ["-Clto"], '[Clto] IN {"absent","no","off"}'),
     # Findings 13 and 14 (in LLVM, not patched): retpolines with the machine outliner, or with
     # the large code model.
-    ("-Zretpoline", "yes", ["-Cllvm-args", "-Ccode-model"],
-     '[Cllvm_args] <> "-enable-machine-outliner" AND [Ccode_model] <> "large"'),
+    ("-Zretpoline", "yes", ["-Ccode-model"], '[Ccode_model] <> "large"'),
     # Not a bug: -Zmir-opt-bisect-limit counts pass runs across the session, so with a
     # parallel frontend which bodies stay under the limit depends on thread timing.
     ("-Zthreads", "4", ["-Zmir-opt-bisect-limit"], '[Zmir_opt_bisect_limit] = "absent"'),
@@ -70,6 +69,9 @@ KNOWN_NEEDS = [
     ("-Cno-prepopulate-passes", "present", ["-Zthinlto", "-Copt-level"],
      '[Zthinlto] <> "yes" AND [Copt_level] IN {"absent","0"}'),
 ]
+# Values left out of every model: LLVM's machine outliner crashes in many combinations
+# (finding 13), which buries everything else.
+DROP = {"-Cllvm-args": ["-enable-machine-outliner"]}
 # Rejected alone; accepted with FLAG_BASE or with the needs below.
 EXTRA = {"-Zindirect-branch-cs-prefix": ["yes"], "-Zretpoline-external-thunk": ["yes"],
          "-Zretpoline": ["yes"],
@@ -122,6 +124,8 @@ def main():
         for v in vs:
             if v not in domains.setdefault(k, []):
                 domains[k].append(v)
+    for k, vs in DROP.items():
+        domains[k] = [v for v in domains.get(k, []) if v not in vs]
     if cargo:
         for k, vs in CARGO_DROP.items():
             domains[k] = [] if vs is None else [v for v in domains.get(k, []) if v not in vs]
