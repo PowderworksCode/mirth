@@ -6,6 +6,7 @@ members = [
     "crates/mirth-cli",
     "crates/mirth-runtime",
     "crates/mirth-watch",
+    "crates/mirth-rewrite",
     "examples/count-calls",
 ]
 exclude = ["fixtures"]
