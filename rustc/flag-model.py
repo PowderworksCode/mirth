@@ -62,9 +62,6 @@ CARGO_NEEDS = [
     # Findings 13 and 14 (in LLVM, not patched): retpolines with the machine outliner, or with
     # the large code model.
     ("-Zretpoline", "yes", ["-Ccode-model"], '[Ccode_model] <> "large"'),
-    # Not a bug: -Zmir-opt-bisect-limit counts pass runs across the session, so with a
-    # parallel frontend which bodies stay under the limit depends on thread timing.
-    ("-Zthreads", "4", ["-Zmir-opt-bisect-limit"], '[Zmir_opt_bisect_limit] = "absent"'),
 ]
 # Bugs in docs/hunt.md that have a local stopgap: excluded unless --allow-known (for a
 # compiler with the stopgaps).
@@ -74,8 +71,12 @@ KNOWN_NEEDS = [
      '[Zthinlto] <> "yes" AND [Copt_level] IN {"absent","0"}'),
 ]
 # Values left out of every model: LLVM's machine outliner crashes in many combinations
-# (finding 13), which buries everything else.
-DROP = {"-Cllvm-args": ["-enable-machine-outliner"]}
+# (finding 13), which buries everything else; and see below.
+DROP = {"-Cllvm-args": ["-enable-machine-outliner"],
+        # Not a bug: the limit counts MIR pass runs across the session, so which bodies stay
+        # under it depends on how many bodies the session computes (an incremental session
+        # computes fewer) and, with -Zthreads, on thread timing.
+        "-Zmir-opt-bisect-limit": ["1", "16"]}
 # Rejected alone; accepted with FLAG_BASE or with the needs below.
 EXTRA = {"-Zindirect-branch-cs-prefix": ["yes"], "-Zretpoline-external-thunk": ["yes"],
          "-Zretpoline": ["yes"],
