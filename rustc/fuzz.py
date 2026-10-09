@@ -166,6 +166,14 @@ def note_untracked(lines):
             f.write("".join(line + "\n" for line in new))
 
 
+def known(kind, detail):
+    """Reports seen since the reuse check exists and judged benign (docs/shadow-mode.md): reused
+    codegen units differing only in debuginfo at the end of the file, and constant allocations
+    shared differently between evaluations in different typing modes."""
+    return kind == "verify-reuse" and all(
+        d == "codegen unit" or d.startswith("allocation sharing eval_to_const_value_raw") for d in detail)
+
+
 def reuse_checks(log):
     """What the compiler's own check of reused results (docs/hunt/verify-reuse.patch) found
     stale: `query <name>`, `metadata`, `codegen unit` or `allocation sharing <queries>`,
@@ -233,7 +241,7 @@ def worker(k):
 
     def report(kind, detail, inc, clean, extra=None):
         stats["findings"][kind] = stats["findings"].get(kind, 0) + 1
-        if args.pause_on_finding:
+        if args.pause_on_finding and not known(kind, detail):
             (WORK / "PAUSED").write_text(json.dumps({"worker": k, "edit": stats["edits"], "kind": kind,
                                                      "detail": detail}, indent=1))
             (WORK / "STOP").touch()
@@ -246,6 +254,12 @@ def worker(k):
         (d / "history.json").write_text(json.dumps(history, indent=1))
         (d / "finding.json").write_text(json.dumps({"kind": kind, "detail": detail, "extra": extra}, indent=1))
         (d / "inc.log").write_text(inc["log"][-8000:])
+        for name, b in (("inc", inc), ("clean", clean)):
+            lines = b["log"].splitlines() if b else []
+            hits = [i for i, l in enumerate(lines) if "panicked at" in l or "internal compiler error" in l
+                    or "unexpectedly panicked" in l or "interrupted by SIG" in l]
+            if hits:
+                (d / f"{name}-ice.txt").write_text("\n".join(lines[max(0, hits[0] - 5):hits[0] + 60]))
         (d / "clean.log").write_text(clean["log"][-8000:] if clean else "")
         for rel in detail:
             if rel in inc["rmetas"]:

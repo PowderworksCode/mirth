@@ -755,7 +755,7 @@ index 956c59012..04a593b5d 100644
      fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
          // Add more details here if/when necessary.
 diff --git a/compiler/rustc_query_impl/src/incremental.rs b/compiler/rustc_query_impl/src/incremental.rs
-index a030fe71e..afcab4a0b 100644
+index a030fe71e..67564a512 100644
 --- a/compiler/rustc_query_impl/src/incremental.rs
 +++ b/compiler/rustc_query_impl/src/incremental.rs
 @@ -1,17 +1,20 @@
@@ -969,11 +969,11 @@ index a030fe71e..afcab4a0b 100644
 +    "trivial_const",
 +];
 +
-+/// Queries never recomputed: `mir_borrowck` reads the MIR of nested bodies too, and
++/// Queries never recomputed: `mir_borrowck` reads the MIR of nested bodies too,
 +/// `coroutine_by_move_body_def_id` and `eval_static_initializer` (for a nested static) make a
-+/// definition.
++/// definition, and `derive_macro_expansion` needs the context derive expansion sets up.
 +const NOT_RECOMPUTED: &[&str] =
-+    &["coroutine_by_move_body_def_id", "eval_static_initializer", "mir_borrowck"];
++    &["coroutine_by_move_body_def_id", "derive_macro_expansion", "eval_static_initializer", "mir_borrowck"];
 +
 +/// Whether any MIR or THIR of `def` computed this session has been stolen.
 +// Only decides whether to check a value, outside dependency tracking.

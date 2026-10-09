@@ -2234,7 +2234,7 @@ index ca60614ba..91a4e5778 100644
              }
  
 diff --git a/compiler/rustc_query_impl/src/incremental.rs b/compiler/rustc_query_impl/src/incremental.rs
-index afcab4a0b..f2a75b6a1 100644
+index 67564a512..151990941 100644
 --- a/compiler/rustc_query_impl/src/incremental.rs
 +++ b/compiler/rustc_query_impl/src/incremental.rs
 @@ -376,7 +376,7 @@ fn encode_query_values_inner<'tcx, C, V>(
