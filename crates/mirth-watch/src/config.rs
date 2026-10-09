@@ -2,7 +2,7 @@
 //!
 //! ```toml
 //! [scope]
-//! crates = ["rustc_metadata"]   # crates to instrument; empty: the packages Cargo was asked to build
+//! crates = ["rustc_metadata"]   # crates to instrument (patterns, as below); empty: the packages Cargo was asked to build
 //!
 //! [[frame]]                     # functions that name what happens while they run
 //! match = "rustc_metadata::rmeta::encoder::encode_metadata"
@@ -18,6 +18,9 @@
 //! [statics]                     # touches of mutable and interior-mutable statics
 //! mode = "count"
 //! ignore = ["*::__CALLSITE"]    # statics not to watch
+//!
+//! [coverage]                  # which functions run
+//! functions = true              # every function and closure in scope records its first call
 //!
 //! [diagnostics]
 //! paths = true                  # write every path a pattern could match
@@ -39,7 +42,17 @@ pub struct Config {
     pub calls: Vec<Call>,
     pub statics: Option<Statics>,
     #[serde(default)]
+    pub coverage: Coverage,
+    #[serde(default)]
     pub diagnostics: Diagnostics,
+}
+
+/// Coverage: each function and closure body in scope calls the runtime's `cover` on entry.
+#[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+pub struct Coverage {
+    #[serde(default)]
+    pub functions: bool,
 }
 
 /// For writing a configuration: what could be matched.

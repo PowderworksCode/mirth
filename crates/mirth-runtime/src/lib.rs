@@ -12,6 +12,7 @@
 //! P <pid> <start ns> <argument>…                                             the process, first
 //! L <ns> <thread> <site> <frame> <frame type> <frame arguments> <argument>…  a logged event, written at once
 //! C <site> <frame> <frame type> <frame arguments> <count> <argument>…       a counted event, written at exit
+//! V <site>                                                                     a covered site, written at exit
 //! X <ns>                                                                       the exit, last
 //! ```
 //!
@@ -30,6 +31,7 @@
 #![allow(internal_features)]
 
 mod capture;
+mod coverage;
 mod log;
 
 use std::cell::{Cell, RefCell};
@@ -180,4 +182,16 @@ pub fn event(site: u64, mode: u64) {
 #[inline(never)]
 pub fn point(site: u64) {
     guarded(|| log::arrive(site));
+}
+
+/// A function's entry, under `[coverage]`: records that `site` ran, once per process. Kept
+/// cheap, since every instrumented function calls it: no allocation, no lock, and nothing
+/// after the first call but one atomic load. Sites are written as `V` lines at exit; site
+/// numbers have their low bit set (see `coverage`), as do the site tables' cover entries.
+#[rustc_diagnostic_item = "mirth_cover"]
+#[inline(never)]
+pub fn cover(site: u64) {
+    if log::enabled() {
+        coverage::hit(site);
+    }
 }

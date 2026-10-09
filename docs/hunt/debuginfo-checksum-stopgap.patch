@@ -1,6 +1,6 @@
---- a/compiler/rustc_codegen_llvm/src/debuginfo/metadata.rs	2026-10-07 15:55:46.835604483 +0000
-+++ b/compiler/rustc_codegen_llvm/src/debuginfo/metadata.rs	2026-10-07 15:55:46.835604483 +0000
-@@ -617,8 +617,15 @@
+--- a/compiler/rustc_codegen_llvm/src/debuginfo/metadata.rs
++++ b/compiler/rustc_codegen_llvm/src/debuginfo/metadata.rs
+@@ -617,12 +617,21 @@
              rustc_span::SourceFileHashAlgorithm::Sha256 => llvm::ChecksumKind::SHA256,
              rustc_span::SourceFileHashAlgorithm::Blake3 => llvm::ChecksumKind::None,
          };
@@ -18,3 +18,10 @@
  
          let mut source = None;
          let external_src;
+-        if cx.sess().opts.unstable_opts.embed_source {
++        // mirth: testing only. The same for the embedded source (finding 6, with
++        // -Zembed-source): left out of incremental sessions.
++        if cx.sess().opts.unstable_opts.embed_source && cx.sess().opts.incremental.is_none() {
+             rustc_data_structures::untracked::untracked_read("source file contents");
+             source = source_file.src.as_deref().map(String::as_str);
+             if source.is_none() {
