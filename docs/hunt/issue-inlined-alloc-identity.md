@@ -97,3 +97,20 @@ rustc-verify-reuse: allocation shared differently: query `optimized_mir` for Def
 ```
 
 The test workspace was then reduced automatically, and by hand to the one line above.
+
+**Within one crate too (2026-10-09).** The fuzzer under `-Zmir-opt-level=16` found the same
+effect without another crate: after reordering the derives of a struct in `sink-core`, the
+rebuild's `interpret-alloc-index` is 34 bytes larger than a clean build's. MIR optimization turns
+`Vec::new()` (of boxed closures) in `Pipeline::new` into a constant allocation (16 bytes:
+capacity 0, a dangling pointer of 8), and inlining copies it into `Pipeline::default`. In the
+clean build both bodies refer to one allocation; in the rebuild one body came from the
+incremental cache and the other was computed afresh, so they refer to two, and both are
+encoded. Found with a temporary dump of each allocation the encoder writes and the item whose
+MIR first referred to it.
+
+The second stopgap, [`alloc-canonical-metadata-stopgap.patch`](alloc-canonical-metadata-stopgap.patch),
+works where the difference is observed: the metadata encoder gives immutable, fully initialized
+memory one index per contents, with the pointers in it written as the indices of their targets.
+This covers the cross-crate case as well. It changes clean builds too (equal constants share an
+index), the same way in both; constants have no guaranteed distinct addresses.
+
