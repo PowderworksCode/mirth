@@ -63,6 +63,16 @@ written as that crate's stable id and the allocation's index there, with its con
 decoding it gives the same `AllocId` as decoding that crate's allocation (if the contents
 agree). With it, both reproductions above build the same incrementally as clean.
 
+Revised on 2026-10-09, when it became a local stopgap: the first version named the
+allocation by its index in the other crate's metadata. That index changes when the other
+crate is rebuilt while a value referring to it stays green, so under `-Zmir-opt-level=16`
+the reuse check found green `eval_to_const_value_raw` values (a `&CStr` constant of an
+upstream crate, after an edit there) encoded differently from a fresh computation. The
+patch now names it by the crate and its contents (interned, so equal contents are one
+`ConstAllocation`), and decoding a crate's metadata looks the allocation up by contents for
+deduplicated allocations too. Allocations of one crate with equal contents then share an
+`AllocId`, which constants may.
+
 It does not fix everything the fuzzer found: one of its cases on the test workspace, at
 `-Zmir-opt-level=4`, still has an extra allocation with the change, so there is at least one
 more source (perhaps MIR inlined from a function of the same crate, whose own MIR came from
