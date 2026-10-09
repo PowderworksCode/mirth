@@ -146,6 +146,12 @@ inlined calls, generic selection, specialization, rustc-hash).
 **Result:** of 71,257 functions, **8,741 (12.3%) cannot run**; 62,516 can. The proc-macro
 crates, which run when the compiler is built, are left out.
 
+**Only on a compiler bug.** A body no path of which returns, and each of whose paths ends in a
+panic (`bug!`, `span_bug!`, `unreachable!`, a failed `unwrap`), directly or through such a body
+(`default_extern_query`, and the extern-provider closures that call it), runs only when the
+compiler has a bug: 911 of the reachable functions. A body that ends in a fatal error instead is
+a normal error path and is not counted. Coverage is reported with and without them.
+
 ## rustc's own test suites
 
 `rustc/coverage-suites.sh` runs a suite through compiletest (`./x.py test`) on the
@@ -176,6 +182,7 @@ without `std`: build `library` again after it). `rustc/coverage-fulldeps.sh` run
 | assembly-llvm | 738 | 23,913 |
 | codegen-units | 46 | 23,826 |
 | debuginfo (gdb) | 134 | 23,514 |
+| incremental, with `RUSTC_VERIFY_REUSE=1` (every reused query recomputed and compared) | 179 (1 fail) | 30,247 |
 | ui-fulldeps, stage 1 skips by hand | 38 (13 fail) | 22,553 |
 | coverage-run-rustdoc | 1 | 19,833 |
 | rustdoc-json | 187 | 17,839 |
@@ -183,8 +190,22 @@ without `std`: build `library` again after it). `rustc/coverage-fulldeps.sh` run
 | ui-fulldeps (compiletest, stage 1) | 30 | 2,815 |
 
 (The run without the solver pin uses a local compiletest switch, `COMPILETEST_NO_SOLVER_PIN`,
-[`hunt/compiletest-solver-pin.patch`](hunt/compiletest-solver-pin.patch).)
+[`hunt/compiletest-solver-pin.patch`](hunt/compiletest-solver-pin.patch). The incremental
+failure under `RUSTC_VERIFY_REUSE` is the check's own: recomputing a reused query emits its
+lint a second time, `warnings-reemitted.rs` sees the warning twice.)
 
-**All together, with sink and its option configurations: 49,681 of the 62,516 functions that
-can run (79.5%).** `rustc/callgraph.py --gaps <file>` lists the rest by crate and file, largest
-first.
+## Runs the suites hardly make
+
+`rustc/coverage-run.sh <name> <command>` runs any command with `MIRTH_OUT` set and folds the
+logs the same way.
+
+| run | functions reached |
+|---|---:|
+| ui tests through incremental rebuilds (`ui-fuzz.py`, 18,553 tests, 3 edits each) | 44,196 |
+| `coverage-generators.py`: every `--print` request on the host and on all 334 targets; minicore and an ABI file compiled for every target at `-Copt-level=0` and 3; the 300 picked UI tests under 48 debugging and printing options | 41,768 |
+| `coverage-generators.py --only links`: a binary, cdylib, staticlib and dylib on minicore for every target with `-Clinker=true`, under 11 sets of linker options | 18,228 |
+
+**All together, with sink and its option configurations: 50,762 of the 62,516 functions that
+can run (81.2%); without the 911 that only panic, 50,715 of 61,605 (82.3%).**
+`rustc/coverage-report.sh` recomputes this; `rustc/callgraph.py --gaps <file>` lists the rest
+by crate and file, largest first. What is left, and the plan for it: [coverage-handoff.md](coverage-handoff.md).

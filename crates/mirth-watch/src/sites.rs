@@ -109,8 +109,11 @@ pub fn graph<'tcx>(tcx: TyCtxt<'tcx>, def_id: LocalDefId, body: &Body<'tcx>, kin
         (Some(imp), Some(t)) => specializes(tcx, t, imp),
         _ => (false, false),
     };
+    // Runs only when the compiler has a bug: no path returns, and every path that ends ends in
+    // a panic (`bug!`, `unreachable!`, `.unwrap()` on `None`), directly or through such a body.
+    let endings = endings(tcx, body);
     let mut out = vec![format!(
-        "body\t{caller}\t{}\t{}\t{}\t{kind}\t{}\t{}\t{}\t{}\t{}\t{}",
+        "body\t{caller}\t{}\t{}\t{}\t{kind}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
         path_of(tcx, def_id.to_def_id()),
         implements.map_or("-".to_string(), hash),
         implements.map_or("-".to_string(), |it| defining_path_of(tcx, it)),
@@ -120,7 +123,18 @@ pub fn graph<'tcx>(tcx: TyCtxt<'tcx>, def_id: LocalDefId, body: &Body<'tcx>, kin
         impl_trait.map_or("-".to_string(), |it| defining_path_of(tcx, it)),
         impl_adt.map_or("-".to_string(), hash),
         if spec.0 || spec.1 { "specialized" } else { "-" },
+        match &endings {
+            None => "-",
+            Some((true, others)) if others.is_empty() => "ice-only",
+            Some(_) => "diverges",
+        },
     )];
+    // The rest is the analysis's: `diverges <callee>` for each other function ending a path.
+    if let Some((_, others)) = &endings {
+        for callee in others {
+            out.push(format!("diverges\t{caller}\t{}", hash(*callee)));
+        }
+    }
     // An impl of a specialized trait proves its bounds (`T: SpecIntoSelfProfilingString`) only
     // when monomorphization picks it: their impls are not gated on bounds either.
     // (Only a specializing impl's: the one it specializes has its bounds proved where it is used.)
@@ -422,6 +436,49 @@ pub fn graph<'tcx>(tcx: TyCtxt<'tcx>, def_id: LocalDefId, body: &Body<'tcx>, kin
     lines.sort();
     out.extend(lines);
     out
+}
+
+/// How a body ends: `None` when some path returns (or yields); otherwise whether it panics on
+/// every path, and the other functions that never return which end the rest (a fatal error,
+/// `process::exit`, or a helper that panics itself: the analysis decides those).
+fn endings<'tcx>(tcx: TyCtxt<'tcx>, body: &Body<'tcx>) -> Option<(bool, Vec<DefId>)> {
+    let mut panics = false;
+    let mut others = vec![];
+    for block in body.basic_blocks.iter() {
+        if block.is_cleanup {
+            continue;
+        }
+        match &block.terminator().kind {
+            TerminatorKind::Return | TerminatorKind::Yield { .. } | TerminatorKind::CoroutineDrop => {
+                return None;
+            }
+            TerminatorKind::Call { func, target: None, .. } => {
+                let Some((callee, _)) = func.const_fn_def() else { return None };
+                let path = defining_path_of(tcx, callee);
+                let panicking = path.starts_with("core::panicking::")
+                    || path.starts_with("std::panicking::")
+                    || path.starts_with("std::rt::begin_panic")
+                    // `bug!` (through `rustc_span::macros::bug_impl`), its only user here
+                    || path == "std::panic::panic_any"
+                    || path.starts_with("core::option::unwrap_failed")
+                    || path.starts_with("core::option::expect_failed")
+                    || path.starts_with("core::result::unwrap_failed")
+                    || path.starts_with("core::slice::index::")
+                    || path.ends_with("::bug_fmt")
+                    || path.ends_with("::span_bug_fmt")
+                    || (path.starts_with("rustc_errors::")
+                        && (path.ends_with("::bug") || path.ends_with("::span_bug")));
+                if panicking {
+                    panics = true;
+                } else {
+                    others.push(callee);
+                }
+            }
+            TerminatorKind::TailCall { .. } => return None,
+            _ => {}
+        }
+    }
+    Some((panics, others))
 }
 
 /// Whether `imp` specializes another impl of `r#trait`, or another impl specializes it: which

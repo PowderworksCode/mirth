@@ -65,6 +65,8 @@ self_type = {}  # a method in an impl for one of the compiler's structs or enums
 constructs = defaultdict(set)  # body -> types it builds
 spec_bounds = set()  # traits a specializing impl's bounds name
 impl_trait = {}
+ending = {}  # a body no path of which returns -> "ice-only" (it panics) or "diverges"
+diverges_into = defaultdict(set)  # such a body -> the other functions ending its paths
 impl_key = {}  # a function of a trait impl -> (trait, the struct or enum the impl is for)
 demands = defaultdict(set)  # body -> (trait, type) pairs it needs implemented
 # Called by the language on any value, not through a bound: drop glue.
@@ -86,12 +88,16 @@ for f in Path(args.graph).glob("*.graph"):
 
             path_of[node] = path
             hash_of[path] = node
+            if len(parts) > 12 and parts[12] in ("ice-only", "diverges"):
+                ending[node] = parts[12]
             if kind in ("const", "extern"):
                 const_bodies.add(node)
             if item != "-":
                 implements[node] = item
                 if not item_path.startswith("rustc_"):
                     external_impl.add(node)
+        elif parts[0] == "diverges":
+            diverges_into[parts[1]].add(parts[2])
         elif parts[0] == "specbound":
             spec_bounds.add(parts[1])
         elif parts[0] == "demand":
@@ -102,6 +108,17 @@ for f in Path(args.graph).glob("*.graph"):
             else:
                 edges[parts[1]].add(parts[2])
 bodies = set(path_of)
+# A body runs only on a compiler bug when every path ends in a panic, directly or through bodies
+# that do (`default_extern_query` and the closures that call it).
+ice_nodes = {n for n, e in ending.items() if e == "ice-only"}
+changed = True
+while changed:
+    changed = False
+    for node, e in ending.items():
+        if node not in ice_nodes and diverges_into[node] and diverges_into[node] <= ice_nodes:
+            ice_nodes.add(node)
+            changed = True
+ice_only = {path_of[n] for n in ice_nodes}
 impl_key = {node: key for node, key in impl_key.items() if key[0] not in spec_bounds}
 
 implementors = defaultdict(set)
@@ -259,6 +276,11 @@ if hit:
     print(f"coverage: {len(hit_paths)} functions ran; of the {total} reachable ones, {ran} "
           f"({100 * ran / max(total, 1):.1f}%)")
     wrong = sorted(hit_paths & unreach)
+    ice = {path for _, (k, path) in functions.items() if path in ice_only and path not in unreach}
+    ice_ran = ice & hit_paths
+    print(f"of the reachable ones, {len(ice)} only panic (they run on a compiler bug; {len(ice_ran)} ran): "
+          f"without them, {ran - len(ice_ran)} of {total - len(ice)} "
+          f"({100 * (ran - len(ice_ran)) / max(total - len(ice), 1):.1f}%)")
     print(f"ran although unreachable (edges the analysis misses): {len(wrong)}")
     for w in wrong[:30]:
         print("   ", w)
@@ -273,6 +295,7 @@ for crate in args.unreachable:
             print("   ", path)
 if args.json:
     Path(args.json).write_text(json.dumps({"unreachable": sorted(unreach),
+                                           "ice_only": sorted(ice_only & paths),
                                            "ran_unreachable": sorted(hit_paths & unreach),
                                            "reachable_not_hit": sorted((paths - unreach) - hit_paths)}, indent=0))
 
@@ -294,6 +317,7 @@ if args.gaps:
                     continue
                 out.write(f"### {file} ({len(fs)})\n\n")
                 for span, path in sorted(fs):
-                    out.write(f"- `{path}` {span.rsplit(':', 2)[-2] if ':' in span else ''}\n")
+                    tag = " (only panics)" if path in ice_only else ""
+                    out.write(f"- `{path}` {span.rsplit(':', 2)[-2] if ':' in span else ''}{tag}\n")
                 out.write("\n")
     print(f"gaps written to {args.gaps}")
