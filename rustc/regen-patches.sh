@@ -3,7 +3,7 @@
 # applied: verify-reuse, the three fixes, report-untracked, and the stopgaps.
 set -e
 # Stopgaps for findings 9-12, each made from its own files (applied after report-untracked).
-STOPGAPS="thinlto-order-stopgap print-type-sizes-trimmed-stopgap no-prepopulate-thinlto-stopgap rwpi-stopgap"
+STOPGAPS="thinlto-order-stopgap print-type-sizes-trimmed-stopgap no-prepopulate-thinlto-stopgap rwpi-stopgap upstream-alloc-reference"
 H=$HOME/mirth-work/patches; RUST=$HOME/mirth-work/rust; T=$CLAUDE_JOB_DIR/tmp/regen
 cd $RUST; git worktree remove --force $T 2>/dev/null || true; git worktree prune
 V="compiler/rustc_codegen_llvm/src/back/llvm_backend.rs compiler/rustc_codegen_llvm/src/base.rs compiler/rustc_codegen_llvm/src/llvm/ffi.rs compiler/rustc_codegen_ssa/src/base.rs compiler/rustc_codegen_ssa/src/traits/backend.rs compiler/rustc_incremental/src/persist/save.rs compiler/rustc_metadata/src/rmeta/encoder.rs compiler/rustc_middle/src/hooks.rs compiler/rustc_middle/src/query/on_disk_cache.rs compiler/rustc_query_impl/src/incremental.rs compiler/rustc_query_impl/src/lib.rs"
