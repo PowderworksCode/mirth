@@ -88,8 +88,10 @@ def normalized(stderr):
     text = "\n".join(lines)
     # Panic messages name the thread with its OS id: `thread 'main' (909942) panicked`.
     text = re.sub(r"(thread '[^']*') \(\d+\)", r"\1", text)
-    # A toolchain with rust-src prints std's own paths in full.
-    return re.sub(r"\S*/lib/rustlib/src/rust/library/", "library/", text)
+    # Toolchains print std's and dependencies' paths differently: in full (rust-src installed),
+    # remapped to /rustc/<commit>/, or relative.
+    text = re.sub(r"\S*/lib/rustlib/src/rust/library/|/rustc/[0-9a-f]+/library/", "library/", text)
+    return re.sub(r"\S*/registry/(src/)?[^/\s]+/([^/\s]+-\d[^/\s]*)/", r"<registry>/\2/", text)
 
 
 def observe(binary):
@@ -99,8 +101,13 @@ def observe(binary):
     shutil.copy2(binary, fixed)
     code, out, err = uitest.run(fixed)
     stdout = out.decode(errors="replace")
-    # The test harness prints how long tests took.
+    # The test harness prints how long tests took, and runs tests on several threads: their
+    # result lines come in any order.
     stdout = re.sub(r"finished in \d+\.\d+s", "finished in …s", stdout)
+    lines = stdout.split("\n")
+    results = sorted(l for l in lines if l.startswith("test ") and " ... " in l)
+    it = iter(results)
+    stdout = "\n".join(next(it) if (l.startswith("test ") and " ... " in l) else l for l in lines)
     return {"exit": code, "stdout": stdout, "stderr": normalized(err)}
 
 
@@ -133,8 +140,9 @@ def one(path, flags, edition, kind):
                 continue
             b = built[name]["status"]
             if b != "ok":
-                # The Cranelift backend has documented gaps (unsupported intrinsics, inline asm).
-                if name == "cranelift" and b == "error":
+                # The Cranelift backend has documented gaps (tail calls, some linkages and SIMD
+                # intrinsics), which it reports as errors or as panics inside itself.
+                if name == "cranelift" and (b == "error" or "rustc_codegen_cranelift" in built[name]["stderr"]):
                     continue
                 found.append({"config": name, "what": f"build {b}", "stderr": built[name]["stderr"]})
                 continue
