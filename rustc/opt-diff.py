@@ -48,6 +48,14 @@ CONFIGS = {
     "O3-native": ["-Copt-level=3", "-Ctarget-cpu=native"],
     "cranelift": ["-Copt-level=0", "-Zcodegen-backend=cranelift"],
 }
+# Tests whose outcome legitimately depends on optimization: unspecified behavior (whether two
+# equal promoted constants share an address), stack usage, or a backend's documented gaps.
+NOISE = {
+    "mir/mir_raw_fat_ptr.rs": {"cranelift"},  # compares the addresses of two `&0u8`
+    "codegen/StackColoring-not-blowup-stack-issue-40883.rs": {"O0-mir4", "O0"},  # stack usage
+    "attributes/fn-align-dyn.rs": {"cranelift"},  # Cranelift ignores #[align] on functions
+    "backtrace/backtrace.rs": {"cranelift"},  # Cranelift backtraces lack frames
+}
 # Tests that choose these themselves are left out: the configuration would contradict them.
 OWN = re.compile(r"^-O$|opt-level|mir-opt-level|overflow-checks|debug-assertions|codegen-backend|"
                  r"mir-enable-passes|^-Clto|lto=|target-cpu|panic=|-Cpanic|prefer-dynamic|-Zbuild-std")
@@ -85,8 +93,15 @@ def normalized(stderr):
 
 
 def observe(binary):
-    code, out, err = uitest.run(binary)
-    return {"exit": code, "stdout": out.decode(errors="replace"), "stderr": normalized(err)}
+    # Every configuration's program runs from the same path: some tests print argv[0].
+    fixed = binary.parent.parent / "run" / "prog"
+    fixed.parent.mkdir(exist_ok=True)
+    shutil.copy2(binary, fixed)
+    code, out, err = uitest.run(fixed)
+    stdout = out.decode(errors="replace")
+    # The test harness prints how long tests took.
+    stdout = re.sub(r"finished in \d+\.\d+s", "finished in …s", stdout)
+    return {"exit": code, "stdout": stdout, "stderr": normalized(err)}
 
 
 def one(path, flags, edition, kind):
@@ -114,7 +129,7 @@ def one(path, flags, edition, kind):
             return record, []
         found = []
         for name in configs:
-            if name == "base" or name not in built:
+            if name == "base" or name not in built or name in NOISE.get(rel, ()):
                 continue
             b = built[name]["status"]
             if b != "ok":

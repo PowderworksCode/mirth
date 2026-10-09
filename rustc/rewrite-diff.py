@@ -34,6 +34,9 @@ import uitest  # noqa: E402
 REWRITER = Path(__file__).resolve().parent.parent / "target/release/mirth-rewrite"
 REWRITES = ["generic-wrap", "alias", "reorder", "unused"]
 STRICT = {"reorder", "unused"}
+NOT_MOVABLE = re.compile(r"^\s*(pub(\([^)]*\))?\s+)?mod\s+\w+\s*;|include(_str|_bytes)?!|#\[path|#!\[no_core\]", re.M)
+# Item order matters to textual macro scoping: no reordering where macros are defined.
+ORDER_MATTERS = re.compile(r"macro_rules!|#\[macro_use\]|macro\s+\w+")
 KINDS = ("check-pass", "build-pass", "run-pass", "check-fail", "build-fail", "run-fail", None)
 
 p = argparse.ArgumentParser()
@@ -57,9 +60,12 @@ def codes(stderr):
     return sorted(set(re.findall(r"error\[(E\d{4})\]", stderr)))
 
 
-def verdict(source, flags, edition, kind, out):
-    emit = "metadata" if kind in ("check-pass", "check-fail", None) else "link"
-    status, stderr, _ = uitest.compile(args.rustc, source, out, flags, edition, timeout=120, emit=emit)
+def verdict(source, flags, edition, kind, out, has_main):
+    # A full build whenever there is a program: generic-wrap moves errors to monomorphization.
+    emit = "link" if has_main or kind not in ("check-pass", "check-fail", None) else "metadata"
+    # Lints capped: a rewrite may add or move a warning, and lint levels are not the subject.
+    status, stderr, _ = uitest.compile(args.rustc, source, out, flags, edition, ["--cap-lints=warn"],
+                                       timeout=120, emit=emit)
     return {"status": status, "codes": codes(stderr), "stderr": stderr[-2500:]}
 
 
@@ -74,25 +80,34 @@ def rewrite(name, source, target):
 def one(path, flags, edition, kind):
     rel = str(path.relative_to(args.tests))
     record = {"test": rel, "kind": kind}
+    text = path.read_text(errors="replace")
+    # The rewritten file is compiled elsewhere: files it names by relative path are not there.
+    # Without `core`, a new trait or generic parameter does not compile.
+    if NOT_MOVABLE.search(text):
+        record["skip"] = "uses files by path or has no core"
+        return record, []
     with tempfile.TemporaryDirectory(dir=WORK / "scratch") as d:
         d = Path(d)
         base_src = d / "identity.rs"
         if not rewrite("identity", path, base_src):
             record["skip"] = "does not parse"
             return record, []
-        original = verdict(path.resolve(), flags, edition, kind, d / "original")
-        base = verdict(base_src, flags, edition, kind, d / "identity")
+        has_main = "fn main" in text
+        original = verdict(path.resolve(), flags, edition, kind, d / "original", has_main)
+        base = verdict(base_src, flags, edition, kind, d / "identity", has_main)
         if (original["status"], original["codes"]) != (base["status"], base["codes"]):
             record["skip"] = "printing changes the verdict"
             return record, []
         record["base"] = base["status"]
         found, notes, applied = [], [], []
         for name in rewrites:
+            if name == "reorder" and ORDER_MATTERS.search(text):
+                continue
             src = d / f"{name}.rs"
             if not rewrite(name, path, src):
                 continue
             applied.append(name)
-            v = verdict(src, flags, edition, kind, d / name)
+            v = verdict(src, flags, edition, kind, d / name, has_main)
             if v["status"] != base["status"] and "timeout" not in (v["status"], base["status"]):
                 found.append({"rewrite": name, "what": f"verdict: {base['status']} -> {v['status']}",
                               "base_codes": base["codes"], "codes": v["codes"], "stderr": v["stderr"],

@@ -68,9 +68,11 @@ def one(path, flags, edition, kind):
     with tempfile.TemporaryDirectory(dir=WORK / "scratch") as d:
         d = Path(d)
         for name, cfg in CONFIGS.items():
-            # Metadata is enough for the verdict: type checking and borrow checking run for it.
+            # Metadata is enough for check tests (type checking and borrow checking run for it);
+            # build and run tests get a full build, which reaches monomorphization-time errors.
+            emit = "metadata" if kind in ("check-pass", "check-fail", None) else "link"
             status, stderr, _ = uitest.compile(args.rustc, path.resolve(), d / name, flags, edition, cfg,
-                                               timeout=120, emit="metadata")
+                                               timeout=120, emit=emit)
             results[name] = {"status": status, "codes": codes(stderr), "stderr": stderr[-2500:]}
     record["status"] = {k: v["status"] for k, v in results.items()}
     ref = results[REFERENCE]

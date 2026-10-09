@@ -105,10 +105,10 @@ fn wrap(f: &mut ItemFn) {
         })
         .collect();
     let body = &f.block;
+    // No attributes (a test may `forbid` the lint they would allow); names no lint objects to.
     let new: syn::Block = syn::parse_quote!({
-        #[allow(non_camel_case_types, unused_mut)]
-        fn __mirth_inner<__MirthT>(#inputs) #output #body
-        __mirth_inner::<()>(#(#names),*)
+        fn _mirth_inner<MirthT>(#inputs) #output #body
+        _mirth_inner::<()>(#(#names),*)
     });
     // Parameters declared `mut` are mutated in the body, now the inner function's.
     for arg in f.sig.inputs.iter_mut() {
@@ -150,7 +150,17 @@ fn alias(file: &mut syn::File) -> bool {
         if params_seen.0.contains(&ident.to_string()) {
             continue;
         }
-        let alias = format_ident!("__MirthAlias_{}", ident);
+        let alias = format_ident!("_MirthAlias{}", ident);
+        // The type's own `cfg`s: an alias of a configured-out type would name nothing.
+        let cfgs: Vec<&syn::Attribute> = match item {
+            Item::Struct(x) => &x.attrs,
+            Item::Enum(x) => &x.attrs,
+            Item::Union(x) => &x.attrs,
+            _ => unreachable!(),
+        }
+        .iter()
+        .filter(|a| a.path().is_ident("cfg") || a.path().is_ident("cfg_attr"))
+        .collect();
         // The alias's parameters: the type's, without bounds (aliases ignore them), with defaults.
         let mut params = generics.clone();
         params.where_clause = None;
@@ -187,7 +197,7 @@ fn alias(file: &mut syn::File) -> bool {
             .collect();
         let target = if args.is_empty() { quote!(#ident) } else { quote!(#ident<#(#args),*>) };
         new_items.push(syn::parse_quote!(
-            #[allow(non_camel_case_types, type_alias_bounds, dead_code)]
+            #(#cfgs)*
             type #alias #params = #target;
         ));
         aliases.insert(ident.to_string(), alias);
@@ -253,11 +263,12 @@ fn unused(file: &mut syn::File) -> bool {
             _ => None,
         })
         .collect();
-    if names.contains("__mirth_unused") {
+    if names.contains("_mirth_unused") {
         return false;
     }
-    file.items.push(syn::parse_quote!(#[allow(dead_code)] fn __mirth_unused() {}));
-    file.items.push(syn::parse_quote!(#[allow(dead_code)] struct __MirthUnused;));
-    file.items.push(syn::parse_quote!(#[allow(dead_code)] trait __MirthUnusedTrait {}));
+    // Leading underscores keep `dead_code` quiet without an attribute a test could `forbid`.
+    file.items.push(syn::parse_quote!(fn _mirth_unused() {}));
+    file.items.push(syn::parse_quote!(struct _MirthUnused;));
+    file.items.push(syn::parse_quote!(trait _MirthUnusedTrait {}));
     true
 }
