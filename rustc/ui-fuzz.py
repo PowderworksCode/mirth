@@ -51,7 +51,7 @@ args = p.parse_args()
 WORK = Path(args.work).resolve()
 NO_BUILD = ("check-pass", "check-fail")
 # Tests that hit bugs already in docs/hunt.md every time: finding 17.
-KNOWN = ("-Zunleash-the-miri-inside-of-you",)
+KNOWN = ("unleash-the-miri-inside-of-you",)
 
 
 def headers(text):
