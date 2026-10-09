@@ -7,8 +7,9 @@ optimizations (Miri's default), at `-Zmir-opt-level=2` (what `-O` runs) and at
 `-Zmir-opt-level=4` (every MIR pass), and builds and runs it with the compiler under test,
 unoptimized. Findings:
 
-  ub          Miri reports undefined behavior in an accepted program at mir-opt-level 0: the
-              compiler accepted something unsound, or the test's own unsafe code is wrong
+  ub          Miri reports undefined behavior at mir-opt-level 0 in an accepted program without
+              `unsafe` code: the compiler accepted something unsound (UB in a test with its own
+              unsafe code is noted, not reported)
   ub-opt      undefined behavior only after MIR optimization: a MIR pass broke the program
   opt-differs Miri's exit status or stdout changes with the MIR optimization level
   native      the compiled program's exit status or stdout differs from Miri's
@@ -34,6 +35,17 @@ sys.path.insert(0, str(Path(__file__).parent))
 import uitest  # noqa: E402
 
 FIXED = ["-Coverflow-checks=on", "-Cdebug-assertions=on"]
+# Miri without preemption: threads switch only where they block, the same at every MIR level.
+MIRI_FLAGS = ["-Zmiri-preemption-rate=0"]
+# Tests asserting what Rust leaves unspecified, which Miri varies on purpose: function pointer
+# equality, the addresses of zero-sized values, stack addresses, function alignment.
+UNSPECIFIED = {"consts/const-extern-function.rs", "consts/zst_no_llvm_alloc.rs",
+               "layout/null-pointer-optimization.rs", "mir/mir_misc_casts.rs", "mir/mir_coercions.rs",
+               "extern/extern-compare-with-return-type.rs", "fn/fn-ptr-trait-run.rs", "mir/mir_raw_fat_ptr.rs",
+               "codegen/StackColoring-not-blowup-stack-issue-40883.rs", "attributes/fn-align-dyn.rs",
+               # Miri calls .init_array functions without glibc's (argc, argv, envp).
+               "runtime/stdout-before-main.rs"}
+THREADS = re.compile(r"thread::(spawn|scope)|std::sync::mpsc|\bspawn\(")
 LEVELS = {"miri0": [], "miri2": ["-Zmir-opt-level=2"], "miri4": ["-Zmir-opt-level=4"]}
 OWN = re.compile(r"^-O$|opt-level|overflow-checks|debug-assertions|codegen-backend|mir-enable-passes|"
                  r"panic=|-Cpanic|prefer-dynamic|-Zbuild-std|-Clink|-Ctarget")
@@ -57,9 +69,17 @@ WORK = Path(args.work).resolve()
 known = set(Path(args.known).read_text().split()) if args.known else set()
 
 
-def clean(text):
+def clean(text, path):
     text = re.sub(r"(thread '[^']*') \(\d+\)", r"\1", text)
-    return re.sub(r"\S*/lib/rustlib/src/rust/library/", "library/", text)
+    text = re.sub(r"\S*/lib/rustlib/src/rust/library/", "library/", text)
+    # argv[0]: the source file under Miri, the binary natively.
+    text = text.replace(str(path.resolve()), "<argv0>")
+    text = re.sub(r"\S*/native/prog\b", "<argv0>", text)
+    # The test harness: timings, and result lines in completion order.
+    text = re.sub(r"finished in \d+\.\d+s", "finished in …s", text)
+    lines = text.split("\n")
+    results = iter(sorted(l for l in lines if l.startswith("test ") and " ... " in l))
+    return "\n".join(next(results) if (l.startswith("test ") and " ... " in l) else l for l in lines)
 
 
 def one(path, flags, edition, kind):
@@ -72,16 +92,17 @@ def one(path, flags, edition, kind):
         if binary is None:
             record["skip"] = f"native build {status}"
             return record, []
-        code, out, _ = uitest.run(binary)
-        native = {"exit": code, "stdout": out.decode(errors="replace")}
-        again = uitest.run(binary)
-        if (again[0], again[1].decode(errors="replace")) != (native["exit"], native["stdout"]):
+        runs = [uitest.run(binary) for _ in range(3)]
+        outs = {(c, clean(o.decode(errors="replace"), path)) for c, o, _ in runs}
+        if len(outs) > 1:
             record["skip"] = "native run is nondeterministic"
             return record, []
+        code, out = outs.pop()
+        native = {"exit": code, "stdout": out}
         miri = {}
         for name, extra in LEVELS.items():
-            m = uitest.miri(path.resolve(), flags, edition, FIXED + extra, timeout=args.timeout, cwd=d)
-            m["stdout"] = clean(m["stdout"])
+            m = uitest.miri(path.resolve(), flags, edition, FIXED + MIRI_FLAGS + extra, timeout=args.timeout, cwd=d)
+            m["stdout"] = clean(m["stdout"], path)
             miri[name] = m
             if name == "miri0" and m["status"] in ("unsupported", "error", "timeout"):
                 record["skip"] = f"miri {m['status']}"
@@ -89,8 +110,13 @@ def one(path, flags, edition, kind):
                 return record, []
         record["miri"] = {k: v["status"] for k, v in miri.items()}
         found = []
-        if miri["miri0"]["status"] == "ub":
-            found.append({"what": "ub", "stderr": miri["miri0"]["stderr"][-3000:]})
+        # UB in a program without `unsafe` code can only be the compiler's; in a test with its
+        # own unsafe code it is most likely the test's (noted, not a finding).
+        safe = "unsafe" not in path.read_text(errors="replace")
+        if miri["miri0"]["status"] == "ub" and safe and rel not in UNSPECIFIED:
+            found.append({"what": "ub (safe code)", "stderr": miri["miri0"]["stderr"][-3000:]})
+        elif miri["miri0"]["status"] == "ub":
+            record["note"] = "ub in a test with unsafe code"
         for name in ("miri2", "miri4"):
             m = miri[name]
             if m["status"] == "ub" and miri["miri0"]["status"] != "ub":
@@ -102,7 +128,9 @@ def one(path, flags, edition, kind):
                 found.append({"what": f"opt-differs ({name})", "miri0": miri["miri0"]["stdout"][-1500:],
                               "got": m["stdout"][-1500:], "exits": [miri["miri0"]["exit"], m["exit"]]})
         m0 = miri["miri0"]
-        if m0["status"] == "ok":
+        threaded = THREADS.search(path.read_text(errors="replace"))
+        # Native threads race; Miri's do not without preemption: no comparison for threaded tests.
+        if m0["status"] == "ok" and not threaded and rel not in UNSPECIFIED:
             # Miri exits 1 on a panic that reaches main, native code 101.
             exit_m = 101 if m0["exit"] == 1 and "panicked" in m0["stderr"] else m0["exit"]
             if (exit_m, m0["stdout"]) != (native["exit"], native["stdout"]):
@@ -126,7 +154,9 @@ def main():
     todo = []
     for path, flags, edition, kind in uitest.tests(
             args.tests, ("run-pass", "run-fail"),
-            lambda text, flags: any(OWN.search(f) for f in flags) or NOT_FOR_MIRI.search(text)):
+            lambda text, flags: any(OWN.search(f) for f in flags) or NOT_FOR_MIRI.search(text)
+            # Compile-time output (trace_macros, log_syntax) would land in Miri's stdout.
+            or "trace_macros" in text or "log_syntax" in text):
         rel = str(path.relative_to(args.tests))
         if rel in known or (args.only and args.only not in rel) or (wanted is not None and rel not in wanted):
             continue
