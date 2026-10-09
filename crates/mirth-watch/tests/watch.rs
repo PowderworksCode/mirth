@@ -481,7 +481,19 @@ fn callgraph_records_calls_references_and_trait_items() {
         .expect("running cargo mirth");
     assert!(built.status.success(), "{}", text(&built.stderr));
     let sites = project.join("target").join("mirth").join("sites");
-    let graph = |krate: &str| std::fs::read_to_string(sites.join(format!("{krate}.graph"))).expect("a graph");
+    // `<crate>-<stable crate id>.graph`
+    let graph = |krate: &str| {
+        let file = std::fs::read_dir(&sites)
+            .expect("a site directory")
+            .map(|entry| entry.expect("an entry").path())
+            .find(|path| {
+                path.extension().is_some_and(|it| it == "graph")
+                    && path.file_stem().and_then(|it| it.to_str()).and_then(|it| it.rsplit_once('-')).map(|it| it.0)
+                        == Some(krate)
+            })
+            .expect("a graph");
+        std::fs::read_to_string(file).expect("a graph")
+    };
     // body <hash> <path> <trait item>; edge <caller> <callee> <kind> <callee path>
     let mut hash_of = std::collections::HashMap::new();
     let mut edges = Vec::new();

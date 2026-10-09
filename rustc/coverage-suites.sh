@@ -43,11 +43,23 @@ compactor=$!
 watchdog=$!
 
 cd "$MIRTH_RUST"
+if [ -n "${WRAPPED:-}" ]; then
+  # WRAPPED=1: what the run compiles goes through mirth-watch with the coverage configuration
+  # too, as rustc/build.sh does: for the compiler crates' own unit tests, whose test binaries
+  # are compiled here.
+  MIRTH_OUT="$out/logs" RUSTC_WRAPPER_REAL="$here/../target/release/mirth-watch" \
+    MIRTH_RUNTIME="$BUILD_DIR/mirth-runtime/libmirth_runtime.rlib" MIRTH_WATCH="$here/coverage.toml" \
+    MIRTH_SITES="$out/sites" \
+    ./x.py test --build-dir "$BUILD_DIR" --stage 1 --no-fail-fast --force-rerun "${options[@]}" "${paths[@]}" \
+    > "$out/x.log" 2>&1
+  status=$?
+else
 # --keep-stage: never rebuild the compiler here, which would build it without the wrapper.
 MIRTH_OUT="$out/logs" ./x.py test --build-dir "$BUILD_DIR" --stage 1 --keep-stage 0 --keep-stage 1 \
   --no-fail-fast --force-rerun "${options[@]}" "${paths[@]}" > "$out/x.log" 2>&1
 status=$?
-if grep -q '^ *Compiling rustc_' "$out/x.log"; then
+fi
+if [ -z "${WRAPPED:-}" ] && grep -q '^ *Compiling rustc_' "$out/x.log"; then
   echo "$name: the compiler was rebuilt, without the instrumentation; results are not coverage" >&2
   status=99
 fi

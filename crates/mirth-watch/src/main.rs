@@ -16,6 +16,7 @@ extern crate rustc_infer;
 extern crate rustc_middle;
 extern crate rustc_span;
 extern crate rustc_trait_selection;
+extern crate rustc_type_ir;
 
 mod capture;
 mod config;
@@ -81,7 +82,13 @@ impl mirth::Plugin for Watch {
             return;
         };
         let directory = PathBuf::from(directory);
-        let krate = tcx.crate_name(LOCAL_CRATE);
+        // Two versions of one crate (rustc-hash 1 and 2) share a name: the files are told
+        // apart by the crate's stable id.
+        let krate = format!(
+            "{}-{:016x}",
+            tcx.crate_name(LOCAL_CRATE),
+            tcx.stable_crate_id(LOCAL_CRATE).as_u64()
+        );
         if self.config.diagnostics.callgraph {
             // Constants' and statics' initializers have no `optimized_mir`; the functions they
             // name (tables of function pointers, callbacks) are references too.
@@ -96,7 +103,7 @@ impl mirth::Plugin for Watch {
                 }
             }
         }
-        sites::write(&directory, krate.as_str(), &self.sites);
+        sites::write(&directory, &krate, &self.sites);
         if !self.graph.is_empty() {
             let _ = std::fs::create_dir_all(&directory);
             let _ = std::fs::write(directory.join(format!("{krate}.graph")), self.graph.join("\n") + "\n");
