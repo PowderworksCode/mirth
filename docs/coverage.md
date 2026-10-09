@@ -95,3 +95,29 @@ New: finding 17 (the `-Zunleash-the-miri-inside-of-you` warning is lost on a reb
 finding 18 (after a fatal error, a rebuild reports fewer errors than a clean build); both are
 diagnostics only, and both are recognized as known since. Nothing else differed: no rebuild
 accepted what a clean build rejected or the other way round, and no output differed.
+
+## What can run at all: the call graph
+
+Coverage needs a denominator: functions that no execution can reach should not count against
+the corpus. mirth-watch's `callgraph` diagnostic (`rustc/callgraph.toml`) writes, for each body
+of the compiler's crates, its outgoing edges, with functions named by `DefPathHash` (the same
+from every crate; paths printed through re-exports did not match):
+
+- direct calls; for a call through a trait, the trait item, the closure or function item a
+  call through `Fn*` names, and the implementation the caller's types resolve it to, where
+  they do;
+- functions and closures used as values, in the body and in its promoted constants
+  (`&[f, g]`, `&(f as fn())`);
+- callees MIR inlining merged into the body (mirth sees MIR after inlining);
+- constants' and statics' initializers (`mir_for_ctfe`), for tables of function pointers.
+
+`rustc/callgraph.py` computes reachability from the compiler's `main`s, every function with a
+foreign ABI (callbacks from C, C++ and LLVM), every implementation of a trait from outside the
+compiler (which `std` may call), and every initializer; a call to a trait item reaches all its
+implementations. It over-approximates, so what it leaves out cannot run.
+
+**The check:** every function that coverage saw run must be reachable. The first graph left
+11,279 such functions out (re-exported paths); each fix above cut the number, to 0 with
+foreign-ABI roots. The proc-macro crates, which run when the compiler is built, are left out.
+
+**Result:** of 71,257 functions, **4,045 (5.7%) cannot run**; 67,212 can.

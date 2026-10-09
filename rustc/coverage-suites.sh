@@ -24,7 +24,7 @@ mkdir -p "$out/logs"
 rm -f "$out/done"
 
 # The same as build.sh's, or Cargo rebuilds the compiler without the instrumentation.
-export RUSTFLAGS_BOOTSTRAP="-L dependency=$(cd "$here/.." && pwd)/target/release"
+export RUSTFLAGS_BOOTSTRAP="-L dependency=$BUILD_DIR/mirth-runtime"
 export RUSTFLAGS_NOT_BOOTSTRAP="$RUSTFLAGS_BOOTSTRAP"
 
 python3 "$here/coverage-compact.py" --logs "$out/logs" --out "$out" --until "$out/done" > "$out/compact.log" 2>&1 &
@@ -43,9 +43,14 @@ compactor=$!
 watchdog=$!
 
 cd "$MIRTH_RUST"
-MIRTH_OUT="$out/logs" ./x.py test --build-dir "$BUILD_DIR" --stage 1 --no-fail-fast --force-rerun \
-  "${options[@]}" "${paths[@]}" > "$out/x.log" 2>&1
+# --keep-stage: never rebuild the compiler here, which would build it without the wrapper.
+MIRTH_OUT="$out/logs" ./x.py test --build-dir "$BUILD_DIR" --stage 1 --keep-stage 0 --keep-stage 1 \
+  --no-fail-fast --force-rerun "${options[@]}" "${paths[@]}" > "$out/x.log" 2>&1
 status=$?
+if grep -q '^ *Compiling rustc_' "$out/x.log"; then
+  echo "$name: the compiler was rebuilt, without the instrumentation; results are not coverage" >&2
+  status=99
+fi
 kill "$watchdog" 2>/dev/null
 touch "$out/done"
 wait "$compactor"

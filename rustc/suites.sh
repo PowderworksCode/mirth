@@ -26,7 +26,7 @@ for test in "${run_make[@]}"; do paths+=("tests/run-make/$test"); done
 here=$(cd "$(dirname "$0")" && pwd)
 # The same as build.sh's: rustdoc, built for run-make, links compiler crates
 # that depend on the runtime.
-export RUSTFLAGS_BOOTSTRAP="-L dependency=$(cd "$here/.." && pwd)/target/release"
+export RUSTFLAGS_BOOTSTRAP="-L dependency=${BUILD_DIR:-$MIRTH_RUST/build}/mirth-runtime"
 export RUSTFLAGS_NOT_BOOTSTRAP="$RUSTFLAGS_BOOTSTRAP"
 
 # A test compile that runs for more than five minutes is killed, and named.
