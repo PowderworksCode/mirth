@@ -138,6 +138,29 @@ fn alias(file: &mut syn::File) -> bool {
     }
     let mut params_seen = Params(BTreeSet::new());
     params_seen.visit_file_mut(&mut file.clone());
+    // Types defined more than once (a nested item shadowing a top-level one): a bare name may
+    // mean either.
+    struct Defined(BTreeMap<String, usize>);
+    impl VisitMut for Defined {
+        fn visit_item_struct_mut(&mut self, i: &mut syn::ItemStruct) {
+            *self.0.entry(i.ident.to_string()).or_default() += 1;
+            syn::visit_mut::visit_item_struct_mut(self, i);
+        }
+        fn visit_item_enum_mut(&mut self, i: &mut syn::ItemEnum) {
+            *self.0.entry(i.ident.to_string()).or_default() += 1;
+            syn::visit_mut::visit_item_enum_mut(self, i);
+        }
+        fn visit_item_union_mut(&mut self, i: &mut syn::ItemUnion) {
+            *self.0.entry(i.ident.to_string()).or_default() += 1;
+            syn::visit_mut::visit_item_union_mut(self, i);
+        }
+        fn visit_item_type_mut(&mut self, i: &mut syn::ItemType) {
+            *self.0.entry(i.ident.to_string()).or_default() += 1;
+            syn::visit_mut::visit_item_type_mut(self, i);
+        }
+    }
+    let mut defined = Defined(BTreeMap::new());
+    defined.visit_file_mut(&mut file.clone());
     let mut aliases = BTreeMap::new();
     let mut new_items = Vec::new();
     for item in &file.items {
@@ -147,7 +170,16 @@ fn alias(file: &mut syn::File) -> bool {
             Item::Union(u) => (&u.ident, &u.generics),
             _ => continue,
         };
-        if params_seen.0.contains(&ident.to_string()) {
+        if params_seen.0.contains(&ident.to_string()) || defined.0.get(&ident.to_string()) != Some(&1) {
+            continue;
+        }
+        // Lifetime parameters elide differently through an alias; defaults may name other
+        // parameters: such types are left alone.
+        if generics.params.iter().any(|p| match p {
+            GenericParam::Lifetime(_) => true,
+            GenericParam::Type(t) => t.default.is_some(),
+            GenericParam::Const(c) => c.default.is_some(),
+        }) {
             continue;
         }
         let alias = format_ident!("_MirthAlias{}", ident);
@@ -159,7 +191,8 @@ fn alias(file: &mut syn::File) -> bool {
             _ => unreachable!(),
         }
         .iter()
-        .filter(|a| a.path().is_ident("cfg") || a.path().is_ident("cfg_attr"))
+        // `cfg` only: a `cfg_attr` may expand to a `derive`, which an alias cannot have.
+        .filter(|a| a.path().is_ident("cfg"))
         .collect();
         // The alias's parameters: the type's, without bounds (aliases ignore them), with defaults.
         let mut params = generics.clone();
@@ -228,6 +261,9 @@ fn alias(file: &mut syn::File) -> bool {
         fn visit_item_union_mut(&mut self, _: &mut syn::ItemUnion) {}
         // Macros' tokens are not types to `syn`; derive input stays as it is.
         fn visit_macro_mut(&mut self, _: &mut syn::Macro) {}
+        // In an inline module the bare name reaches the type through a `use`, the alias would
+        // need one too: modules are left as they are.
+        fn visit_item_mod_mut(&mut self, _: &mut syn::ItemMod) {}
     }
     let mut rename = Rename { aliases: &aliases, count: 0 };
     for item in &mut file.items {

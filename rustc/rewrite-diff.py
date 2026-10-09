@@ -33,7 +33,13 @@ import uitest  # noqa: E402
 
 REWRITER = Path(__file__).resolve().parent.parent / "target/release/mirth-rewrite"
 REWRITES = ["generic-wrap", "alias", "reorder", "unused"]
-STRICT = {"reorder", "unused"}
+# Error codes may differ legitimately for every rewrite (which error suppresses which depends on
+# order): only a changed verdict is a finding.
+STRICT = set()
+# Differences that are resource limits or legitimate requirements of a generic context.
+NOISE = {
+    ("consts/chained-constants-stackoverflow.rs", "reorder"),  # 10,000 chained consts: query depth
+}
 NOT_MOVABLE = re.compile(r"^\s*(pub(\([^)]*\))?\s+)?mod\s+\w+\s*;|include(_str|_bytes)?!|#\[path|#!\[no_core\]", re.M)
 # Item order matters to textual macro scoping: no reordering where macros are defined.
 ORDER_MATTERS = re.compile(r"macro_rules!|#\[macro_use\]|macro\s+\w+")
@@ -103,6 +109,12 @@ def one(path, flags, edition, kind):
         for name in rewrites:
             if name == "reorder" and ORDER_MATTERS.search(text):
                 continue
+            if (rel, name) in NOISE:
+                continue
+            # generic_const_exprs requires `where` bounds in generic contexts that a concrete one
+            # does not.
+            if name == "generic-wrap" and "generic_const_exprs" in text:
+                continue
             src = d / f"{name}.rs"
             if not rewrite(name, path, src):
                 continue
@@ -136,8 +148,12 @@ def one(path, flags, edition, kind):
 
 
 def main():
+    global REWRITER
     if not REWRITER.exists():
         sys.exit("build mirth-rewrite first: cargo build --release -p mirth-rewrite")
+    # A private copy: rebuilding mirth-rewrite must not change a sweep halfway.
+    shutil.copy2(REWRITER, WORK / "mirth-rewrite")
+    REWRITER = WORK / "mirth-rewrite"
     wanted = None
     if args.recheck:
         wanted = {json.loads((f / "finding.json").read_text())["test"] for f in (WORK / "findings").glob("*")}
