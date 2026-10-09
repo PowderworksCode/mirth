@@ -10,6 +10,7 @@ pub mod asyncs;
 pub mod consts;
 pub mod errors;
 pub mod extras;
+pub mod grammar;
 pub mod memory;
 pub mod shapes;
 #[macro_use]

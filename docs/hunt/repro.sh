@@ -142,3 +142,18 @@ echo -n "rwpi-segfault, -g -Crelocation-model=rwpi on a static mut: "
 echo 'pub static mut M: u32 = 0;' > "$d/rw.rs"
 "$rustc" --crate-type lib -g -Crelocation-model=rwpi "$d/rw.rs" -o "$d/rw.rlib" > /dev/null 2>&1
 rc=$?; if [ $rc = 0 ]; then echo builds; else echo "exit $rc"; fi
+
+echo -n "guard-patterns, Some(x if x > 3) => 4, Some(_) => 1, called with Some(2): "
+cat > "$d/gp.rs" <<'RS'
+#![feature(guard_patterns)]
+#![allow(incomplete_features)]
+fn f(o: Option<u32>) -> u32 {
+    match o {
+        Some(x if x > 3) => 4,
+        Some(_) => 1,
+        None => 2,
+    }
+}
+fn main() { print!("{}", f(Some(2))); }
+RS
+"$rustc" --edition 2024 "$d/gp.rs" -o "$d/gp" 2> /dev/null && echo "$("$d/gp") (1 is right)"

@@ -38,6 +38,7 @@ fixture, the third from fuzzing edits and replaying ten crates' git histories.
 - [`docs/ur-queries.md`](docs/ur-queries.md): the bugs' patterns, and closed bugs' patterns, as Ur queries over rustc's source
 - [`docs/shadow-mode.md`](docs/shadow-mode.md): checking reuse inside rustc, and what exists today
 - [`docs/untracked-reads.md`](docs/untracked-reads.md): reporting reads of untracked state inside rustc
+- [`docs/grammar.md`](docs/grammar.md): measuring the fixture against Ur's Rust grammar, and filling the gaps
 - [`docs/props.md`](docs/props.md): MIR validation, optimization levels and the new trait solver on the same corpus
 - [`docs/plan.md`](docs/plan.md): the plan the work followed, with the properties
 
