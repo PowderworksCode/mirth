@@ -133,7 +133,9 @@ walk skips object and binary comparison there); `-Zlint-llvm-ir` aborts on a kno
 finding ([#59793](https://github.com/rust-lang/rust/issues/59793)). `-Zmir-opt-bisect-limit` counts MIR pass runs
 across the session, so which bodies stay under the limit depends on how many bodies the session
 computes (an incremental rebuild computes fewer than a clean build) and, with `-Zthreads`, on
-thread timing: rebuilds and clean builds differ by design (left out of the models). Rarely, a clean build
+thread timing: rebuilds and clean builds differ by design (left out of the models). Likewise
+`-Zincremental-ignore-spans=yes`, a testing option that leaves spans out of the incremental
+hashes: a rebuild after removing a doc comment keeps stale spans. Rarely, a clean build
 reports an extra empty diagnostic: LLVM's `-Zprint-llvm-passes` listing, written from codegen
 threads, splits a `-Ztime-passes-format=json` line on stderr and Cargo reads the JSON half as
 a message (both left out of `--cargo` models).

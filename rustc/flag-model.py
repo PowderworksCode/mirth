@@ -76,7 +76,10 @@ DROP = {"-Cllvm-args": ["-enable-machine-outliner"],
         # Not a bug: the limit counts MIR pass runs across the session, so which bodies stay
         # under it depends on how many bodies the session computes (an incremental session
         # computes fewer) and, with -Zthreads, on thread timing.
-        "-Zmir-opt-bisect-limit": ["1", "16"]}
+        "-Zmir-opt-bisect-limit": ["1", "16"],
+        # Not a bug: a testing option that leaves spans out of the incremental hashes, so a
+        # rebuild keeps stale spans by design.
+        "-Zincremental-ignore-spans": ["yes"]}
 # Rejected alone; accepted with FLAG_BASE or with the needs below.
 EXTRA = {"-Zindirect-branch-cs-prefix": ["yes"], "-Zretpoline-external-thunk": ["yes"],
          "-Zretpoline": ["yes"],
