@@ -63,5 +63,14 @@ env RUSTC_WRAPPER_REAL="$out/mirth-watch" \
     MIRTH_SITES="$build/mirth-sites" \
     ./x.py build --build-dir "$build" --stage 1 compiler/rustc -j "$jobs"
 ./x.py build --build-dir "$build" --stage 1 library -j "$jobs"
+# WITH_RUSTDOC=1: rustdoc too, through the wrapper (it runs the compiler's crates as a second
+# entry point; the call graph needs its edges into them).
+if [ -n "${WITH_RUSTDOC:-}" ]; then
+  env RUSTC_WRAPPER_REAL="$out/mirth-watch" \
+      MIRTH_RUNTIME="$runtime/libmirth_runtime.rlib" \
+      MIRTH_WATCH="$watch" \
+      MIRTH_SITES="$build/mirth-sites" \
+      ./x.py build --build-dir "$build" --stage 1 src/tools/rustdoc -j "$jobs"
+fi
 echo "instrumented rustc: $build/$host/stage1/bin/rustc"
 echo "sites: $build/mirth-sites"

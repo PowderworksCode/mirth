@@ -15,7 +15,7 @@ edges it knows go):
 - a call to a trait item reaches every body implementing it, and the trait's own default body;
 - a body nested in another (a closure, an inline const) is reached with it, and one nested in
   something that is not a body (a static's or a constant's initializer) is a root;
-- roots: the compiler's `main`s, every function with a foreign ABI (callbacks from C, C++ and
+- roots: the compiler's and rustdoc's `main`s, every function with a foreign ABI (callbacks from C, C++ and
   LLVM), every body implementing a trait from outside the compiler,
   which the standard library may call (`Iterator::next`, `Drop::drop`, `Debug::fmt`, ...), and
   every constant's and static's initializer (tables of function pointers, callbacks).
@@ -39,7 +39,7 @@ p.add_argument("--json")
 p.add_argument("--unreachable", action="append", default=[])
 args = p.parse_args()
 
-ROOTS = {"rustc_main::main", "rustc_driver_impl::main"}
+ROOTS = {"rustc_main::main", "rustc_driver_impl::main", "rustdoc::main"}
 # Crates that do not run when the compiler does: proc macros (run while it is built) and the
 # Windows resource helper of its build script.
 NOT_AT_RUN_TIME = {"rustc_macros", "rustc_type_ir_macros", "rustc_index_macros", "rustc_windows_rc",

@@ -120,4 +120,51 @@ implementations. It over-approximates, so what it leaves out cannot run.
 11,279 such functions out (re-exported paths); each fix above cut the number, to 0 with
 foreign-ABI roots. The proc-macro crates, which run when the compiler is built, are left out.
 
-**Result:** of 71,257 functions, **4,045 (5.7%) cannot run**; 67,212 can.
+**Result:** of 71,257 functions, **3,925 (5.5%) cannot run**; 67,332 can. rustdoc is in the
+graph too (built with `WITH_RUSTDOC=1`): it runs the compiler's crates as a second entry
+point, and without it the rustdoc tests showed 92 functions "unreachable" that ran.
+
+## rustc's own test suites
+
+`rustc/coverage-suites.sh` runs a suite through compiletest (`./x.py test`) on the
+instrumented compiler, with `MIRTH_OUT` set, folding logs as they finish
+(`rustc/coverage-compact.py`): compiletest handles what a standalone runner cannot (auxiliary
+crates, every revision, `minicore` cross-targets, run-make). With `--keep-stage 0 --keep-stage 1`,
+and a refusal when the log shows the compiler compiling: a changed mirth runtime once made
+`x.py` rebuild the compiler without the instrumentation, so `build.sh` now keeps a runtime per
+build directory and replaces it only when it changes.
+
+| suite | tests passed | functions reached |
+|---|---:|---:|
+| ui | 22,258 | 46,398 |
+| ui, without compiletest's `-Znext-solver=coherence` | 20,915 (1,343 fail) | 46,119 |
+| run-make | 420 (2 fail) | 33,448 |
+| incremental | 180 | 29,842 |
+| codegen-llvm | 1,122 | 28,045 |
+| crashes | 172 | 27,711 |
+| mir-opt | 413 | 26,966 |
+| rustdoc-ui | 461 | 25,996 |
+| assembly-llvm | 738 | 23,913 |
+
+(The run without the solver pin uses a local compiletest switch, `COMPILETEST_NO_SOLVER_PIN`,
+[`hunt/compiletest-solver-pin.patch`](hunt/compiletest-solver-pin.patch).)
+
+**All together, with sink and its option configurations: 48,391 of the 67,332 functions that
+can run (71.9%).**
+
+Of the 18,941 that can run and did not:
+
+| what | functions |
+|---|---:|
+| derived and boilerplate impls (`Debug`, `Clone`, `Hash`, encode/decode, folders) | 6,490 |
+| query machinery (vtables, wrappers, cache) | 1,877 |
+| diagnostics and errors | 1,410 |
+| stable MIR (`rustc_public`): only from tools, `tests/ui-fulldeps` (stage 2) | 1,334 |
+| dumps, printing, debug output | 633 |
+| other targets, linkers, archives | 324 |
+| coverage instrumentation, autodiff, offload (profiler runtime, Enzyme) | 316 |
+| the rest, mostly `rustc_middle` (1,106), `rustc_borrowck`, `rustc_mir_transform`, `rustc_hir_typeck`, `rustc_trait_selection` | 6,537 |
+
+The derived impls are reachable only because every implementation of a trait from outside the
+compiler is a root; counting a type's impls only when reachable code constructs the type
+(rapid type analysis) would take most of them out of the denominator.
