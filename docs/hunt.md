@@ -41,6 +41,7 @@ with `-Zthreads=8`. `rustc/check.sh wide` runs the ordinary checks.
 | 15 | under the incomplete `guard_patterns` feature, a guard pattern's guard is ignored: `Some(x if x > 3)` matches `Some(2)`, and the binding cannot be used in the arm | incomplete feature; found while covering nightly syntax in sink ([`grammar.md`](grammar.md)); [facts](hunt/guard-patterns-ignored.md), no fix |
 | 16 | with `-Zcache-proc-macros=yes -Zmetadata-crate-hash=no`, an incremental rebuild of a crate using derives gets a different crate hash (SVH) from a clean build after an edit upstream | unstable options (one "potentially unsound"); found by the fuzzer under walk configurations; not root-caused; [facts](hunt/cached-proc-macros-crate-hash.md); excluded from the models |
 | 17 | with `-Zunleash-the-miri-inside-of-you`, the "skipping const checks" warning is not shown again on an incremental rebuild | testing-only option; found by the UI-test fuzzer ([`coverage.md`](coverage.md)); since at least 1.60; [facts](hunt/unleash-warning-lost.md); tests using the option skipped |
+| 18 | after a fatal error (a missing lang item), an incremental rebuild reports fewer errors than a clean build: the fatal error is reached in a different query order | diagnostics only; found by the UI-test fuzzer; stock nightly; [facts](hunt/fatal-error-order.md); labelled known in `ui-fuzz.py` |
 
 Findings 1 and 2 are single-threaded: an ordinary `cargo build`, an edit, another
 `cargo build`, and the metadata differs from a clean build of the edited source. Both come

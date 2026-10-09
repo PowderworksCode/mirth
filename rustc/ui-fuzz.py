@@ -114,7 +114,15 @@ def compare(inc, clean):
         found.append("ICE " + ("incremental" if inc["ice"] else "clean") + " only")
     if (inc["code"] == 0) != (clean["code"] == 0):
         found.append(f"status: incremental {inc['code']}, clean {clean['code']}")
-    if inc["diag"] != clean["diag"]:
+    message = lambda line: line.split(": error", 1)[-1].split(": warning", 1)[-1]
+    summary = lambda line: line.startswith("error: aborting") or line.startswith("warning:") and "emitted" in line
+    fewer = (inc["code"] != 0 and clean["code"] != 0
+             and {d for d in inc["diag"] if not summary(d)} <= set(clean["diag"])
+             and all(message(d) in {message(e) for e in inc["diag"]} or summary(d)
+                     for d in clean["diag"] if d not in inc["diag"]))
+    if inc["diag"] != clean["diag"] and fewer:
+        found.append("known diag (finding 18): the rebuild stopped at a fatal error sooner")
+    elif inc["diag"] != clean["diag"]:
         only_inc = [d for d in inc["diag"] if d not in clean["diag"]][:3]
         only_clean = [d for d in clean["diag"] if d not in inc["diag"]][:3]
         found.append(f"diag: incremental only {only_inc}; clean only {only_clean}")
@@ -125,6 +133,13 @@ def compare(inc, clean):
 
 
 def fuzz(test):
+    try:
+        return fuzz_one(test)
+    except Exception as error:  # a broken test or harness case must not stop the run
+        return test, f"harness error: {error!r}"[:300]
+
+
+def fuzz_one(test):
     if (WORK / "PAUSED").exists():
         return test, "not run"
     path = Path(args.tests) / test
@@ -132,7 +147,7 @@ def fuzz(test):
     flags, edition, kind = headers(text)
     if any(k in text for k in KNOWN):
         return test, "skipped (known)"
-    name = re.sub(r"\W", "_", test)
+    name = re.sub(r"\W", "_", test) + "-" + hashlib.sha256(test.encode()).hexdigest()[:8]
     home = WORK / "w" / name
     shutil.rmtree(home, ignore_errors=True)
     # The clean build uses the same directory and file, with a fresh incremental directory, so
@@ -173,7 +188,7 @@ def fuzz(test):
                                                        "history": history}, indent=1))
             (d / "inc.stderr").write_text(inc["stderr"])
             (d / "clean.stderr").write_text(clean["stderr"])
-            if args.pause_on_finding and not all(f.startswith("P5") for f in found):
+            if args.pause_on_finding and not all(f.startswith(("P5", "known")) for f in found):
                 (WORK / "PAUSED").write_text(json.dumps({"test": test, "edit": n, "found": found}, indent=1))
                 break
     shutil.rmtree(home, ignore_errors=True)
