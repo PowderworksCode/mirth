@@ -83,3 +83,15 @@ under incremental compilation, which sink cannot reach.
 
 Running every UI test outside compiletest also showed that compiletest pins the old trait
 solver, while nightly defaults to the new one: [`solver.md`](solver.md).
+
+### Through incremental rebuilds
+
+`rustc/ui-fuzz.py` over every UI test that compiles standalone (18,553 files), up to 8 random
+edits each: **123,063 edit, incremental rebuild and clean rebuild cycles**, each compared on exit
+status, diagnostics and outputs. Checked first on finding 7's shape (a warning from inline
+assembly, lost when a codegen unit is reused), which it finds in 2 of 37 edits.
+
+New: finding 17 (the `-Zunleash-the-miri-inside-of-you` warning is lost on a rebuild) and
+finding 18 (after a fatal error, a rebuild reports fewer errors than a clean build); both are
+diagnostics only, and both are recognized as known since. Nothing else differed: no rebuild
+accepted what a clean build rejected or the other way round, and no output differed.
