@@ -4,6 +4,8 @@ The goal: every function of the compiler that can run, run by mirth's corpus (th
 rustc's own test suites, and generated runs), measured at the function level. After that, line
 (basic-block) coverage, then the value domains functions see. [coverage.md](coverage.md) has
 the results so far and how each piece works; this page is how to run it and what to do next.
+Coverage is one leg of three (reach, measure, observe): [testing-model.md](testing-model.md) is
+how the parts fit and what the checks still miss.
 
 **Where it stands (2026-10-09):** 50,762 of the 62,516 functions that can run (81.2%); without
 the 911 that run only on a compiler bug, 50,715 of 61,605 (82.3%). 8,741 of 71,257 functions
