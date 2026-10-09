@@ -152,7 +152,7 @@ fn main() -> ! {
         (Some(config), Some(name)) if config.scope.crates.is_empty() => {
             !mirth::config::a_dependency()
         }
-        (Some(config), Some(name)) => config.scope.crates.iter().any(|it| it == name),
+        (Some(config), Some(name)) => config.scope.crates.iter().any(|it| config::matches(it, name)),
         _ => false,
     };
 

@@ -10,6 +10,8 @@ dependencies = [
  "sink-dy",
  "sink-macros",
  "sink-mid",
+ "sink-nightly",
+ "sink-old",
 ]
 
 [[package]]
@@ -34,3 +36,11 @@ dependencies = [
  "sink-core",
  "sink-macros",
 ]
+
+[[package]]
+name = "sink-nightly"
+version = "0.0.0"
+
+[[package]]
+name = "sink-old"
+version = "0.0.0"

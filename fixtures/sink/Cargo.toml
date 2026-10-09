@@ -1,5 +1,5 @@
 [workspace]
-members = ["macros", "core", "mid", "dy"]
+members = ["macros", "core", "mid", "dy", "nightly", "old"]
 
 [package]
 name = "sink"
@@ -12,3 +12,5 @@ sink-core = { path = "core" }
 sink-mid = { path = "mid" }
 sink-macros = { path = "macros" }
 sink-dy = { path = "dy" }
+sink-nightly = { path = "nightly" }
+sink-old = { path = "old" }

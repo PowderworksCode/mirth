@@ -1,0 +1,163 @@
+--- a/compiler/rustc_middle/src/mir/interpret/mod.rs
++++ b/compiler/rustc_middle/src/mir/interpret/mod.rs
+@@ -18,7 +18,7 @@
+ use rustc_data_structures::sharded::ShardedHashMap;
+ use rustc_data_structures::sync::{AtomicU64, Lock};
+ use rustc_hir::def::DefKind;
+-use rustc_hir::def_id::{DefId, LocalDefId};
++use rustc_hir::def_id::{DefId, LocalDefId, StableCrateId};
+ use rustc_macros::{StableHash, TyDecodable, TyEncodable, TypeFoldable, TypeVisitable};
+ use rustc_serialize::{Decodable, Encodable};
+ use rustc_span::bug;
+@@ -103,6 +103,13 @@
+     /// must be deduplicated again when decoded: otherwise the same allocation decoded from the
+     /// incremental cache and created afresh would get two `AllocId`s.
+     DedupAlloc,
++    /// In the incremental cache: memory decoded from another crate's metadata, by that crate's
++    /// stable id, followed by its contents. Decoding it gives the same `AllocId` as decoding
++    /// that crate's allocation with these contents, as a fresh computation that inlined MIR
++    /// from that crate would refer to. Not the allocation's index in that crate's metadata:
++    /// the index changes when that crate is rebuilt, while a value that refers to it can stay
++    /// green.
++    Upstream,
+ }
+ 
+ pub fn specialized_encode_alloc_id<'tcx, E: TyEncoder<'tcx>>(
+@@ -115,8 +122,20 @@
+             trace!("encoding {:?} with {:#?}", alloc_id, alloc);
+             let deduplicated = tcx.alloc_map.dedup.lock().get(&(GlobalAlloc::Memory(alloc), CTFE_ALLOC_SALT))
+                 == Some(&alloc_id);
++            let upstream = if E::CLEAR_CROSS_CRATE {
++                None
++            } else {
++                tcx.alloc_map.upstream_of.lock().get(&alloc_id).copied()
++            };
++            // A deduplicated allocation is found by its contents already, whichever crate's
++            // metadata or literal made it first, so it is written as one even if it also came
++            // from another crate's metadata: which of the two happens first can differ between
++            // sessions.
+             if deduplicated {
+                 AllocDiscriminant::DedupAlloc.encode(encoder);
++            } else if let Some(krate) = upstream {
++                AllocDiscriminant::Upstream.encode(encoder);
++                krate.encode(encoder);
+             } else {
+                 AllocDiscriminant::Alloc.encode(encoder);
+             }
+@@ -161,6 +180,9 @@
+     decoding_state: Vec<Lock<State>>,
+     // The offsets of each allocation in the data stream.
+     data_offsets: Vec<u64>,
++    // For a crate's metadata, the crate's stable id: its allocations are recorded by it and
++    // their index, so that the incremental cache can refer to them.
++    upstream: Option<StableCrateId>,
+ }
+ 
+ impl AllocDecodingState {
+@@ -173,7 +195,12 @@
+         let decoding_state =
+             std::iter::repeat_with(|| Lock::new(State::Empty)).take(data_offsets.len()).collect();
+ 
+-        Self { decoding_state, data_offsets }
++        Self { decoding_state, data_offsets, upstream: None }
++    }
++
++    /// The decoding state for the allocations in `krate`'s metadata.
++    pub fn new_upstream(data_offsets: Vec<u64>, krate: StableCrateId) -> Self {
++        Self { upstream: Some(krate), ..Self::new(data_offsets) }
+     }
+ }
+ 
+@@ -224,13 +251,38 @@
+                 trace!("creating memory alloc ID");
+                 let alloc = <ConstAllocation<'tcx> as Decodable<_>>::decode(decoder);
+                 trace!("decoded alloc {:?}", alloc);
+-                decoder.interner().reserve_and_set_memory_alloc(alloc)
++                let tcx = decoder.interner();
++                // An allocation of a crate's metadata that the incremental cache already
++                // decoded, by reference, gets the same `AllocId`.
++                let known = self
++                    .state
++                    .upstream
++                    .and_then(|krate| tcx.alloc_map.upstream.lock().get(&(krate, alloc)).copied());
++                known.unwrap_or_else(|| tcx.reserve_and_set_memory_alloc(alloc))
++            }
++            AllocDiscriminant::Upstream => {
++                trace!("creating memory alloc ID from another crate's metadata");
++                let krate = StableCrateId::decode(decoder);
++                let alloc = <ConstAllocation<'tcx> as Decodable<_>>::decode(decoder);
++                let tcx = decoder.interner();
++                let mut upstream = tcx.alloc_map.upstream.lock();
++                *upstream.entry((krate, alloc)).or_insert_with(|| {
++                    let id = tcx.reserve_and_set_memory_alloc(alloc);
++                    tcx.alloc_map.upstream_of.lock().insert(id, krate);
++                    id
++                })
+             }
+             AllocDiscriminant::DedupAlloc => {
+                 trace!("creating deduplicated memory alloc ID");
+                 let alloc = <ConstAllocation<'tcx> as Decodable<_>>::decode(decoder);
+                 trace!("decoded alloc {:?}", alloc);
+-                decoder.interner().reserve_and_set_memory_dedup(alloc, CTFE_ALLOC_SALT)
++                let tcx = decoder.interner();
++                // As for `Alloc`: the incremental cache may have decoded it already.
++                let known = self
++                    .state
++                    .upstream
++                    .and_then(|krate| tcx.alloc_map.upstream.lock().get(&(krate, alloc)).copied());
++                known.unwrap_or_else(|| tcx.reserve_and_set_memory_dedup(alloc, CTFE_ALLOC_SALT))
+             }
+             AllocDiscriminant::Fn => {
+                 trace!("creating fn alloc ID");
+@@ -259,6 +311,14 @@
+             }
+         });
+ 
++        if let Some(krate) = self.state.upstream
++            && let Some(GlobalAlloc::Memory(alloc)) = decoder.interner().try_get_global_alloc(alloc_id)
++        {
++            let tcx = decoder.interner();
++            tcx.alloc_map.upstream.lock().entry((krate, alloc)).or_insert(alloc_id);
++            tcx.alloc_map.upstream_of.lock().entry(alloc_id).or_insert(krate);
++        }
++
+         *entry = State::Done(alloc_id);
+ 
+         alloc_id
+@@ -442,6 +502,12 @@
+     /// the actual guarantees.
+     dedup: Lock<FxHashMap<(GlobalAlloc<'tcx>, usize), AllocId>>,
+ 
++    /// Memory decoded from another crate's metadata, by that crate's stable id and the
++    /// contents, in both directions (see `AllocDiscriminant::Upstream`). Allocations of one
++    /// crate with equal contents share an `AllocId`, as constants may.
++    upstream: Lock<FxHashMap<(StableCrateId, ConstAllocation<'tcx>), AllocId>>,
++    upstream_of: Lock<FxHashMap<AllocId, StableCrateId>>,
++
+     /// The `AllocId` to assign to the next requested ID.
+     /// Always incremented; never gets smaller.
+     next_id: AtomicU64,
+@@ -452,6 +518,8 @@
+         AllocMap {
+             to_alloc: Default::default(),
+             dedup: Default::default(),
++            upstream: Default::default(),
++            upstream_of: Default::default(),
+             next_id: AtomicU64::new(1),
+         }
+     }
+--- a/compiler/rustc_metadata/src/rmeta/decoder.rs
++++ b/compiler/rustc_metadata/src/rmeta/decoder.rs
+@@ -1969,8 +1969,10 @@
+             .decode(&blob)
+             .map(|trait_impls| (trait_impls.trait_id, trait_impls.impls))
+             .collect();
+-        let alloc_decoding_state =
+-            AllocDecodingState::new(root.interpret_alloc_index.decode(&blob).collect());
++        let alloc_decoding_state = AllocDecodingState::new_upstream(
++            root.interpret_alloc_index.decode(&blob).collect(),
++            root.stable_crate_id,
++        );
+ 
+         // Pre-decode the DefPathHash->DefIndex table. This is a cheap operation
+         // that does not copy any data. It just does some data verification.

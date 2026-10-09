@@ -78,3 +78,21 @@ pub fn squares(input: TokenStream) -> TokenStream {
     let _ = Ident::new("unused", Span::call_site());
     TokenStream::from(TokenTree::Group(group))
 }
+
+/// `plus_one!(e)` is `{ let tmp = e; tmp + 1 }`, with `tmp` at `Span::mixed_site()`, so it
+/// cannot capture or be captured by a `tmp` at the call site.
+#[proc_macro]
+pub fn plus_one(input: TokenStream) -> TokenStream {
+    let tmp = Ident::new("tmp", Span::mixed_site());
+    let mut body: Vec<TokenTree> = vec![
+        TokenTree::Ident(Ident::new("let", Span::call_site())),
+        TokenTree::Ident(tmp.clone()),
+        TokenTree::Punct(Punct::new('=', Spacing::Alone)),
+    ];
+    body.extend(input);
+    body.push(TokenTree::Punct(Punct::new(';', Spacing::Alone)));
+    body.push(TokenTree::Ident(tmp));
+    body.push(TokenTree::Punct(Punct::new('+', Spacing::Alone)));
+    body.push(TokenTree::Literal(Literal::u32_unsuffixed(1)));
+    TokenTree::Group(Group::new(Delimiter::Brace, body.into_iter().collect())).into()
+}

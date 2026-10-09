@@ -1,3 +1,29 @@
+diff --git a/compiler/rustc_ast_lowering/src/index.rs b/compiler/rustc_ast_lowering/src/index.rs
+index 3795673d5..30992a65b 100644
+--- a/compiler/rustc_ast_lowering/src/index.rs
++++ b/compiler/rustc_ast_lowering/src/index.rs
+@@ -96,7 +96,7 @@ fn insert(&mut self, span: Span, hir_id: HirId, node: Node<'hir>) {
+                     hir_id.owner,
+                 )
+             }
+-            if self.tcx.sess.opts.incremental.is_some()
++            if (*self.tcx.sess.opts.read_incremental()).is_some()
+                 && span.parent().is_none()
+                 && !span.is_dummy()
+             {
+diff --git a/compiler/rustc_ast_lowering/src/lib.rs b/compiler/rustc_ast_lowering/src/lib.rs
+index b6d101766..44a30844e 100644
+--- a/compiler/rustc_ast_lowering/src/lib.rs
++++ b/compiler/rustc_ast_lowering/src/lib.rs
+@@ -1024,7 +1024,7 @@ fn mark_span_with_reason(
+ 
+     fn span_lowerer(&self) -> SpanLowerer {
+         SpanLowerer {
+-            is_incremental: self.tcx.sess.opts.incremental.is_some(),
++            is_incremental: (*self.tcx.sess.opts.read_incremental()).is_some(),
+             def_id: self.curr_owner.owner_id().def_id,
+         }
+     }
 diff --git a/compiler/rustc_attr_parsing/src/attributes/rustc_internal.rs b/compiler/rustc_attr_parsing/src/attributes/rustc_internal.rs
 index b9c03883d..d51e6b650 100644
 --- a/compiler/rustc_attr_parsing/src/attributes/rustc_internal.rs
@@ -103,8 +129,30 @@ index 1f8177477..3b51986d6 100644
              || tcx.sess.opts.unstable_opts.polonius.is_legacy_enabled()
      }
  
+diff --git a/compiler/rustc_codegen_gcc/src/lib.rs b/compiler/rustc_codegen_gcc/src/lib.rs
+index b82d05dc2..4bb017062 100644
+--- a/compiler/rustc_codegen_gcc/src/lib.rs
++++ b/compiler/rustc_codegen_gcc/src/lib.rs
+@@ -199,7 +199,7 @@ fn file_paths(sysroot_path: &Path, sess: &EarlySession) -> Vec<PathBuf> {
+         // We use all_paths() instead of only path() in case the path specified by --sysroot is
+         // invalid.
+         // This is the case for instance in Rust for Linux where they specify --sysroot=/dev/null.
+-        'sysroot: for path in sess.opts.sysroot.all_paths() {
++        'sysroot: for path in (*sess.opts.read_sysroot()).all_paths() {
+             for libgccjit_target_lib_file in file_paths(path, sess) {
+                 if let Ok(true) = fs::exists(&libgccjit_target_lib_file) {
+                     load_libgccjit_if_needed(&libgccjit_target_lib_file);
+@@ -210,7 +210,7 @@ fn file_paths(sysroot_path: &Path, sess: &EarlySession) -> Vec<PathBuf> {
+ 
+         if !gccjit::is_loaded() {
+             let mut paths = vec![];
+-            for path in sess.opts.sysroot.all_paths() {
++            for path in (*sess.opts.read_sysroot()).all_paths() {
+                 for libgccjit_target_lib_file in file_paths(path, sess) {
+                     paths.push(libgccjit_target_lib_file);
+                 }
 diff --git a/compiler/rustc_codegen_llvm/src/back/llvm_backend.rs b/compiler/rustc_codegen_llvm/src/back/llvm_backend.rs
-index 374c78070..95628cdcd 100644
+index b5d721623..c9aa88259 100644
 --- a/compiler/rustc_codegen_llvm/src/back/llvm_backend.rs
 +++ b/compiler/rustc_codegen_llvm/src/back/llvm_backend.rs
 @@ -403,7 +403,7 @@ fn join_codegen(
@@ -174,9 +222,18 @@ index a582e897e..859a2e5c4 100644
      }
  
 diff --git a/compiler/rustc_codegen_ssa/src/assert_module_sources.rs b/compiler/rustc_codegen_ssa/src/assert_module_sources.rs
-index 431783552..8013ec2bd 100644
+index 431783552..c054a1d2c 100644
 --- a/compiler/rustc_codegen_ssa/src/assert_module_sources.rs
 +++ b/compiler/rustc_codegen_ssa/src/assert_module_sources.rs
+@@ -41,7 +41,7 @@
+ #[allow(missing_docs)]
+ pub fn assert_module_sources(tcx: TyCtxt<'_>, set_reuse: &dyn Fn(&mut CguReuseTracker)) {
+     tcx.dep_graph.with_ignore(|| {
+-        if tcx.sess.opts.incremental.is_none() {
++        if (*tcx.sess.opts.read_incremental()).is_none() {
+             return;
+         }
+ 
 @@ -55,7 +55,7 @@ pub fn assert_module_sources(tcx: TyCtxt<'_>, set_reuse: &dyn Fn(&mut CguReuseTr
          let mut ams = AssertModuleSource {
              tcx,
@@ -218,7 +275,7 @@ index 18b5c001f..46e2ccde7 100644
      }
  
 diff --git a/compiler/rustc_codegen_ssa/src/back/link.rs b/compiler/rustc_codegen_ssa/src/back/link.rs
-index 45ab9b8bc..6aaa60461 100644
+index 45ab9b8bc..6e6d0767f 100644
 --- a/compiler/rustc_codegen_ssa/src/back/link.rs
 +++ b/compiler/rustc_codegen_ssa/src/back/link.rs
 @@ -353,7 +353,7 @@ pub fn link_binary(
@@ -239,6 +296,33 @@ index 45ab9b8bc..6aaa60461 100644
              return;
          }
  
+@@ -902,7 +902,7 @@ fn link_staticlib(
+ 
+     all_native_libs.extend_from_slice(&crate_info.used_libraries);
+ 
+-    for print in &sess.opts.prints {
++    for print in &(*sess.opts.read_prints()) {
+         if print.kind == PrintKind::NativeStaticLibs {
+             print_native_static_libs(sess, &print.out, &all_native_libs, &all_rust_dylibs);
+         }
+@@ -1279,7 +1279,7 @@ fn link_natively(
+         cmd.env_remove(k.as_ref());
+     }
+ 
+-    for print in &sess.opts.prints {
++    for print in &(*sess.opts.read_prints()) {
+         if print.kind == PrintKind::LinkArgs {
+             let content = format!("{cmd:?}\n");
+             print.out.overwrite(&content, sess);
+@@ -1426,7 +1426,7 @@ fn link_natively(
+                     command: cmd,
+                     escaped_output,
+                     verbose: sess.opts.verbose,
+-                    sysroot_dir: sess.opts.sysroot.path().to_owned(),
++                    sysroot_dir: (*sess.opts.read_sysroot()).path().to_owned(),
+                 };
+                 sess.dcx().emit_err(err);
+                 // If MSVC's `link.exe` was expected but the return code
 @@ -1535,7 +1535,7 @@ fn link_natively(
          }
      }
@@ -257,6 +341,15 @@ index 45ab9b8bc..6aaa60461 100644
          // Linking against in-tree sanitizer runtimes is disabled via
          // `-Z external-clangrt`
          return;
+@@ -1796,7 +1796,7 @@ fn find_sanitizer_runtime(sess: &Session, filename: &str) -> PathBuf {
+             sess.target_tlib_path.dir.to_path_buf()
+         } else {
+             filesearch::make_target_lib_path(
+-                &sess.opts.sysroot.default,
++                &(*sess.opts.read_sysroot()).default,
+                 sess.opts.target_triple.tuple(),
+             )
+         }
 @@ -1924,11 +1924,11 @@ fn adjust_flavor_to_features(
          }
      }
@@ -280,6 +373,15 @@ index 45ab9b8bc..6aaa60461 100644
          return ret;
      }
  
+@@ -2299,7 +2299,7 @@ fn detect_self_contained_mingw(sess: &Session, linker: &Path) -> bool {
+     for dir in env::split_paths(&env::var_os("PATH").unwrap_or_default()) {
+         let full_path = dir.join(&linker_with_extension);
+         // If linker comes from sysroot assume self-contained mode
+-        if full_path.is_file() && !full_path.starts_with(sess.opts.sysroot.path()) {
++        if full_path.is_file() && !full_path.starts_with((*sess.opts.read_sysroot()).path()) {
+             return false;
+         }
+     }
 @@ -2317,7 +2317,7 @@ fn self_contained_components(
      // Turn the backwards compatible bool values for `self_contained` into fully inferred
      // `LinkSelfContainedComponents`.
@@ -325,6 +427,15 @@ index 45ab9b8bc..6aaa60461 100644
          let libs = crate_info
              .used_crates
              .iter()
+@@ -3207,7 +3207,7 @@ fn linker_with_args(
+ 
+     // Only LLD supports controlling parallelism at the moment.
+     let mut tokens = Vec::new();
+-    if let LinkerJobs::Explicit(limit) = sess.opts.jobs.linker
++    if let LinkerJobs::Explicit(limit) = (*sess.opts.read_jobs()).linker
+         && flavor.uses_lld()
+     {
+         // Try obtaining as many jobserver tokens as possible (within the limit) to run parallel
 @@ -3341,11 +3341,11 @@ fn add_order_independent_options(
      );
  
@@ -363,7 +474,7 @@ index 45ab9b8bc..6aaa60461 100644
          for path in sess.get_tools_search_paths(false) {
              let linker_path = path.join("gcc-ld");
 diff --git a/compiler/rustc_codegen_ssa/src/back/linker.rs b/compiler/rustc_codegen_ssa/src/back/linker.rs
-index ffb9130ed..9e37a7cb7 100644
+index ffb9130ed..6681f1d45 100644
 --- a/compiler/rustc_codegen_ssa/src/back/linker.rs
 +++ b/compiler/rustc_codegen_ssa/src/back/linker.rs
 @@ -73,7 +73,7 @@ pub(crate) fn get_linker<'a>(
@@ -384,8 +495,17 @@ index ffb9130ed..9e37a7cb7 100644
                  let mut rpath = OsString::from("@rpath/");
                  rpath.push(out_filename.file_name().unwrap());
                  self.link_arg("-install_name").link_arg(rpath);
+@@ -1095,7 +1095,7 @@ fn debuginfo(&mut self, _strip: Strip, natvis_debugger_visualizers: &[PathBuf])
+         self.link_arg("/PDBALTPATH:%_PDB%");
+ 
+         // This will cause the Microsoft linker to embed .natvis info into the PDB file
+-        let natvis_dir_path = self.sess.opts.sysroot.path().join("lib\\rustlib\\etc");
++        let natvis_dir_path = (*self.sess.opts.read_sysroot()).path().join("lib\\rustlib\\etc");
+         if let Ok(natvis_dir) = fs::read_dir(&natvis_dir_path) {
+             for entry in natvis_dir {
+                 match entry {
 diff --git a/compiler/rustc_codegen_ssa/src/back/write.rs b/compiler/rustc_codegen_ssa/src/back/write.rs
-index 04be7956e..3d6cdf857 100644
+index 04be7956e..7a9c5ee83 100644
 --- a/compiler/rustc_codegen_ssa/src/back/write.rs
 +++ b/compiler/rustc_codegen_ssa/src/back/write.rs
 @@ -126,7 +126,7 @@ macro_rules! if_regular {
@@ -397,6 +517,24 @@ index 04be7956e..3d6cdf857 100644
  
          let should_emit_obj = sess.opts.output_types.contains_key(&OutputType::Exe)
              || match kind {
+@@ -410,7 +410,7 @@ fn need_bitcode_in_object(tcx: TyCtxt<'_>) -> bool {
+ }
+ 
+ fn need_pre_lto_bitcode_for_incr_comp(sess: &Session) -> bool {
+-    if sess.opts.incremental.is_none() {
++    if (*sess.opts.read_incremental()).is_none() {
+         return false;
+     }
+ 
+@@ -465,7 +465,7 @@ fn copy_all_cgu_workproducts_to_incr_comp_cache_dir(
+ ) -> WorkProductMap {
+     let mut work_products = WorkProductMap::default();
+ 
+-    if sess.opts.incremental.is_none() || sess.opts.unstable_opts.disable_incr_comp_backend_caching
++    if (*sess.opts.read_incremental()).is_none() || sess.opts.unstable_opts.disable_incr_comp_backend_caching
+     {
+         return work_products;
+     }
 @@ -536,7 +536,7 @@ pub fn produce_final_output_artifacts(
              } else {
                  copy_gracefully(&path, &output);
@@ -415,6 +553,15 @@ index 04be7956e..3d6cdf857 100644
          // Remove the temporary .#module-name#.rcgu.o objects. If the user didn't
          // explicitly request bitcode (with --emit=bc), and the bitcode is not
          // needed for building an rlib, then we must remove .#module-name#.bc as
+@@ -1226,7 +1226,7 @@ fn start_executing_work<B: WriteBackendMethods>(
+     // Note that using `jobserver::Proxy` is not necessary here, the code below always acquires
+     // tokens before releasing them, so we can never accidentally release the last token
+     // permanently held by rustc process.
+-    let parallel = match sess.opts.jobs.backend {
++    let parallel = match (*sess.opts.read_jobs()).backend {
+         Some(n) if backend.supports_parallel() => Some(n),
+         _ => None,
+     };
 @@ -1242,7 +1242,7 @@ fn start_executing_work<B: WriteBackendMethods>(
      let opt_level = tcx.backend_optimization_level(());
      let tm_factory = backend.target_machine_factory(tcx.sess, opt_level);
@@ -424,7 +571,14 @@ index 04be7956e..3d6cdf857 100644
          let result = fs::create_dir_all(dir).and_then(|_| dir.canonicalize());
          match result {
              Ok(dir) => Some(dir),
-@@ -1258,12 +1258,12 @@ fn start_executing_work<B: WriteBackendMethods>(
+@@ -1252,18 +1252,18 @@ fn start_executing_work<B: WriteBackendMethods>(
+         None
+     };
+ 
+-    let stack_size = sess.opts.recommended_stack_size;
++    let stack_size = (*sess.opts.read_recommended_stack_size());
+ 
+     let cgcx = CodegenContext {
          crate_types: tcx.crate_types().to_vec(),
          lto: sess.lto(),
          use_linker_plugin_lto: sess.opts.cg.linker_plugin_lto.enabled(),
@@ -441,8 +595,17 @@ index 04be7956e..3d6cdf857 100644
          remark_dir,
          old_incr_comp_session_dir: tcx
              .incr_comp_session
+@@ -2144,7 +2144,7 @@ pub fn join(
+                         &crate_info.exported_symbols_for_lto,
+                         &crate_info.each_linked_rlib_file_for_lto,
+                         needs_thin_lto,
+-                        sess.opts.recommended_stack_size,
++                        (*sess.opts.read_recommended_stack_size()),
+                     ),
+                     allocator_module: None,
+                 }
 diff --git a/compiler/rustc_codegen_ssa/src/base.rs b/compiler/rustc_codegen_ssa/src/base.rs
-index fea558316..703270e78 100644
+index d6f8447fe..2ffb55c11 100644
 --- a/compiler/rustc_codegen_ssa/src/base.rs
 +++ b/compiler/rustc_codegen_ssa/src/base.rs
 @@ -809,7 +809,7 @@ pub fn codegen_crate<
@@ -514,7 +677,7 @@ index 000000000..1ee27a720
 +    }
 +}
 diff --git a/compiler/rustc_driver_impl/src/lib.rs b/compiler/rustc_driver_impl/src/lib.rs
-index 1ba7ce953..3bd2fdb0f 100644
+index 1ba7ce953..69217868c 100644
 --- a/compiler/rustc_driver_impl/src/lib.rs
 +++ b/compiler/rustc_driver_impl/src/lib.rs
 @@ -162,8 +162,8 @@ fn config(&mut self, config: &mut interface::Config) {
@@ -523,11 +686,20 @@ index 1ba7ce953..3bd2fdb0f 100644
          //
 -        self.time_passes = (config.opts.prints.is_empty() && config.opts.unstable_opts.time_passes)
 -            .then_some(config.opts.unstable_opts.time_passes_format);
-+        self.time_passes = (config.opts.prints.is_empty() && (*config.opts.unstable_opts.read_time_passes()))
++        self.time_passes = ((*config.opts.read_prints()).is_empty() && (*config.opts.unstable_opts.read_time_passes()))
 +            .then_some((*config.opts.unstable_opts.read_time_passes_format()));
          config.opts.trimmed_def_paths = true;
      }
  }
+@@ -245,7 +245,7 @@ pub fn compiler_entrypoint(at_args: &[String], callbacks: &mut (dyn Callbacks +
+         // This implements `-Whelp`. It should be handled very early, like
+         // `--help`/`-Zhelp`/`-Chelp`. This is the earliest it can run, because
+         // it must happen after lints are registered, during session creation.
+-        if sess.opts.describe_lints {
++        if (*sess.opts.read_describe_lints()) {
+             describe_lints(sess, registered_lints);
+             return;
+         }
 @@ -263,7 +263,7 @@ pub fn compiler_entrypoint(at_args: &[String], callbacks: &mut (dyn Callbacks +
              sess.dcx().fatal("no input filename given"); // this is fatal
          }
@@ -537,6 +709,15 @@ index 1ba7ce953..3bd2fdb0f 100644
              list_metadata(sess, &*codegen_backend.metadata_loader());
              return;
          }
+@@ -278,7 +278,7 @@ pub fn compiler_entrypoint(at_args: &[String], callbacks: &mut (dyn Callbacks +
+         let mut krate = passes::parse(sess);
+ 
+         // If pretty printing is requested: Figure out the representation, print it and exit
+-        if let Some(pp_mode) = sess.opts.pretty {
++        if let Some(pp_mode) = (*sess.opts.read_pretty()) {
+             if pp_mode.needs_ast_map() {
+                 create_and_enter_global_ctxt(compiler, krate, |tcx| {
+                     tcx.ensure_ok().early_lint_checks(());
 @@ -296,7 +296,7 @@ pub fn compiler_entrypoint(at_args: &[String], callbacks: &mut (dyn Callbacks +
              return;
          }
@@ -573,6 +754,33 @@ index 1ba7ce953..3bd2fdb0f 100644
                  sess.cfg_version,
              ) {
                  if path.extension().is_some_and(|extension| extension == "rs") {
+@@ -639,7 +639,7 @@ pub fn print_crate_info(
+ 
+     // NativeStaticLibs and LinkArgs are special - printed during linking
+     // (empty iterator returns true)
+-    if sess.opts.prints.iter().all(|p| p.kind == NativeStaticLibs || p.kind == LinkArgs) {
++    if (*sess.opts.read_prints()).iter().all(|p| p.kind == NativeStaticLibs || p.kind == LinkArgs) {
+         return Compilation::Continue;
+     }
+ 
+@@ -656,7 +656,7 @@ pub fn print_crate_info(
+         None
+     };
+ 
+-    for req in &sess.opts.prints {
++    for req in &(*sess.opts.read_prints()) {
+         let mut crate_info = String::new();
+         macro println_info($($arg:tt)*) {
+             crate_info.write_fmt(format_args!("{}\n", format_args!($($arg)*))).unwrap()
+@@ -670,7 +670,7 @@ pub fn print_crate_info(
+             }
+             HostTuple => println_info!("{}", rustc_session::config::host_tuple()),
+             WasmProcMacroTuple => println_info!("{}", sess.wasm_proc_macro_tuple),
+-            Sysroot => println_info!("{}", sess.opts.sysroot.path().display()),
++            Sysroot => println_info!("{}", (*sess.opts.read_sysroot()).path().display()),
+             TargetLibdir => println_info!("{}", sess.target_tlib_path.dir.display()),
+             TargetSpecJson => {
+                 println_info!("{}", serde_json::to_string_pretty(&sess.target.to_json()).unwrap());
 diff --git a/compiler/rustc_expand/src/base.rs b/compiler/rustc_expand/src/base.rs
 index 01e8cef49..b72b27d7d 100644
 --- a/compiler/rustc_expand/src/base.rs
@@ -587,9 +795,18 @@ index 01e8cef49..b72b27d7d 100644
          let stability = find_attr!(attrs, Stability { stability, .. } => *stability);
  
 diff --git a/compiler/rustc_expand/src/expand.rs b/compiler/rustc_expand/src/expand.rs
-index 5a2442fbc..3ec74c962 100644
+index 5a2442fbc..11d36c625 100644
 --- a/compiler/rustc_expand/src/expand.rs
 +++ b/compiler/rustc_expand/src/expand.rs
+@@ -652,7 +652,7 @@ fn collect_invocations(
+                 .resolver
+                 .visit_ast_fragment_with_placeholders(self.cx.current_expansion.id, &fragment);
+ 
+-            if self.cx.sess.opts.incremental.is_some() {
++            if (*self.cx.sess.opts.read_incremental()).is_some() {
+                 for (invoc, _) in invocations.iter_mut() {
+                     let expn_id = invoc.expansion_data.id;
+                     let parent_def = self.cx.resolver.invocation_parent(expn_id);
 @@ -719,7 +719,7 @@ fn expand_invoc(
              return ExpandResult::Ready(invoc.fragment_kind.dummy(invoc.span(), guar));
          }
@@ -599,6 +816,19 @@ index 5a2442fbc..3ec74c962 100644
  
          let (fragment_kind, span) = (invoc.fragment_kind, invoc.span());
          ExpandResult::Ready(match invoc.kind {
+diff --git a/compiler/rustc_expand/src/proc_macro.rs b/compiler/rustc_expand/src/proc_macro.rs
+index 5e01b851b..81c84a9a8 100644
+--- a/compiler/rustc_expand/src/proc_macro.rs
++++ b/compiler/rustc_expand/src/proc_macro.rs
+@@ -110,7 +110,7 @@ fn expand(
+ 
+         let invoc_id = ecx.current_expansion.id;
+ 
+-        let res = if ecx.sess.opts.incremental.is_some()
++        let res = if (*ecx.sess.opts.read_incremental()).is_some()
+             && ecx.sess.opts.unstable_opts.cache_proc_macros
+         {
+             (*EXPAND_DERIVE_MACRO_CACHED)(invoc_id, input, ecx, self.client)
 diff --git a/compiler/rustc_hir_typeck/src/upvar.rs b/compiler/rustc_hir_typeck/src/upvar.rs
 index 98155d9a8..e729e0537 100644
 --- a/compiler/rustc_hir_typeck/src/upvar.rs
@@ -667,10 +897,55 @@ index 853a5c9ba..c6d38410f 100644
          eprintln!(
              "[incremental] ignoring cache artifact `{}`: {}",
              file.file_name().unwrap().to_string_lossy(),
+diff --git a/compiler/rustc_incremental/src/persist/fs.rs b/compiler/rustc_incremental/src/persist/fs.rs
+index 3f896584e..bc45e5418 100644
+--- a/compiler/rustc_incremental/src/persist/fs.rs
++++ b/compiler/rustc_incremental/src/persist/fs.rs
+@@ -223,7 +223,7 @@ pub(crate) fn prepare_session_directory(
+     crate_name: Symbol,
+     stable_crate_id: StableCrateId,
+ ) -> IncrCompSession {
+-    assert!(sess.opts.incremental.is_some());
++    assert!((*sess.opts.read_incremental()).is_some());
+ 
+     let _timer = sess.timer("incr_comp_prepare_session_directory");
+ 
+@@ -281,7 +281,7 @@ pub fn finalize_session_directory(
+ ) {
+     assert!(sess.dcx().has_errors_or_delayed_bugs().is_none());
+ 
+-    if sess.opts.incremental.is_none() {
++    if (*sess.opts.read_incremental()).is_none() {
+         return;
+     }
+     let mut incr_comp_session = incr_comp_session.unwrap();
+@@ -540,7 +540,7 @@ fn string_to_timestamp(s: &str) -> Result<SystemTime, &'static str> {
+ }
+ 
+ fn crate_path(sess: &Session, crate_name: Symbol, stable_crate_id: StableCrateId) -> PathBuf {
+-    let incr_dir = sess.opts.incremental.as_ref().unwrap().clone();
++    let incr_dir = (*sess.opts.read_incremental()).as_ref().unwrap().clone();
+ 
+     let crate_name =
+         format!("{crate_name}-{}", stable_crate_id.as_u64().to_base_fixed_len(CASE_INSENSITIVE));
 diff --git a/compiler/rustc_incremental/src/persist/load.rs b/compiler/rustc_incremental/src/persist/load.rs
-index 76e0bf92c..0caeb2789 100644
+index 76e0bf92c..89dd50c21 100644
 --- a/compiler/rustc_incremental/src/persist/load.rs
 +++ b/compiler/rustc_incremental/src/persist/load.rs
+@@ -33,11 +33,11 @@ enum LoadResult {
+ }
+ 
+ fn load_dep_graph(sess: &Session, incr_comp_session: &IncrCompSession) -> LoadResult {
+-    assert!(sess.opts.incremental.is_some());
++    assert!((*sess.opts.read_incremental()).is_some());
+ 
+     let _timer = sess.prof.generic_activity("incr_comp_prepare_load_dep_graph");
+ 
+-    // Calling `sess.incr_comp_session_dir()` will panic if `sess.opts.incremental.is_none()`.
++    // Calling `sess.incr_comp_session_dir()` will panic if `(*sess.opts.read_incremental()).is_none()`.
+     // Fortunately, we just checked that this isn't the case.
+     let Some(path) = old_dep_graph_path(incr_comp_session) else {
+         return LoadResult::DataOutOfDate;
 @@ -64,7 +64,7 @@ fn load_dep_graph(sess: &Session, incr_comp_session: &IncrCompSession) -> LoadRe
          for swp in work_products {
              let all_files_exist = swp.work_product.saved_files.items().all(|(_, path)| {
@@ -689,6 +964,15 @@ index 76e0bf92c..0caeb2789 100644
                      eprintln!(
                          "[incremental] completely ignoring cache because of \
                                      differing commandline arguments"
+@@ -122,7 +122,7 @@ pub fn load_query_result_cache(
+     sess: &Session,
+     incr_comp_session: Option<&IncrCompSession>,
+ ) -> Option<OnDiskCache> {
+-    if sess.opts.incremental.is_none() {
++    if (*sess.opts.read_incremental()).is_none() {
+         return None;
+     }
+     let incr_comp_session = incr_comp_session.unwrap();
 @@ -150,7 +150,7 @@ pub fn load_query_result_cache(
  /// the outcome of trying to load previous-session state.
  fn maybe_assert_incr_state(sess: &Session, load_result: &LoadResult) {
@@ -698,6 +982,28 @@ index 76e0bf92c..0caeb2789 100644
  
      // Match exhaustively to make sure we don't miss any cases.
      let loaded = match load_result {
+@@ -182,7 +182,7 @@ pub fn setup_dep_graph(
+     crate_name: Symbol,
+     stable_crate_id: StableCrateId,
+ ) -> (DepGraph, Option<IncrCompSession>) {
+-    if sess.opts.incremental.is_none() {
++    if (*sess.opts.read_incremental()).is_none() {
+         return (DepGraph::new_disabled(), None);
+     }
+ 
+diff --git a/compiler/rustc_incremental/src/persist/work_product.rs b/compiler/rustc_incremental/src/persist/work_product.rs
+index 0aaa9aa8e..4336e32f1 100644
+--- a/compiler/rustc_incremental/src/persist/work_product.rs
++++ b/compiler/rustc_incremental/src/persist/work_product.rs
+@@ -24,7 +24,7 @@ pub fn copy_cgu_workproduct_to_incr_comp_cache_dir(
+     files: &[(&'static str, &Path)],
+ ) -> (WorkProductId, WorkProduct) {
+     debug!(?cgu_name, ?files);
+-    assert!(sess.opts.incremental.is_some());
++    assert!((*sess.opts.read_incremental()).is_some());
+ 
+     let mut saved_files = UnordMap::default();
+     for (ext, path) in files {
 diff --git a/compiler/rustc_infer/src/infer/relate/higher_ranked.rs b/compiler/rustc_infer/src/infer/relate/higher_ranked.rs
 index 324725a07..baa0f2b04 100644
 --- a/compiler/rustc_infer/src/infer/relate/higher_ranked.rs
@@ -712,27 +1018,56 @@ index 324725a07..baa0f2b04 100644
          }
  
 diff --git a/compiler/rustc_interface/src/interface.rs b/compiler/rustc_interface/src/interface.rs
-index 7a6a49f37..3df272fa9 100644
+index 7a6a49f37..f31a0f1c7 100644
 --- a/compiler/rustc_interface/src/interface.rs
 +++ b/compiler/rustc_interface/src/interface.rs
-@@ -398,7 +398,7 @@ pub fn run_compiler<R: Send>(config: Config, f: impl FnOnce(&Compiler) -> R + Se
+@@ -380,11 +380,11 @@ pub fn run_compiler<R: Send>(config: Config, f: impl FnOnce(&Compiler) -> R + Se
+     trace!("run_compiler");
+ 
+     // Set parallel mode before thread pool creation, which will create `Lock`s.
+-    rustc_data_structures::sync::set_dyn_thread_safe_mode(config.opts.jobs.frontend.is_some());
++    rustc_data_structures::sync::set_dyn_thread_safe_mode((*config.opts.read_jobs()).frontend.is_some());
+ 
+     // Initialize jobserver as early as possible.
+-    let early_dcx = EarlyDiagCtxt::new(config.opts.error_format);
+-    let jobs = config.opts.jobs;
++    let early_dcx = EarlyDiagCtxt::new((*config.opts.read_error_format()));
++    let jobs = (*config.opts.read_jobs());
+     if let Some(limit) = jobs.frontend.max(jobs.backend).max(jobs.linker.limit()) {
+         jobserver::initialize(limit.get(), |err| {
+             let note = "the build environment is likely misconfigured";
+@@ -397,8 +397,8 @@ pub fn run_compiler<R: Send>(config: Config, f: impl FnOnce(&Compiler) -> R + Se
+     let target = config::build_target_config(
          &early_dcx,
          &config.opts.target_triple,
-         config.opts.sysroot.path(),
+-        config.opts.sysroot.path(),
 -        config.opts.unstable_opts.unstable_options,
++        (*config.opts.read_sysroot()).path(),
 +        (*config.opts.unstable_opts.read_unstable_options()),
      );
      let file_loader = config.file_loader.unwrap_or_else(|| Box::new(RealFileLoader));
      let path_mapping = config.opts.file_path_mapping();
-@@ -416,7 +416,7 @@ pub fn run_compiler<R: Send>(config: Config, f: impl FnOnce(&Compiler) -> R + Se
+@@ -414,9 +414,9 @@ pub fn run_compiler<R: Send>(config: Config, f: impl FnOnce(&Compiler) -> R + Se
+         |current_gcx| {
+             // The previous `early_dcx` can't be reused here because it doesn't
              // impl `Send`. Creating a new one is fine.
-             let early_dcx = EarlyDiagCtxt::new(config.opts.error_format);
+-            let early_dcx = EarlyDiagCtxt::new(config.opts.error_format);
++            let early_dcx = EarlyDiagCtxt::new((*config.opts.read_error_format()));
  
 -            let temps_dir = config.opts.unstable_opts.temps_dir.as_deref().map(PathBuf::from);
 +            let temps_dir = (*config.opts.unstable_opts.read_temps_dir()).as_deref().map(PathBuf::from);
  
              let early_sess =
                  rustc_session::build_early_session(config.opts, target, config.ice_file);
+@@ -424,7 +424,7 @@ pub fn run_compiler<R: Send>(config: Config, f: impl FnOnce(&Compiler) -> R + Se
+             let mut codegen_backend = match config.make_codegen_backend {
+                 None => util::get_codegen_backend(
+                     &early_dcx,
+-                    &early_sess.opts.sysroot,
++                    &(*early_sess.opts.read_sysroot()),
+                     early_sess.opts.unstable_opts.codegen_backend.as_deref(),
+                     &early_sess.target,
+                 ),
 diff --git a/compiler/rustc_interface/src/passes.rs b/compiler/rustc_interface/src/passes.rs
 index 8975f01de..9245d5d45 100644
 --- a/compiler/rustc_interface/src/passes.rs
@@ -814,9 +1149,18 @@ index 8975f01de..9245d5d45 100644
      }
  
 diff --git a/compiler/rustc_interface/src/queries.rs b/compiler/rustc_interface/src/queries.rs
-index 759297bc6..60516087d 100644
+index 759297bc6..4a9bd2d86 100644
 --- a/compiler/rustc_interface/src/queries.rs
 +++ b/compiler/rustc_interface/src/queries.rs
+@@ -35,7 +35,7 @@ pub fn codegen_and_build_linker(
+         Linker {
+             dep_graph: tcx.dep_graph.clone(),
+             output_filenames: Arc::clone(tcx.output_filenames(())),
+-            crate_hash: if tcx.sess.opts.incremental.is_some() {
++            crate_hash: if (*tcx.sess.opts.read_incremental()).is_some() {
+                 Some(tcx.crate_hash(LOCAL_CRATE))
+             } else {
+                 None
 @@ -67,7 +67,7 @@ pub fn link(
              }
          });
@@ -826,6 +1170,15 @@ index 759297bc6..60516087d 100644
              codegen_backend.print_pass_timings()
          }
  
+@@ -93,7 +93,7 @@ pub fn link(
+ 
+         sess.timings.end_section(sess.dcx(), TimingSection::Codegen);
+ 
+-        if sess.opts.incremental.is_some()
++        if (*sess.opts.read_incremental()).is_some()
+             && let Some(path) = self.metadata.path()
+         {
+             let (id, product) = rustc_incremental::copy_cgu_workproduct_to_incr_comp_cache_dir(
 diff --git a/compiler/rustc_interface/src/tests.rs b/compiler/rustc_interface/src/tests.rs
 index 34ac92fae..f0a43672b 100644
 --- a/compiler/rustc_interface/src/tests.rs
@@ -879,10 +1232,40 @@ index d58b7bfdd..6e8f6570c 100644
                  sess.opts.output_types.clone(),
              )
          }
+diff --git a/compiler/rustc_lint/src/internal.rs b/compiler/rustc_lint/src/internal.rs
+index b32fa2515..a794ca64c 100644
+--- a/compiler/rustc_lint/src/internal.rs
++++ b/compiler/rustc_lint/src/internal.rs
+@@ -667,7 +667,7 @@ fn is_whitelisted(crate_name: &str) -> bool {
+ 
+         if let ast::ItemKind::ExternCrate(original_name, imported_name) = &item.kind {
+             let name = original_name.as_ref().unwrap_or(&imported_name.name).as_str();
+-            let externs = &cx.builder.sess().opts.externs;
++            let externs = &(*cx.builder.sess().opts.read_externs());
+             if externs.get(name).is_none() && !is_whitelisted(name) {
+                 cx.emit_span_lint(
+                     IMPLICIT_SYSROOT_CRATE_IMPORT,
 diff --git a/compiler/rustc_metadata/src/creader.rs b/compiler/rustc_metadata/src/creader.rs
-index 10693448e..70fa9ba41 100644
+index 10693448e..e28ad214f 100644
 --- a/compiler/rustc_metadata/src/creader.rs
 +++ b/compiler/rustc_metadata/src/creader.rs
+@@ -250,14 +250,14 @@ fn set_crate_data(&mut self, cnum: CrateNum, data: CrateMetadata) {
+ 
+     /// Save the name used to resolve the extern crate in the local crate
+     ///
+-    /// The name isn't always the crate's own name, because `sess.opts.externs` can assign it another name.
++    /// The name isn't always the crate's own name, because `(*sess.opts.read_externs())` can assign it another name.
+     /// It's also not always the same as the `DefId`'s symbol due to renames `extern crate resolved_name as defid_name`.
+     pub(crate) fn set_resolved_extern_crate_name(&mut self, name: Symbol, extern_crate: CrateNum) {
+         self.resolved_externs.insert(name, extern_crate);
+     }
+ 
+     /// Crate resolved and loaded via the given extern name
+-    /// (corresponds to names in `sess.opts.externs`)
++    /// (corresponds to names in `(*sess.opts.read_externs())`)
+     ///
+     /// May be `None` if the crate wasn't used
+     pub fn resolved_extern_crate(&self, externs_name: Symbol) -> Option<CrateNum> {
 @@ -299,23 +299,33 @@ pub(crate) fn crate_dependencies_in_postorder(&self, cnum: CrateNum) -> IndexSet
          deps
      }
@@ -917,6 +1300,15 @@ index 10693448e..70fa9ba41 100644
          self.has_alloc_error_handler
      }
  
+@@ -324,7 +334,7 @@ pub fn had_extern_crate_load_failure(&self) -> bool {
+     }
+ 
+     pub fn report_unused_deps(&self, tcx: TyCtxt<'_>) {
+-        let json_unused_externs = tcx.sess.opts.json_unused_externs;
++        let json_unused_externs = (*tcx.sess.opts.read_json_unused_externs());
+ 
+         // We put the check for the option before the lint_level_at_node call
+         // because the call mutates internal state and introducing it
 @@ -348,7 +358,7 @@ fn report_target_modifiers_extended(
          dep_mods: &TargetModifiers,
          data: &CrateMetadata,
@@ -935,6 +1327,51 @@ index 10693448e..70fa9ba41 100644
              if !OptionsTargetModifiers::is_target_modifier(flag_name) {
                  tcx.dcx().emit_err(diagnostics::UnknownTargetModifierUnsafeAllowed {
                      flag_name: flag_name.clone(),
+@@ -596,7 +606,7 @@ fn register_crate<'tcx>(
+         let crate_root = metadata.get_root();
+         let unhashed = metadata.get_root_unhashed();
+         let host_hash = host_lib.as_ref().map(|lib| lib.metadata.get_crate_hash());
+-        let private_dep = self.is_private_dep(&tcx.sess.opts.externs, name, private_dep);
++        let private_dep = self.is_private_dep(&(*tcx.sess.opts.read_externs()), name, private_dep);
+ 
+         // Claim this crate number and cache it
+         let feed = self.intern_stable_crate_id(tcx, &crate_root)?;
+@@ -842,7 +852,7 @@ fn maybe_resolve_crate<'b, 'tcx>(
+                 // not specified by `--extern` on command line parameters, it may be
+                 // `private-dependency` when `register_crate` is called for the first time. Then it must be updated to
+                 // `public-dependency` here.
+-                let private_dep = self.is_private_dep(&tcx.sess.opts.externs, name, private_dep);
++                let private_dep = self.is_private_dep(&(*tcx.sess.opts.read_externs()), name, private_dep);
+                 let cdata = self.get_crate_data_mut(cnum);
+                 if cdata.is_proc_macro_crate() {
+                     dep_kind = CrateDepKind::MacrosOnly;
+@@ -1195,7 +1205,7 @@ fn inject_allocator_crate(&mut self, tcx: TyCtxt<'_>, krate: &ast::Crate) {
+     }
+ 
+     fn inject_forced_externs(&mut self, tcx: TyCtxt<'_>) {
+-        for (name, entry) in tcx.sess.opts.externs.iter() {
++        for (name, entry) in (*tcx.sess.opts.read_externs()).iter() {
+             if entry.force {
+                 let name_interned = Symbol::intern(name);
+                 if !self.used_extern_options.contains(&name_interned) {
+@@ -1253,7 +1263,7 @@ fn report_unused_deps_in_crate(&mut self, tcx: TyCtxt<'_>, krate: &ast::Crate) {
+         // Make a point span rather than covering the whole file
+         let span = krate.spans.inner_span.shrink_to_lo();
+         // Complain about anything left over
+-        for (name, entry) in tcx.sess.opts.externs.iter() {
++        for (name, entry) in (*tcx.sess.opts.read_externs()).iter() {
+             if let ExternLocation::FoundInLibrarySearchDirectories = entry.location {
+                 // Don't worry about pathless `--extern foo` sysroot references
+                 continue;
+@@ -1268,7 +1278,7 @@ fn report_unused_deps_in_crate(&mut self, tcx: TyCtxt<'_>, krate: &ast::Crate) {
+             }
+ 
+             // Got a real unused --extern
+-            if tcx.sess.opts.json_unused_externs.is_enabled() {
++            if (*tcx.sess.opts.read_json_unused_externs()).is_enabled() {
+                 self.unused_externs.push(name_interned);
+                 continue;
+             }
 diff --git a/compiler/rustc_metadata/src/dependency_format.rs b/compiler/rustc_metadata/src/dependency_format.rs
 index 4a6c23a10..7ab211e3a 100644
 --- a/compiler/rustc_metadata/src/dependency_format.rs
@@ -1008,7 +1445,7 @@ index 6cb6ad001..8586b036d 100644
                          diagnostics::StaticLinkingNotSupported::UserRequested {
                              lib_name: lib.name,
 diff --git a/compiler/rustc_metadata/src/rmeta/encoder.rs b/compiler/rustc_metadata/src/rmeta/encoder.rs
-index 989ca8361..0bba24a5c 100644
+index 39bbdc31f..c708227a1 100644
 --- a/compiler/rustc_metadata/src/rmeta/encoder.rs
 +++ b/compiler/rustc_metadata/src/rmeta/encoder.rs
 @@ -589,6 +589,8 @@ fn encode_source_map(
@@ -1048,7 +1485,7 @@ index 989ca8361..0bba24a5c 100644
                  // Encode all the entries and extra information in the crate,
                  // culminating in the `CrateRoot` which points to all of it.
 diff --git a/compiler/rustc_middle/src/dep_graph/graph.rs b/compiler/rustc_middle/src/dep_graph/graph.rs
-index dcb5775f2..211d1d6f5 100644
+index dcb5775f2..58f25bbc9 100644
 --- a/compiler/rustc_middle/src/dep_graph/graph.rs
 +++ b/compiler/rustc_middle/src/dep_graph/graph.rs
 @@ -390,7 +390,11 @@ pub fn with_task<'tcx, OP, R>(
@@ -1071,6 +1508,15 @@ index dcb5775f2..211d1d6f5 100644
          ));
          let result = with_deps(TaskDepsRef::Allow(&task_deps), op);
          let task_deps = task_deps.into_inner();
+@@ -676,7 +681,7 @@ fn assert_dep_node_not_yet_allocated_in_current_session<S: std::fmt::Display>(
+             let ok = match color {
+                 DepNodeColor::Unknown => true,
+                 DepNodeColor::Red => false,
+-                DepNodeColor::Green(..) => sess.opts.jobs.frontend.is_some(), // Other threads may mark this green
++                DepNodeColor::Green(..) => (*sess.opts.read_jobs()).frontend.is_some(), // Other threads may mark this green
+             };
+             if !ok {
+                 panic!("{}", msg())
 @@ -1311,15 +1316,25 @@ pub struct TaskDeps {
      node: Option<DepNode>,
  
@@ -1223,6 +1669,19 @@ index 1c476fc91..4a76764f4 100644
          GraphEncoder { status, retained_graph, profiler: sess.prof.clone() }
      }
  
+diff --git a/compiler/rustc_middle/src/hir/map.rs b/compiler/rustc_middle/src/hir/map.rs
+index ea266e003..e889076b0 100644
+--- a/compiler/rustc_middle/src/hir/map.rs
++++ b/compiler/rustc_middle/src/hir/map.rs
+@@ -1249,7 +1249,7 @@ fn legacy_crate_hash(tcx: TyCtxt<'_>) -> Svh {
+         upstream_crates.stable_hash(&mut hcx, &mut stable_hasher);
+         source_file_names.stable_hash(&mut hcx, &mut stable_hasher);
+         debugger_visualizers.stable_hash(&mut hcx, &mut stable_hasher);
+-        if tcx.sess.opts.incremental.is_some() {
++        if (*tcx.sess.opts.read_incremental()).is_some() {
+             let definitions = tcx.untracked().definitions.freeze();
+             let mut owner_spans: Vec<_> = tcx
+                 .hir_crate_items(())
 diff --git a/compiler/rustc_middle/src/lint.rs b/compiler/rustc_middle/src/lint.rs
 index 8822ffee6..2cccc2a36 100644
 --- a/compiler/rustc_middle/src/lint.rs
@@ -1362,9 +1821,18 @@ index ae30093b1..5ceeb0c88 100644
          }
          // Write allocation bytes.
 diff --git a/compiler/rustc_middle/src/mono.rs b/compiler/rustc_middle/src/mono.rs
-index cf567fa1c..82b2c8ef3 100644
+index cf567fa1c..a912cab0c 100644
 --- a/compiler/rustc_middle/src/mono.rs
 +++ b/compiler/rustc_middle/src/mono.rs
+@@ -177,7 +177,7 @@ pub fn instantiation_mode(&self, tcx: TyCtxt<'tcx>) -> InstantiationMode {
+             if tcx.sess.opts.optimize == OptLevel::No {
+                 return InstantiationMode::GloballyShared { may_conflict: false };
+             }
+-            if tcx.sess.opts.incremental.is_none() {
++            if (*tcx.sess.opts.read_incremental()).is_none() {
+                 return InstantiationMode::LocalCopy;
+             }
+             return opt_incr_drop_glue_mode(tcx, ty);
 @@ -568,7 +568,7 @@ fn item_sort_key<'tcx>(tcx: TyCtxt<'tcx>, item: MonoItem<'tcx>) -> ItemSortKey<'
          }
  
@@ -1375,11 +1843,15 @@ index cf567fa1c..82b2c8ef3 100644
              // is already deterministic.
              //
 diff --git a/compiler/rustc_middle/src/ty/context.rs b/compiler/rustc_middle/src/ty/context.rs
-index aa7fe0872..e56a7d587 100644
+index aa7fe0872..dd39a1105 100644
 --- a/compiler/rustc_middle/src/ty/context.rs
 +++ b/compiler/rustc_middle/src/ty/context.rs
-@@ -1155,7 +1155,7 @@ pub fn needs_hir_hash(self) -> bool {
-             || self.sess.opts.incremental.is_some()
+@@ -1152,10 +1152,10 @@ pub fn needs_hir_hash(self) -> bool {
+         //   for similar source builds (may change in the future, this is part
+         //   of the proof of concept impl for the metrics initiative project goal)
+         cfg!(debug_assertions)
+-            || self.sess.opts.incremental.is_some()
++            || (*self.sess.opts.read_incremental()).is_some()
              || self.needs_metadata()
              || self.sess.instrument_coverage()
 -            || self.sess.opts.unstable_opts.metrics_dir.is_some()
@@ -1387,6 +1859,15 @@ index aa7fe0872..e56a7d587 100644
      }
  
      /// Whether the combined per-owner HIR hash (`OwnerInfo::opt_hash`, which folds `parenting`,
+@@ -1175,7 +1175,7 @@ pub fn needs_hir_hash(self) -> bool {
+     pub fn needs_owner_info_hash(self) -> bool {
+         self.needs_hir_hash()
+             && (!self.sess.opts.unstable_opts.metadata_crate_hash
+-                || self.sess.opts.incremental.is_some()
++                || (*self.sess.opts.read_incremental()).is_some()
+                 || cfg!(debug_assertions))
+     }
+ 
 @@ -2805,7 +2805,7 @@ pub fn is_const_trait_impl(self, def_id: DefId) -> bool {
      }
  
@@ -1409,6 +1890,19 @@ index fb4e30b16..c6a883286 100644
              return regular;
          }
  
+diff --git a/compiler/rustc_middle/src/ty/mod.rs b/compiler/rustc_middle/src/ty/mod.rs
+index 1f2ffb17c..8f20853b7 100644
+--- a/compiler/rustc_middle/src/ty/mod.rs
++++ b/compiler/rustc_middle/src/ty/mod.rs
+@@ -2336,7 +2336,7 @@ pub fn fn_abi_of_instance(
+     ) -> Result<&'tcx FnAbi<'tcx, Ty<'tcx>>, &'tcx FnAbiError<'tcx>> {
+         // Only deduce attrs in full, optimized builds. Otherwise, avoid the query system overhead
+         // of ever invoking the `fn_abi_of_instance_raw` query.
+-        if self.sess.opts.optimize != OptLevel::No && self.sess.opts.incremental.is_none() {
++        if self.sess.opts.optimize != OptLevel::No && (*self.sess.opts.read_incremental()).is_none() {
+             self.fn_abi_of_instance_raw(query)
+         } else {
+             self.fn_abi_of_instance_no_deduced_attrs(query)
 diff --git a/compiler/rustc_middle/src/ty/print/pretty.rs b/compiler/rustc_middle/src/ty/print/pretty.rs
 index cafe93c59..c2bc8681b 100644
 --- a/compiler/rustc_middle/src/ty/print/pretty.rs
@@ -1558,6 +2052,45 @@ index 1e63dca78..e42069318 100644
              let mut vis = EnsureCoroutineFieldAssignmentsNeverAlias {
                  assigned_local: None,
                  saved_locals: &liveness_info.saved_locals,
+diff --git a/compiler/rustc_mir_transform/src/cross_crate_inline.rs b/compiler/rustc_mir_transform/src/cross_crate_inline.rs
+index 53d58439b..01618985e 100644
+--- a/compiler/rustc_mir_transform/src/cross_crate_inline.rs
++++ b/compiler/rustc_mir_transform/src/cross_crate_inline.rs
+@@ -82,7 +82,7 @@ fn cross_crate_inlinable(tcx: TyCtxt<'_>, def_id: LocalDefId) -> bool {
+ 
+     // Don't do any inference when incremental compilation is enabled; the additional inlining that
+     // inference permits also creates more work for small edits.
+-    if tcx.sess.opts.incremental.is_some() {
++    if (*tcx.sess.opts.read_incremental()).is_some() {
+         return false;
+     }
+ 
+diff --git a/compiler/rustc_mir_transform/src/deduce_param_attrs.rs b/compiler/rustc_mir_transform/src/deduce_param_attrs.rs
+index 8814670ca..33c95b713 100644
+--- a/compiler/rustc_mir_transform/src/deduce_param_attrs.rs
++++ b/compiler/rustc_mir_transform/src/deduce_param_attrs.rs
+@@ -177,7 +177,7 @@ pub(super) fn deduced_param_attrs<'tcx>(
+ ) -> &'tcx [DeducedParamAttrs] {
+     // This computation is unfortunately rather expensive, so don't do it unless we're optimizing.
+     // Also skip it in incremental mode.
+-    if tcx.sess.opts.optimize == OptLevel::No || tcx.sess.opts.incremental.is_some() {
++    if tcx.sess.opts.optimize == OptLevel::No || (*tcx.sess.opts.read_incremental()).is_some() {
+         return &[];
+     }
+ 
+diff --git a/compiler/rustc_mir_transform/src/inline.rs b/compiler/rustc_mir_transform/src/inline.rs
+index 38021f4b7..ad74f65bd 100644
+--- a/compiler/rustc_mir_transform/src/inline.rs
++++ b/compiler/rustc_mir_transform/src/inline.rs
+@@ -55,7 +55,7 @@ fn policy(&self, ctx: &crate::PassCtx<'_>) -> PassPolicy {
+                 2 => {
+                     (ctx.opts.optimize == OptLevel::More
+                         || ctx.opts.optimize == OptLevel::Aggressive)
+-                        && ctx.opts.incremental.is_none()
++                        && (*ctx.opts.read_incremental()).is_none()
+                 }
+                 _ => true,
+             }),
 diff --git a/compiler/rustc_mir_transform/src/pass_manager.rs b/compiler/rustc_mir_transform/src/pass_manager.rs
 index f3f65a070..8ecc26910 100644
 --- a/compiler/rustc_mir_transform/src/pass_manager.rs
@@ -1621,9 +2154,45 @@ index bfe3ba91b..7b204f959 100644
          && tcx.is_closure_like(def_id)
      {
 diff --git a/compiler/rustc_monomorphize/src/partitioning.rs b/compiler/rustc_monomorphize/src/partitioning.rs
-index 16df895b0..75376ac08 100644
+index 16df895b0..7fc1f98a8 100644
 --- a/compiler/rustc_monomorphize/src/partitioning.rs
 +++ b/compiler/rustc_monomorphize/src/partitioning.rs
+@@ -203,7 +203,7 @@ fn place_mono_items<'tcx, I>(cx: &PartitioningCx<'_, 'tcx>, mono_items: I) -> Pl
+     I: Iterator<Item = MonoItem<'tcx>>,
+ {
+     let mut codegen_units = UnordMap::default();
+-    let is_incremental_build = cx.tcx.sess.opts.incremental.is_some();
++    let is_incremental_build = (*cx.tcx.sess.opts.read_incremental()).is_some();
+     let mut internalization_candidates = UnordSet::default();
+ 
+     // Determine if monomorphizations instantiated in this crate will be made
+@@ -397,7 +397,7 @@ fn merge_codegen_units<'tcx>(
+     // the `compiler_builtins` crate sets `codegen-units = 10000` and it's
+     // critical they aren't merged. Also, some tests use explicit small values
+     // and likewise won't work if small CGUs are merged.
+-    while cx.tcx.sess.opts.incremental.is_none()
++    while (*cx.tcx.sess.opts.read_incremental()).is_none()
+         && matches!(cx.tcx.sess.codegen_units(), CodegenUnits::Default(_))
+         && codegen_units.len() > 1
+         && codegen_units.iter().any(|cgu| cgu.size_estimate() < NON_INCR_MIN_CGU_SIZE)
+@@ -420,7 +420,7 @@ fn merge_codegen_units<'tcx>(
+     let cgu_name_builder = &mut CodegenUnitNameBuilder::new(cx.tcx);
+ 
+     // Rename the newly merged CGUs.
+-    if cx.tcx.sess.opts.incremental.is_some() {
++    if (*cx.tcx.sess.opts.read_incremental()).is_some() {
+         // If we are doing incremental compilation, we want CGU names to
+         // reflect the path of the source level module they correspond to.
+         // For CGUs that contain the code of multiple modules because of the
+@@ -675,7 +675,7 @@ fn characteristic_def_id_of_mono_item<'tcx>(
+ 
+             if let Some((impl_def_id, DefKind::Impl { of_trait })) = assoc_parent {
+                 if of_trait
+-                    && tcx.sess.opts.incremental.is_some()
++                    && (*tcx.sess.opts.read_incremental()).is_some()
+                     && tcx.is_lang_item(tcx.impl_trait_id(impl_def_id), LangItem::Drop)
+                 {
+                     // Put `Drop::drop` into the same cgu as `drop_glue`
 @@ -1221,7 +1221,7 @@ fn collect_and_partition_mono_items(tcx: TyCtxt<'_>, (): ()) -> MonoItemPartitio
          tcx.dcx().emit_fatal(CouldntDumpMonoStats { error: err.to_string() });
      }
@@ -1643,9 +2212,18 @@ index 16df895b0..75376ac08 100644
      let filename = format!("{crate_name}.mono_items.{ext}");
      let output_path = output_directory.join(&filename);
 diff --git a/compiler/rustc_query_impl/src/execution.rs b/compiler/rustc_query_impl/src/execution.rs
-index ca60614ba..e3bf3285f 100644
+index ca60614ba..91a4e5778 100644
 --- a/compiler/rustc_query_impl/src/execution.rs
 +++ b/compiler/rustc_query_impl/src/execution.rs
+@@ -292,7 +292,7 @@ fn try_execute_query<'tcx, C: QueryCache, const INCR: bool>(
+     // re-executing the query since `try_start` only checks that the query is not currently
+     // executing, but another thread may have already completed the query and stores it result
+     // in the query cache.
+-    if tcx.sess.opts.jobs.frontend.is_some() {
++    if (*tcx.sess.opts.read_jobs()).frontend.is_some() {
+         if let Some((value, index)) = query.cache.lookup(&key) {
+             tcx.prof.query_cache_hit(index.into());
+             return (value, Some(index));
 @@ -543,7 +543,7 @@ fn load_from_disk_or_invoke_provider_green<'tcx, C: QueryCache>(
      };
      let (value, verify) = match try_value {
@@ -1656,7 +2234,7 @@ index ca60614ba..e3bf3285f 100644
              }
  
 diff --git a/compiler/rustc_query_impl/src/incremental.rs b/compiler/rustc_query_impl/src/incremental.rs
-index afcab4a0b..f2a75b6a1 100644
+index 67564a512..151990941 100644
 --- a/compiler/rustc_query_impl/src/incremental.rs
 +++ b/compiler/rustc_query_impl/src/incremental.rs
 @@ -376,7 +376,7 @@ fn encode_query_values_inner<'tcx, C, V>(
@@ -1677,6 +2255,28 @@ index afcab4a0b..f2a75b6a1 100644
  }
  
  /// Inner implementation of [`DepKindVTable::promote_from_disk_fn`] for queries.
+diff --git a/compiler/rustc_resolve/src/diagnostics/impls.rs b/compiler/rustc_resolve/src/diagnostics/impls.rs
+index 744e7c222..86c267841 100644
+--- a/compiler/rustc_resolve/src/diagnostics/impls.rs
++++ b/compiler/rustc_resolve/src/diagnostics/impls.rs
+@@ -2370,7 +2370,7 @@ fn decl_description(&self, b: Decl<'_>, ident: Ident, scope: Scope<'_>) -> Strin
+             let (built_in, from) = match scope {
+                 Scope::StdLibPrelude | Scope::MacroUsePrelude => ("", " from prelude"),
+                 Scope::ExternPreludeFlags
+-                    if self.tcx.sess.opts.externs.get(ident.as_str()).is_some()
++                    if (*self.tcx.sess.opts.read_externs()).get(ident.as_str()).is_some()
+                         || matches!(res, Res::OpenMod(..)) =>
+                 {
+                     ("", " passed with `--extern`")
+@@ -3149,7 +3149,7 @@ pub(crate) fn report_path_resolution_error(
+                     None,
+                 )
+             } else if self.tcx.sess.is_rust_2015() {
+-                let crate_is_available = self.tcx.sess.opts.externs.get(ident.as_str()).is_some();
++                let crate_is_available = (*self.tcx.sess.opts.read_externs()).get(ident.as_str()).is_some();
+                 let (suggestion_message, help) = if crate_is_available {
+                     let edition_help = format!(
+                         "if you're trying to use a dependency named `{ident}`, upgrade your \
 diff --git a/compiler/rustc_session/src/config.rs b/compiler/rustc_session/src/config.rs
 index 64cfdfd5f..7c3993f87 100644
 --- a/compiler/rustc_session/src/config.rs
@@ -1738,10 +2338,37 @@ index e3580d36e..b807713e9 100644
  #![feature(rustc_attrs)]
  // To generate CodegenOptionsTargetModifiers and UnstableOptionsTargetModifiers enums
 diff --git a/compiler/rustc_session/src/options.rs b/compiler/rustc_session/src/options.rs
-index 9a3e74c28..264c4c123 100644
+index 9a3e74c28..293aaee62 100644
 --- a/compiler/rustc_session/src/options.rs
 +++ b/compiler/rustc_session/src/options.rs
-@@ -543,6 +543,26 @@ pub struct $struct_name {
+@@ -281,6 +281,26 @@ pub struct Options {
+             pub mitigation_coverage_map: mitigation_coverage::MitigationCoverageMap,
+         }
+ 
++        impl Options {
++            $(
++                /// The option's value. A read of an option the dependency graph does not
++                /// track is reported, for testing incremental compilation
++                /// (`rustc_data_structures::untracked`).
++                #[inline]
++                #[track_caller]
++                #[allow(dead_code)]
++                pub fn ${concat(read_, $opt)}(&self) -> &$t {
++                    if stringify!($dep_tracking_marker) == "UNTRACKED" {
++                        rustc_data_structures::untracked::untracked_read(concat!(
++                            "the untracked option ",
++                            stringify!($opt)
++                        ));
++                    }
++                    &self.$opt
++                }
++            )*
++        }
++
+         impl Options {
+             pub fn dep_tracking_hash(&self, for_crate_hash: bool) -> Hash64 {
+                 let mut sub_hashes = BTreeMap::new();
+@@ -543,6 +563,26 @@ pub struct $struct_name {
              )*
          }
  
@@ -1782,7 +2409,7 @@ index 4824abae6..ba42fc461 100644
      match crate_type {
          CrateType::Rlib => {
 diff --git a/compiler/rustc_session/src/session.rs b/compiler/rustc_session/src/session.rs
-index f068aaa58..447a2d9a6 100644
+index f068aaa58..c15294494 100644
 --- a/compiler/rustc_session/src/session.rs
 +++ b/compiler/rustc_session/src/session.rs
 @@ -352,11 +352,11 @@ pub fn early_lto(&self) -> LtoCli {
@@ -1814,16 +2441,39 @@ index f068aaa58..447a2d9a6 100644
              || self.prof.is_args_recording_enabled()
              || self.opts.output_types.contains_key(&OutputType::Mir)
              || std::env::var_os("RUSTC_LOG").is_some()
-@@ -897,7 +897,7 @@ pub fn diagnostic_width(&self) -> usize {
+@@ -687,7 +687,10 @@ pub fn record_trimmed_def_paths(&self) {
+         self.dcx().set_must_produce_diag()
+     }
+ 
++    #[track_caller]
+     pub fn proc_macro_quoted_spans(&self) -> impl Iterator<Item = (usize, Span)> {
++        // Recorded while expanding macros, before any query; not tracked.
++        rustc_data_structures::untracked::untracked_read("proc macro quoted spans");
+         // This is equivalent to `.iter().copied().enumerate()`, but that isn't possible for
+         // AppendOnlyVec, so we resort to this scheme.
+         self.proc_macro_quoted_spans.iter_enumerated()
+@@ -895,9 +898,9 @@ pub fn emit_lifetime_markers(&self) -> bool {
+ 
+     pub fn diagnostic_width(&self) -> usize {
          let default_column_width = 140;
-         if let Some(width) = self.opts.diagnostic_width {
+-        if let Some(width) = self.opts.diagnostic_width {
++        if let Some(width) = (*self.opts.read_diagnostic_width()) {
              width
 -        } else if self.opts.unstable_opts.ui_testing {
 +        } else if (*self.opts.unstable_opts.read_ui_testing()) {
              default_column_width
          } else {
              termize::dimensions().map_or(default_column_width, |(w, _)| w)
-@@ -1070,7 +1070,7 @@ pub fn fewer_names(&self) -> bool {
+@@ -1029,7 +1032,7 @@ pub fn lto(&self) -> config::Lto {
+ 
+         // If processing command line options determined that we're incompatible
+         // with ThinLTO (e.g., `-C lto --emit llvm-ir`) then return that option.
+-        if self.opts.cli_forced_local_thinlto_off {
++        if (*self.opts.read_cli_forced_local_thinlto_off()) {
+             return config::Lto::No;
+         }
+ 
+@@ -1070,7 +1073,7 @@ pub fn fewer_names(&self) -> bool {
      }
  
      pub fn unstable_options(&self) -> bool {
@@ -1832,7 +2482,25 @@ index f068aaa58..447a2d9a6 100644
      }
  
      pub fn is_nightly_build(&self) -> bool {
-@@ -1280,9 +1280,9 @@ pub fn pointer_authentication_init_fini(&self) -> Option<&PointerAuthSchema> {
+@@ -1181,7 +1184,7 @@ pub fn must_emit_unwind_tables(&self) -> bool {
+     /// Returns the number of codegen units that should be used for this
+     /// compilation
+     pub fn codegen_units(&self) -> CodegenUnits {
+-        if let Some(n) = self.opts.cli_forced_codegen_units {
++        if let Some(n) = (*self.opts.read_cli_forced_codegen_units()) {
+             return CodegenUnits::User(n);
+         }
+         if let Some(n) = self.target.default_codegen_units {
+@@ -1191,7 +1194,7 @@ pub fn codegen_units(&self) -> CodegenUnits {
+         // If incremental compilation is turned on, we default to a high number
+         // codegen units in order to reduce the "collateral damage" small
+         // changes cause.
+-        if self.opts.incremental.is_some() {
++        if (*self.opts.read_incremental()).is_some() {
+             return CodegenUnits::Default(256);
+         }
+ 
+@@ -1280,9 +1283,9 @@ pub fn pointer_authentication_init_fini(&self) -> Option<&PointerAuthSchema> {
  // JUSTIFICATION: part of session construction
  #[allow(rustc::bad_opt_access)]
  fn default_emitter(sopts: &config::Options, source_map: Arc<SourceMap>) -> Box<DynEmitter> {
@@ -1845,7 +2513,7 @@ index f068aaa58..447a2d9a6 100644
          TerminalUrl::Auto => {
              match (std::env::var("COLORTERM").as_deref(), std::env::var("TERM").as_deref()) {
                  (Ok("truecolor"), Ok("xterm-256color"))
-@@ -1310,9 +1310,9 @@ fn default_emitter(sopts: &config::Options, source_map: Arc<SourceMap>) -> Box<D
+@@ -1310,9 +1313,9 @@ fn default_emitter(sopts: &config::Options, source_map: Arc<SourceMap>) -> Box<D
                      .terminal_url(terminal_url)
                      .theme(if unicode { OutputTheme::Unicode } else { OutputTheme::Ascii })
                      .ignored_directories_in_source_blocks(
@@ -1857,7 +2525,7 @@ index f068aaa58..447a2d9a6 100644
              }
          },
          config::ErrorOutputType::Json { pretty, json_rendered, color_config } => Box::new(
-@@ -1323,9 +1323,9 @@ fn default_emitter(sopts: &config::Options, source_map: Arc<SourceMap>) -> Box<D
+@@ -1323,9 +1326,9 @@ fn default_emitter(sopts: &config::Options, source_map: Arc<SourceMap>) -> Box<D
                  json_rendered,
                  color_config,
              )
@@ -1869,7 +2537,7 @@ index f068aaa58..447a2d9a6 100644
              )
              .diagnostic_width(sopts.diagnostic_width)
              .macro_backtrace(macro_backtrace)
-@@ -1368,7 +1368,7 @@ pub fn build_early_session(
+@@ -1368,7 +1371,7 @@ pub fn build_early_session(
  
      let host_triple = TargetTuple::from_tuple(config::host_tuple());
      let (host, target_warnings) =
@@ -1878,7 +2546,7 @@ index f068aaa58..447a2d9a6 100644
              .unwrap_or_else(|e| {
                  dcx.handle().fatal(format!("Error loading host specification: {e}"))
              });
-@@ -1398,7 +1398,7 @@ pub fn build_session(
+@@ -1398,7 +1401,7 @@ pub fn build_session(
      let (wasm_proc_macro_target, target_warnings) = Target::search(
          &wasm_proc_macro_tuple,
          sopts.sysroot.path(),
@@ -1887,7 +2555,7 @@ index f068aaa58..447a2d9a6 100644
      )
      .unwrap_or_else(|e| {
          dcx.fatal(format!("Error loading wasm proc-macro target specification: {e}"))
-@@ -1414,8 +1414,8 @@ pub fn build_session(
+@@ -1414,8 +1417,8 @@ pub fn build_session(
          let profiler = SelfProfiler::new(
              directory,
              sopts.crate_name.as_deref(),
@@ -1898,7 +2566,7 @@ index f068aaa58..447a2d9a6 100644
          );
          match profiler {
              Ok(profiler) => Some(Arc::new(profiler)),
-@@ -1438,7 +1438,7 @@ pub fn build_session(
+@@ -1438,7 +1441,7 @@ pub fn build_session(
  
      let prof = SelfProfilerRef::new(
          self_profiler,
@@ -1907,7 +2575,7 @@ index f068aaa58..447a2d9a6 100644
      );
  
      let ctfe_backtrace = Lock::new(match env::var("RUSTC_CTFE_BACKTRACE") {
-@@ -1759,7 +1759,7 @@ fn validate_commandline_args_with_session_available(sess: &Session) {
+@@ -1759,7 +1762,7 @@ fn validate_commandline_args_with_session_available(sess: &Session) {
      }
  
      if !sess.target.options.supported_split_debuginfo.contains(&sess.split_debuginfo())
@@ -1916,7 +2584,7 @@ index f068aaa58..447a2d9a6 100644
      {
          sess.dcx().emit_err(diagnostics::SplitDebugInfoUnstablePlatform {
              debuginfo: sess.split_debuginfo(),
-@@ -1794,7 +1794,7 @@ fn validate_commandline_args_with_session_available(sess: &Session) {
+@@ -1794,7 +1797,7 @@ fn validate_commandline_args_with_session_available(sess: &Session) {
          sess.dcx().emit_err(diagnostics::InstrumentationNotSupported { us: "XRay".to_string() });
      }
  

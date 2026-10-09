@@ -18,7 +18,7 @@ import re
 from collections import Counter
 from pathlib import Path
 
-SESSION = re.compile(rb"\.[0-9a-z]{7}\.rcgu\.o")
+SESSION = re.compile(rb"\.[0-9a-z]{7}(\.rcgu\.(?:o|dwo))")
 
 
 def ar_members(data):
@@ -41,15 +41,15 @@ def ar_members(data):
             offset = int(name[1:])
             name = names[offset:names.index(b"/\n", offset)]
         name = name.rstrip(b"/")
-        members[SESSION.sub(b".rcgu.o", name).decode("utf-8", "replace")] = body
+        members[SESSION.sub(rb"\1", name).decode("utf-8", "replace")] = body
     return members
 
 
 def normalized_rlib(path):
     out = {}
     for name, body in ar_members(Path(path).read_bytes()).items():
-        if name == "lib.rmeta-link":
-            body = SESSION.sub(b".rcgu.o", body)
+        # The link metadata and, with split debuginfo, the objects name session-suffixed files.
+        body = SESSION.sub(rb"\1", body)
         out[name] = hashlib.sha256(body).hexdigest()
     return out
 
@@ -81,7 +81,7 @@ def collect(stdout, target):
         if msg.get("executable"):
             f = msg["executable"]
             rel = str(Path(f).relative_to(target)) if f.startswith(str(target)) else f
-            found["exe"][rel] = hashlib.sha256(Path(f).read_bytes()).hexdigest()
+            found["exe"][rel] = hashlib.sha256(SESSION.sub(rb"\1", Path(f).read_bytes())).hexdigest()
     return found
 
 

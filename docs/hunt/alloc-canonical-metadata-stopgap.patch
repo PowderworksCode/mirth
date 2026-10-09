@@ -1,0 +1,113 @@
+--- a/compiler/rustc_metadata/src/rmeta/encoder.rs
++++ b/compiler/rustc_metadata/src/rmeta/encoder.rs
+@@ -10,7 +10,7 @@
+ 
+ use rustc_attr_ir::{AttributeKind, EncodeCrossCrate, find_attr};
+ use rustc_data_structures::fingerprint::Fingerprint;
+-use rustc_data_structures::fx::{FxIndexMap, FxIndexSet};
++use rustc_data_structures::fx::{FxHashSet, FxIndexMap, FxIndexSet};
+ use rustc_data_structures::memmap::{Mmap, MmapMut};
+ use rustc_data_structures::owned_slice::slice_owned;
+ use rustc_data_structures::stable_hash::{StableHash, StableHasher};
+@@ -66,6 +66,10 @@
+     predicate_shorthands: FxHashMap<ty::PredicateKind<'tcx>, usize>,
+ 
+     interpret_allocs: FxIndexSet<interpret::AllocId>,
++    // Indices of allocations, and of immutable memory by contents (see `alloc_index`).
++    alloc_canon: FxHashMap<interpret::AllocId, usize>,
++    alloc_by_contents: FxHashMap<AllocContents, usize>,
++    alloc_in_progress: FxHashSet<interpret::AllocId>,
+ 
+     // This is used to speed up Span encoding.
+     // The `usize` is an index into the `MonotonicVec`
+@@ -400,12 +404,79 @@
+     }
+ 
+     fn encode_alloc_id(&mut self, alloc_id: &rustc_middle::mir::interpret::AllocId) {
+-        let (index, _) = self.interpret_allocs.insert_full(*alloc_id);
++        let index = self.alloc_index(*alloc_id);
+ 
+         index.encode(self);
+     }
+ }
+ 
++/// The contents of an immutable memory allocation, with the pointers in it given as the indices
++/// of what they point to.
++#[derive(PartialEq, Eq, Hash)]
++struct AllocContents {
++    bytes: Vec<u8>,
++    align: u64,
++    ptrs: Vec<(u64, usize, bool, bool)>,
++}
++
++impl<'a, 'tcx> EncodeContext<'a, 'tcx> {
++    /// The index of an allocation in the metadata. Immutable memory with equal contents gets
++    /// one index: an incremental session can hold several `AllocId`s for what a clean build
++    /// creates once (a constant's allocation copied into another body by MIR inlining, when one
++    /// body comes from the incremental cache and the other is computed afresh), and the
++    /// metadata must not depend on that. Constants have no guaranteed distinct addresses.
++    fn alloc_index(&mut self, id: interpret::AllocId) -> usize {
++        if let Some(&index) = self.alloc_canon.get(&id) {
++            return index;
++        }
++        let plain = |this: &mut Self| {
++            let (index, _) = this.interpret_allocs.insert_full(id);
++            this.alloc_canon.insert(id, index);
++            index
++        };
++        let Some(interpret::GlobalAlloc::Memory(alloc)) = self.tcx.try_get_global_alloc(id) else {
++            return plain(self);
++        };
++        let alloc = alloc.inner();
++        let len = alloc.len();
++        let whole = interpret::alloc_range(rustc_abi::Size::ZERO, rustc_abi::Size::from_bytes(len));
++        // Only immutable, fully initialized memory without pointer fragments, and not memory
++        // already being looked at further up (a cycle of pointers).
++        if alloc.mutability.is_mut()
++            || alloc.init_mask().is_range_initialized(whole).is_err()
++            || alloc.provenance().provenances().count() != alloc.provenance().ptrs().len()
++            || !self.alloc_in_progress.insert(id)
++        {
++            return plain(self);
++        }
++        let ptrs = alloc
++            .provenance()
++            .ptrs()
++            .iter()
++            .map(|(offset, prov)| {
++                (offset.bytes(), self.alloc_index(prov.alloc_id()), prov.immutable(), prov.shared_ref())
++            })
++            .collect();
++        self.alloc_in_progress.remove(&id);
++        // A cycle back to this id gave it a place already.
++        if let Some(&index) = self.alloc_canon.get(&id) {
++            return index;
++        }
++        let contents = AllocContents {
++            bytes: alloc.inspect_with_uninit_and_ptr_outside_interpreter(0..len).to_vec(),
++            align: alloc.align.bytes(),
++            ptrs,
++        };
++        if let Some(&earlier) = self.alloc_by_contents.get(&contents) {
++            self.alloc_canon.insert(id, earlier);
++            return earlier;
++        }
++        let index = plain(self);
++        self.alloc_by_contents.insert(contents, index);
++        index
++    }
++}
++
+ // Shorthand for `$self.$tables.$table.set_some($def_id.index, $self.lazy($value))`, which would
+ // normally need extra variables to avoid errors about multiple mutable borrows.
+ // Also those macros greatly simplify refactorings and modifications of writing to tables.
+@@ -2731,6 +2802,9 @@
+         predicate_shorthands: Default::default(),
+         source_file_cache,
+         interpret_allocs: Default::default(),
++        alloc_canon: Default::default(),
++        alloc_by_contents: Default::default(),
++        alloc_in_progress: Default::default(),
+         required_source_files,
+         is_proc_macro: tcx.crate_types().contains(&CrateType::ProcMacro),
+         hygiene_ctxt: Default::default(),

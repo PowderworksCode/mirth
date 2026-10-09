@@ -27,7 +27,9 @@ builds' differing files and logs.
 
     rustc/fuzz.py --rustc <rustc> --fixture fixtures/sink --work <dir> [--workers 8] [--edits N]
 
-Stop it early by creating <work>/STOP. Progress is in <work>/stats.json.
+Stop it early by creating <work>/STOP. Progress is in <work>/stats.json. With
+--pause-on-finding all workers stop at the first finding (<work>/PAUSED says which); patch
+rustc and run again with the patched compiler.
 """
 
 import argparse
@@ -58,212 +60,28 @@ p.add_argument("--toolchain", default="nightly-2026-10-06")
 p.add_argument("--rustflags", default="-Zincremental-verify-ich")
 p.add_argument("--seed", type=int, default=0)
 p.add_argument("--timeout", type=int, default=180, help="seconds before a build counts as hung")
-p.add_argument("--p5-builds", type=int, default=1,
+p.add_argument("--p5-builds", type=int, default=12,
                help="clean builds made again when anything differs, to tell nondeterminism from P6")
+p.add_argument("--min-free-gb", type=int, default=20, help="stop when the disk has less free")
 p.add_argument("--check", action="store_true",
                help="cargo check instead of cargo build: metadata only, no code or binaries")
 p.add_argument("--no-verify-reuse", action="store_true",
                help="do not set RUSTC_VERIFY_REUSE (needs a compiler with docs/hunt/verify-reuse.patch)")
+p.add_argument("--target", default=None,
+               help="pass --target to cargo, so RUSTFLAGS skip build scripts and proc macros")
+p.add_argument("--pause-on-finding", action="store_true",
+               help="stop all workers at the first finding (writes <work>/PAUSED); patch rustc and "
+                    "run again to resume")
 args = p.parse_args()
 
 WORK = Path(args.work).resolve()
 FIXTURE = Path(args.fixture).resolve()
 BIN = FIXTURE.name
+# Kinds not compared here: metadata is compared separately; with split debuginfo, objects and
+# binaries name .dwo files by session, so two clean builds differ too.
+SKIP = {"rmeta"} | ({"rlib", "exe"} if re.search(r"-Csplit-debuginfo=(packed|unpacked)", args.rustflags) else set())
 
-# ---------------------------------------------------------------- edits
-
-
-def blocks(text):
-    """Top-level items: blank-line separated, continuation blocks merged."""
-    out = []
-    for b in text.split("\n\n"):
-        if out and (b[:1].isspace() or b.startswith("}") or b.startswith("where")):
-            out[-1] += "\n\n" + b
-        else:
-            out.append(b)
-    return out
-
-
-def edit_lines(text, rng, f):
-    lines = text.split("\n")
-    r = f(lines, rng)
-    return None if r is None else "\n".join(r)
-
-
-def comment_line(text, rng, n):
-    def f(lines, rng):
-        i = rng.randrange(len(lines) + 1)
-        indent = re.match(r"\s*", lines[i] if i < len(lines) else "").group(0)
-        return lines[:i] + [f"{indent}// fuzz {n}"] + lines[i:]
-    return edit_lines(text, rng, f)
-
-
-def blank_line(text, rng, n):
-    return edit_lines(text, rng, lambda lines, rng: (lambda i: lines[:i] + [""] + lines[i:])(rng.randrange(len(lines) + 1)))
-
-
-def remove_comment(text, rng, n):
-    def f(lines, rng):
-        idx = [i for i, l in enumerate(lines) if l.strip().startswith("//") and not l.strip().startswith("//!")]
-        if not idx:
-            return None
-        i = rng.choice(idx)
-        return lines[:i] + lines[i + 1:]
-    return edit_lines(text, rng, f)
-
-
-def indent_line(text, rng, n):
-    def f(lines, rng):
-        idx = [i for i, l in enumerate(lines) if l.strip()]
-        i = rng.choice(idx)
-        lines[i] = "    " + lines[i]
-        return lines
-    return edit_lines(text, rng, f)
-
-
-def swap_items(text, rng, n):
-    b = blocks(text)
-    if len(b) < 3:
-        return None
-    i = rng.randrange(1, len(b) - 1)
-    b[i], b[i + 1] = b[i + 1], b[i]
-    return "\n\n".join(b)
-
-
-def move_item_to_end(text, rng, n):
-    b = blocks(text)
-    if len(b) < 3:
-        return None
-    i = rng.randrange(1, len(b))
-    item = b.pop(i)
-    return "\n\n".join(b + [item.rstrip("\n")]) + "\n"
-
-
-def delete_item(text, rng, n):
-    b = blocks(text)
-    if len(b) < 3:
-        return None
-    b.pop(rng.randrange(1, len(b)))
-    return "\n\n".join(b)
-
-
-def duplicate_fn(text, rng, n):
-    b = blocks(text)
-    fns = [i for i, x in enumerate(b) if re.search(r"^(pub(\([^)]*\))? )?(const )?(async )?fn \w+", x, re.M)]
-    if not fns:
-        return None
-    i = rng.choice(fns)
-    copy = re.sub(r"\bfn (\w+)", lambda m: f"fn {m.group(1)}_fuzz{n}", b[i], count=1)
-    b.insert(i + 1, copy)
-    return "\n\n".join(b)
-
-
-ADDITIONS = [
-    "fn fuzz_private_{n}() -> u32 {{ {n} }}",
-    "pub fn fuzz_public_{n}(x: u32) -> u32 {{ x.wrapping_mul({n}) }}",
-    "#[inline]\npub fn fuzz_inline_{n}<T: Clone>(x: &T) -> (T, u32) {{ (x.clone(), {n}) }}",
-    "pub const FUZZ_{n}: &str = \"fuzz {n}\";",
-    "pub static FUZZ_STATIC_{n}: [u8; 3] = [{n} as u8, 1, 2];",
-    "#[derive(Debug, Clone, PartialEq)]\npub struct Fuzz{n}<T, const N: usize> {{ pub items: [T; N], pub tag: &'static str }}",
-    "pub enum FuzzEnum{n} {{ A(u32), B {{ x: i64 }}, C }}",
-    "pub trait FuzzTrait{n} {{ fn go(&self) -> impl Sized; const K: u32 = {n}; }}",
-    "pub async fn fuzz_async_{n}() -> u32 {{ {n} }}",
-    "pub type FuzzAlias{n}<T> = Vec<(T, u32)>;",
-    "macro_rules! fuzz_macro_{n} {{ ($e:expr) => {{ $e + {n} }}; }}",
-    "pub mod fuzz_mod_{n} {{ pub fn inner() -> &'static str {{ \"{n}\" }} }}",
-]
-
-
-def add_item(text, rng, n):
-    b = blocks(text)
-    i = rng.randrange(1, len(b) + 1)
-    b.insert(i, rng.choice(ADDITIONS).format(n=n))
-    return "\n\n".join(b)
-
-
-def int_literal(text, rng, n):
-    ms = [m for m in re.finditer(r"(?<![\w.])(\d+)(?![\w.])", text)]
-    if not ms:
-        return None
-    m = rng.choice(ms)
-    return text[: m.start()] + str(int(m.group(1)) + 1) + text[m.end():]
-
-
-def str_literal(text, rng, n):
-    ms = [m for m in re.finditer(r'(?<![\w\\])"([^"\\\n]*)"', text)]
-    if not ms:
-        return None
-    m = rng.choice(ms)
-    return text[: m.start()] + '"' + m.group(1) + "~" + '"' + text[m.end():]
-
-
-def toggle_inline(text, rng, n):
-    lines = text.split("\n")
-    inl = [i for i, l in enumerate(lines) if l.strip() in ("#[inline]", "#[inline(never)]", "#[inline(always)]")]
-    fns = [i for i, l in enumerate(lines) if re.match(r"\s*(pub(\([^)]*\))? )?(const )?fn ", l)]
-    if inl and rng.random() < 0.5:
-        lines.pop(rng.choice(inl))
-    elif fns:
-        i = rng.choice(fns)
-        indent = re.match(r"\s*", lines[i]).group(0)
-        lines.insert(i, indent + rng.choice(["#[inline]", "#[inline(never)]", "#[cold]", "#[must_use]"]))
-    else:
-        return None
-    return "\n".join(lines)
-
-
-def doc_comment(text, rng, n):
-    lines = text.split("\n")
-    idx = [i for i, l in enumerate(lines) if re.match(r"\s*(pub(\([^)]*\))? )?(fn|struct|enum|trait|const|static|type|mod) ", l)]
-    if not idx:
-        return None
-    i = rng.choice(idx)
-    indent = re.match(r"\s*", lines[i]).group(0)
-    lines.insert(i, f"{indent}/// Fuzz doc {n}, see [`Vec`].")
-    return "\n".join(lines)
-
-
-def reorder_derive(text, rng, n):
-    ms = list(re.finditer(r"#\[derive\(([^)]*)\)\]", text))
-    if not ms:
-        return None
-    m = rng.choice(ms)
-    names = [x.strip() for x in m.group(1).split(",") if x.strip()]
-    if len(names) < 2:
-        return None
-    rng.shuffle(names)
-    return text[: m.start()] + "#[derive(" + ", ".join(names) + ")]" + text[m.end():]
-
-
-def narrow_visibility(text, rng, n):
-    ms = list(re.finditer(r"\bpub (fn|struct|enum|const|static|trait|mod|type) ", text))
-    if not ms:
-        return None
-    m = rng.choice(ms)
-    return text[: m.start()] + "pub(crate) " + m.group(1) + " " + text[m.end():]
-
-
-def rename_local(text, rng, n):
-    ms = list(re.finditer(r"\blet (mut )?([a-z_][a-z0-9_]*)\b", text))
-    if not ms:
-        return None
-    m = rng.choice(ms)
-    name = m.group(2)
-    if name == "_":
-        return None
-    # Rename from the binding to the end of the enclosing top-level block.
-    end = text.find("\n}\n", m.end())
-    end = len(text) if end < 0 else end
-    body = re.sub(rf"\b{name}\b", f"{name}_f{n}", text[m.start():end])
-    return text[: m.start()] + body + text[end:]
-
-
-EDITS = [
-    (comment_line, 10), (blank_line, 6), (remove_comment, 3), (indent_line, 4),
-    (swap_items, 6), (move_item_to_end, 3), (delete_item, 2), (duplicate_fn, 4),
-    (add_item, 8), (int_literal, 6), (str_literal, 4), (toggle_inline, 4),
-    (doc_comment, 4), (reorder_derive, 2), (narrow_visibility, 2), (rename_local, 3),
-]
+from mutations import EDITS, int_literal, str_literal  # noqa: E402
 
 # ---------------------------------------------------------------- building
 
@@ -289,7 +107,8 @@ def build(src, target):
     t = time.time()
     proc = subprocess.Popen(
         ["cargo", f"+{args.toolchain}", "check" if args.check else "build", "--workspace", "--offline", "-j", "4",
-         "--target-dir", str(target), "--message-format=json-render-diagnostics"],
+         "--target-dir", str(target), "--message-format=json-render-diagnostics",
+         *(["--target", args.target] if args.target else [])],
         cwd=src, env=env(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
         start_new_session=True)
     hang = False
@@ -345,6 +164,14 @@ def note_untracked(lines):
     if new:
         with path.open("a") as f:
             f.write("".join(line + "\n" for line in new))
+
+
+def known(kind, detail):
+    """Reports seen since the reuse check exists and judged benign (docs/shadow-mode.md): reused
+    codegen units differing only in debuginfo at the end of the file, and constant allocations
+    shared differently between evaluations in different typing modes."""
+    return kind == "verify-reuse" and all(
+        d == "codegen unit" or d.startswith("allocation sharing eval_to_const_value_raw") for d in detail)
 
 
 def reuse_checks(log):
@@ -414,6 +241,10 @@ def worker(k):
 
     def report(kind, detail, inc, clean, extra=None):
         stats["findings"][kind] = stats["findings"].get(kind, 0) + 1
+        if args.pause_on_finding and not known(kind, detail):
+            (WORK / "PAUSED").write_text(json.dumps({"worker": k, "edit": stats["edits"], "kind": kind,
+                                                     "detail": detail}, indent=1))
+            (WORK / "STOP").touch()
         key = kind + ":" + ",".join(sorted(detail))
         if kept.get(key, 0) >= args.keep:
             return
@@ -423,6 +254,12 @@ def worker(k):
         (d / "history.json").write_text(json.dumps(history, indent=1))
         (d / "finding.json").write_text(json.dumps({"kind": kind, "detail": detail, "extra": extra}, indent=1))
         (d / "inc.log").write_text(inc["log"][-8000:])
+        for name, b in (("inc", inc), ("clean", clean)):
+            lines = b["log"].splitlines() if b else []
+            hits = [i for i, l in enumerate(lines) if "panicked at" in l or "internal compiler error" in l
+                    or "unexpectedly panicked" in l or "interrupted by SIG" in l]
+            if hits:
+                (d / f"{name}-ice.txt").write_text("\n".join(lines[max(0, hits[0] - 5):hits[0] + 60]))
         (d / "clean.log").write_text(clean["log"][-8000:] if clean else "")
         for rel in detail:
             if rel in inc["rmetas"]:
@@ -435,6 +272,9 @@ def worker(k):
         return stats
     started = time.time()
     while stats["edits"] < args.edits and not (WORK / "STOP").exists():
+        if shutil.disk_usage(WORK).free < args.min_free_gb * 2**30:
+            print(f"worker {k}: less than {args.min_free_gb} GB free, stopping", flush=True)
+            break
         if len([h for h in history if h["kept"]]) >= args.reset and not reset():
             break
         n = stats["edits"]
@@ -488,7 +328,7 @@ def worker(k):
             stats["compared"] += 1
             a, b = inc["rmetas"], clean["rmetas"]
             differ = sorted(r for r in set(a) | set(b) if a.get(r) != b.get(r))
-            others = {k: v for k, v in artifacts.compare(inc["art"], clean["art"]).items() if k != "rmeta"}
+            others = {k: v for k, v in artifacts.compare(inc["art"], clean["art"]).items() if k not in SKIP}
             if differ or others:
                 # Build clean once more: if two clean builds differ, the difference is
                 # nondeterminism (P5), not incremental reuse.
@@ -499,7 +339,7 @@ def worker(k):
                     c = again["rmetas"]
                     p5 = sorted(r for r in set(b) | set(c) if b.get(r) != c.get(r))
                     p5 += [f"{k}: {v[0]}" for k, v in artifacts.compare(clean["art"], again["art"]).items()
-                           if k != "rmeta"]
+                           if k not in SKIP]
                     if p5 or not again["ok"]:
                         break
                 if again["ok"] and p5:
@@ -534,6 +374,8 @@ def worker(k):
 
 if __name__ == "__main__":
     WORK.mkdir(parents=True, exist_ok=True)
+    for f in ("STOP", "PAUSED"):
+        (WORK / f).unlink(missing_ok=True)
     with multiprocessing.Pool(args.workers) as pool:
         results = pool.map(worker, range(args.workers))
     total = {"edits": sum(r["edits"] for r in results), "built": sum(r["built"] for r in results),

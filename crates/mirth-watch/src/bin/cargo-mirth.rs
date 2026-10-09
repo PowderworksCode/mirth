@@ -22,13 +22,14 @@ use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
-const RUNTIME: [(&str, &str); 3] = [
+const RUNTIME: [(&str, &str); 4] = [
     ("lib.rs", include_str!("../../../mirth-runtime/src/lib.rs")),
     (
         "capture.rs",
         include_str!("../../../mirth-runtime/src/capture.rs"),
     ),
     ("log.rs", include_str!("../../../mirth-runtime/src/log.rs")),
+    ("coverage.rs", include_str!("../../../mirth-runtime/src/coverage.rs")),
 ];
 
 fn fail(message: impl std::fmt::Display) -> ExitCode {

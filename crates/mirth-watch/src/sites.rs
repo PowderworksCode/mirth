@@ -29,6 +29,7 @@ pub struct Hooks {
     join: DefId,
     event: DefId,
     point: DefId,
+    cover: Option<DefId>,
 }
 
 impl Hooks {
@@ -42,6 +43,7 @@ impl Hooks {
             join: item("mirth_join")?,
             event: item("mirth_event")?,
             point: item("mirth_point")?,
+            cover: item("mirth_cover"),
         })
     }
 }
@@ -143,6 +145,7 @@ enum What<'tcx> {
         target: DefId,
         mode: Mode,
     },
+    Cover,
 }
 
 struct Found<'tcx> {
@@ -303,6 +306,10 @@ pub fn instrument<'tcx>(
             }
         }
     }
+    let runs = matches!(tcx.def_kind(def_id), DefKind::Fn | DefKind::AssocFn | DefKind::Closure);
+    if config.coverage.functions && runs && hooks.cover.is_some() {
+        found.push(Found { at: START_BLOCK.start_location(), what: What::Cover });
+    }
     if found.is_empty() {
         return None;
     }
@@ -317,6 +324,8 @@ pub fn instrument<'tcx>(
         let span = original.source_info(at).span;
         let id = match what {
             What::Enter { .. } | What::Exit => frame_site,
+            // The runtime's coverage table keeps sites with the low bit set.
+            What::Cover => mirth::identity::identity(&format!("{caller}|cover")) | 1,
             _ => mirth::identity::identity(&format!(
                 "{caller}|{:?}|{}|{}|{n}",
                 at.block,
@@ -378,6 +387,15 @@ pub fn instrument<'tcx>(
                         before: Vec::new(),
                     });
                 }
+            }
+            What::Cover => {
+                site("cover", Mode::Count, caller.clone());
+                hooks_here.push(Hook {
+                    callee: hooks.cover.expect("checked above"),
+                    over: Vec::new(),
+                    arguments: vec![build.number(id)],
+                    before: Vec::new(),
+                });
             }
             What::Touch { target, mode } => {
                 site("touch", mode, path_of(tcx, target));

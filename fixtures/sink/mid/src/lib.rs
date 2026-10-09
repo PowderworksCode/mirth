@@ -113,3 +113,17 @@ pub fn labels(squares: &[Square]) -> Vec<String> {
 pub fn colours() -> Vec<(&'static str, &'static str)> {
     [Colour::Red, Colour::Green, Colour::Blue].iter().map(|c| (Colour::NAME, c.tag())).collect()
 }
+
+/// Inlines `sink_core::extras::window` from the metadata.
+pub fn first_two<T: Copy>(v: &[T]) -> Option<&[T]> {
+    sink_core::extras::window(v, 2)
+}
+
+pub fn words() -> usize {
+    sink_core::words_len!()
+}
+
+/// A `mixed_site` binding from a function-like proc macro.
+pub fn hygienic(x: u32) -> u32 {
+    sink_macros::plus_one!(x)
+}

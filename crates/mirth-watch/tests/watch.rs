@@ -411,6 +411,57 @@ fn cargo_mirth_runs_a_project() {
     );
 }
 
+#[test]
+fn coverage_records_which_functions_ran() {
+    let root = scratch("coverage");
+    let project = root.join("effects");
+    copy(&workspace().join("fixtures/effects"), &project);
+    std::fs::remove_file(project.join("watch.toml")).expect("removing the frames");
+    std::fs::write(
+        project.join("mirth.toml"),
+        "[scope]\ncrates = [\"st*\", \"app\"]\n\n[coverage]\nfunctions = true\n",
+    )
+    .expect("writing the configuration");
+    let files = root.join("files");
+    std::fs::create_dir_all(&files).expect("a directory for the program");
+
+    let ran = Command::new(env!("CARGO_BIN_EXE_cargo-mirth"))
+        .args(["mirth", "run", "--quiet", "--"])
+        .arg(&files)
+        .current_dir(&project)
+        .env_remove("CARGO_TARGET_DIR")
+        .output()
+        .expect("running cargo mirth");
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+
+    let mirth = project.join("target").join("mirth");
+    let mut covers = std::collections::HashMap::new();
+    for entry in std::fs::read_dir(mirth.join("sites")).expect("sites") {
+        let table = std::fs::read_to_string(entry.expect("an entry").path()).expect("a table");
+        for line in table.lines() {
+            let fields: Vec<&str> = line.split('\t').collect();
+            if fields[1] == "cover" {
+                covers.insert(fields[4].to_string(), fields[0].to_string());
+            }
+        }
+    }
+    let logs: Vec<_> = std::fs::read_dir(mirth.join("logs"))
+        .expect("logs")
+        .map(|entry| std::fs::read_to_string(entry.expect("an entry").path()).expect("a log"))
+        .collect();
+    assert_eq!(logs.len(), 1, "one process ran with the runtime recording");
+    let hit: std::collections::HashSet<&str> =
+        logs[0].lines().filter_map(|line| line.strip_prefix("V\t")).collect();
+    let ran = |path: &str| {
+        let site = covers.get(path).unwrap_or_else(|| panic!("no cover site for {path}: {covers:?}"));
+        hit.contains(site.as_str())
+    };
+    assert!(ran("app::main"), "main ran");
+    assert!(ran("store::save"), "a called function ran");
+    assert!(ran("store::in_closure::{closure#0}"), "a closure ran");
+    assert!(covers.len() > hit.len(), "not everything instrumented ran");
+}
+
 fn copy(from: &Path, to: &Path) {
     std::fs::create_dir_all(to).expect("a directory");
     for entry in std::fs::read_dir(from).expect("a fixture") {

@@ -139,6 +139,9 @@ extern "C" fn finish() {
         }
         text.push('\n');
     }
+    for site in crate::coverage::hits() {
+        text.push_str(&format!("V\t{site}\n"));
+    }
     let ns = log.start_ns + log.start.elapsed().as_nanos();
     text.push_str(&format!("X\t{ns}\n"));
     let file = log.file.lock().unwrap_or_else(|it| it.into_inner());

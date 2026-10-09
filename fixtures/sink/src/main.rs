@@ -28,8 +28,50 @@ fn main() {
     check("index", V2 { x: 3.0, y: 4.0 }[1] == 4.0);
     check("gat", vec![1, 2, 3].first_matching(|x| **x > 1) == Some(&2));
     check("rpitit", sink_mid::labels(&[sq]) == vec!["square 2".to_string()]);
+    check("statics", sink_core::extras::WORDS[1] == "beta" && sink_core::extras::NESTED[2] == [1, 2, 3]);
+    check("include", sink_core::extras::DATA.trim() == "included text" && sink_core::extras::BYTES.len() == 14);
+    check("no_mangle", sink_core::extras::sink_extras_add(2, 3) == 5);
+    check("path mod", sink_core::extras::inner::twice(4) == 8 && sink_core::find(2) == Some("two"));
+    check("any", sink_core::extras::kind(&5u32) == "u32" && sink_core::extras::kind(&"x") == "str");
+    check("inline across crates", sink_mid::first_two(&[1, 2, 3]) == Some(&[1, 2][..]) && sink_mid::words() == 3 && sink_mid::hygienic(4) == 5);
     check("hrtb", shapes::apply_to_all(&["ab".into(), "cde".into()], |s| s.trim()) == vec![2, 3]);
 
+    {
+        use sink_core::grammar as g;
+        check("bits", g::bits(12, 10) == 63);
+        check("continue", g::odd_sum(&[1, 2, 3, 200, 5]) == 9);
+        check("ranges", g::ranges(&[7, 8, 9]) == (2, 7));
+        check("patterns", g::patterns(-1, std::cmp::Ordering::Less, g::Pt { x: 1, y: 1 }) == "minus one"
+            && g::patterns(0, std::cmp::Ordering::Less, g::Pt { x: 1, y: 1 }) == "zero, less"
+            && g::patterns(3, std::cmp::Ordering::Equal, g::Pt { x: 1, y: 1 }) == "small, equal"
+            && g::patterns(-20, std::cmp::Ordering::Greater, g::Pt { x: 1, y: 1 }) == "very negative"
+            && g::patterns(500, std::cmp::Ordering::Greater, g::Pt { x: 1, y: 1 }) == "large"
+            && g::patterns(50, std::cmp::Ordering::Greater, g::Pt { x: 0, y: 2 }) == "on the y axis");
+        check("pointers", g::pointers(&mut [1, 2]) == 2 + 5 + 1 + 1);
+        check("qualified", g::first_of(&vec![1u8]) && g::cloned_items([1, 2].iter()) == 2 && g::default_of::<u8>() == 0);
+        check("const args", g::negative_const() == 0 && g::macro_type(3) == 3);
+        check("use bound", g::captured(&[1, 2]).sum::<u8>() == 3);
+        check("raw identifiers", g::reserved() == 14);
+    }
+    {
+        use sink_nightly::{exprs as e, items as i, patterns as p, types as t};
+        use sink_nightly::items::{Named, Size};
+        check("nightly exprs", e::attributed() == 3 && e::count(5, 0) == 5 && e::builtins() == 4 + 5
+            && e::generated() == 6 && e::coroutine() == 11 && e::postfix(3) == 8 && e::binders(&7) == 7);
+        check("try blocks", e::tries(Some(2), 3) == (Some(5), Some(4), Some(3)) && e::tries(None, 0) == (None, None, None));
+        check("nightly items", i::add(2, 3) == 5 && i::times(2, 3) == 6 && 7u64.size() == 8 && 'c'.size() == 1
+            && 3u8.name() == "named" && i::double!(4) == 8 && i::make::<u8>() == (0, 0) && i::plain(&1u8)
+            && i::bump(&mut i::restricted(1)) == 2);
+        check("const traits", sink_nightly::consts::HEAVY == 8 && sink_nightly::consts::weigh(&3u8) == 6);
+        check("move expr, contracts", e::moved(vec![1, 2]) == 2 && e::contracted(3) == 4);
+        check("delegation", { use sink_nightly::items::Greet; let o = i::Outer(i::Inner); o.hello() + o.bye() == 3 && i::Wrapped(i::Inner).hello() == 1 });
+        // Guard patterns: Some(2) gives 4 today, not 1 (docs/hunt.md, finding 15); not checked.
+        check("nightly patterns", p::deref(Box::new(0)) == 0 && p::deref(Box::new(4)) == 5 && p::guarded(Some(9)) == 4
+            && p::guarded(None) == 2 && p::never(Ok(3)) == 3);
+        check("nightly types", t::needs_send(&t::Local) && t::needs_send_path(&t::Local) && t::const_block_arg() == 4
+            && t::takes(std::pin::pin!(6u32)) == 6);
+    }
+    check("edition 2015", sink_old::apply(&sink_old::Twice, 4) == 8 && sink_old::identifiers() == 10);
     check("pipeline", algo::Pipeline::new().then(|x: i32| x + 1).then(|x| x * 10).run(1) == 20);
     check("classify", algo::classify(&[1, 5, 6, 7]) == "small head, long" && algo::classify(&[3, 9, 3]) == "same ends");
     let program = [Token::Num(2), Token::Group(vec![Token::Num(3), Token::Word("dup".into()), Token::Op('*')]), Token::Op('+')];
