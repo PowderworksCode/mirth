@@ -25,9 +25,18 @@ host=$(rustc +"$TOOLCHAIN" -vV | sed -n 's/^host: //p')
 cargo +"$TOOLCHAIN" build --release --manifest-path "$repo/Cargo.toml" -p mirth-watch
 out=$repo/target/release
 # rustc on its own embeds the runtime's full metadata in the rlib, so it can
-# be injected as one file. (Cargo would put it in a separate .rmeta.)
+# be injected as one file. (Cargo would put it in a separate .rmeta.) Each
+# build directory has its own copy, replaced only when it changes: every crate
+# of the compiler depends on it, and Cargo rebuilds them all, without the
+# wrapper, when it changes under a later x.py run.
+runtime=$build/mirth-runtime
+mkdir -p "$runtime"
+fresh=$(mktemp -d)
 rustc +"$TOOLCHAIN" --edition 2024 --crate-type rlib --crate-name mirth_runtime -O \
-  "$repo/crates/mirth-runtime/src/lib.rs" --out-dir "$out"
+  "$repo/crates/mirth-runtime/src/lib.rs" --out-dir "$fresh"
+cmp -s "$fresh/libmirth_runtime.rlib" "$runtime/libmirth_runtime.rlib" ||
+  cp "$fresh/libmirth_runtime.rlib" "$runtime/libmirth_runtime.rlib"
+rm -rf "$fresh"
 
 if [ "${1:-}" = --again ]; then
   # Forget the fingerprints of the crates in scope, so Cargo compiles them
@@ -44,15 +53,24 @@ fi
 # and rustdoc get the second, so both are set. They must be the same in every
 # x.py run (suites.sh sets them too), or Cargo recompiles the compiler, and
 # without the wrapper.
-export RUSTFLAGS_BOOTSTRAP="-L dependency=$out"
-export RUSTFLAGS_NOT_BOOTSTRAP="-L dependency=$out"
+export RUSTFLAGS_BOOTSTRAP="-L dependency=$runtime"
+export RUSTFLAGS_NOT_BOOTSTRAP="$RUSTFLAGS_BOOTSTRAP"
 
 cd "$MIRTH_RUST"
 env RUSTC_WRAPPER_REAL="$out/mirth-watch" \
-    MIRTH_RUNTIME="$out/libmirth_runtime.rlib" \
+    MIRTH_RUNTIME="$runtime/libmirth_runtime.rlib" \
     MIRTH_WATCH="$watch" \
     MIRTH_SITES="$build/mirth-sites" \
     ./x.py build --build-dir "$build" --stage 1 compiler/rustc -j "$jobs"
 ./x.py build --build-dir "$build" --stage 1 library -j "$jobs"
+# WITH_RUSTDOC=1: rustdoc too, through the wrapper (it runs the compiler's crates as a second
+# entry point; the call graph needs its edges into them).
+if [ -n "${WITH_RUSTDOC:-}" ]; then
+  env RUSTC_WRAPPER_REAL="$out/mirth-watch" \
+      MIRTH_RUNTIME="$runtime/libmirth_runtime.rlib" \
+      MIRTH_WATCH="$watch" \
+      MIRTH_SITES="$build/mirth-sites" \
+      ./x.py build --build-dir "$build" --stage 1 src/tools/rustdoc -j "$jobs"
+fi
 echo "instrumented rustc: $build/$host/stage1/bin/rustc"
 echo "sites: $build/mirth-sites"

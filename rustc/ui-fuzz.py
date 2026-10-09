@@ -197,6 +197,12 @@ def fuzz_one(test):
 
 WORK.mkdir(parents=True, exist_ok=True)
 (WORK / "PAUSED").unlink(missing_ok=True)
+# A compiler without its standard library fails every test the same way: stop instead.
+(WORK / "probe").mkdir(exist_ok=True)
+(WORK / "probe" / "probe.rs").write_text("fn main() {}\n")
+probe = build(WORK / "probe", WORK / "probe" / "probe.rs", [], "2021", "build-pass", None)
+if probe["code"] != 0:
+    sys.exit(f"{args.rustc} cannot build an empty program:\n{probe['stderr']}")
 picked = json.loads(Path(args.list).read_text())
 tests = [t["test"] if isinstance(t, dict) else t for t in picked]
 done_path = WORK / "done.txt"

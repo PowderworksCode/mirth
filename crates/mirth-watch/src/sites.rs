@@ -13,7 +13,7 @@ use rustc_middle::mir::{
     Rvalue, START_BLOCK, Statement, TerminatorKind,
 };
 use rustc_middle::ty::print::with_no_trimmed_paths;
-use rustc_middle::ty::{GenericArgs, Ty, TyCtxt, TypingEnv};
+use rustc_middle::ty::{GenericArgs, GenericArgsRef, Ty, TyCtxt, TypingEnv};
 use rustc_span::Symbol;
 use rustc_span::def_id::{DefId, LocalDefId};
 
@@ -46,6 +46,456 @@ impl Hooks {
             cover: item("mirth_cover"),
         })
     }
+}
+
+/// A body's edges for the call graph, as lines of `<crate>.graph`, functions named by their
+/// `DefPathHash` (the same from every crate): `body <hash> <path> <trait item hash> <trait item
+/// path> <fn, extern or const> <Self type hash> <Self type path>` (`-` for a body implementing no
+/// trait item, or not in an impl for a struct or an enum; `extern` for a function with a foreign
+/// ABI, `const` for a constant's or a static's initializer), then
+/// `edge <caller hash> <callee hash> <kind> <callee path>`, kind
+/// `call` (a direct call, the callee as written: a trait item for a call through a trait, plus
+/// the closure or function item a call through `Fn*` names), `resolved` (the implementation a
+/// trait call resolves to in the caller's context, where it does), `construct` (a struct or an
+/// enum this body may build or hold: an aggregate, a constructor, a constant of the type, a type
+/// in a local's type or in a call's generic arguments),
+/// `ref` (a function or closure used as a value), or `inline` (a callee whose body MIR
+/// inlining merged into this one).
+pub fn graph<'tcx>(tcx: TyCtxt<'tcx>, def_id: LocalDefId, body: &Body<'tcx>, kind: &str) -> Vec<String> {
+    use rustc_middle::mir::{AggregateKind, Operand, Rvalue};
+    let hash = |id: DefId| tcx.def_path_hash(id).0.to_hex();
+    let caller = hash(def_id.to_def_id());
+    let implements = if matches!(tcx.def_kind(def_id), DefKind::AssocFn) {
+        tcx.associated_item(def_id.to_def_id()).trait_item_def_id()
+    } else {
+        None
+    };
+    // Called from outside Rust (C, C++, LLVM callbacks): a root.
+    let kind = if kind == "fn"
+        && matches!(tcx.def_kind(def_id), DefKind::Fn | DefKind::AssocFn)
+        && !matches!(
+            tcx.fn_sig(def_id.to_def_id()).skip_binder().abi(),
+            rustc_abi::ExternAbi::Rust | rustc_abi::ExternAbi::RustCall
+        ) {
+        "extern"
+    } else {
+        kind
+    };
+    // The type an impl's method taking `self` is for, when it is a struct or an enum: the
+    // analysis counts the method for trait dispatch only once something builds the type.
+    let self_adt = tcx
+        .impl_of_assoc(def_id.to_def_id())
+        .and_then(|imp| match *tcx.type_of(imp).instantiate_identity().skip_normalization().kind() {
+            rustc_middle::ty::Adt(adt, _) => Some(adt.did()),
+            _ => None,
+        });
+    // Only a method taking `self` needs a value of its type; `new`, `default`, `decode` make one.
+    let self_adt = self_adt.filter(|_| {
+        matches!(tcx.def_kind(def_id), DefKind::AssocFn)
+            && tcx.associated_item(def_id.to_def_id()).is_method()
+    });
+    // The trait an impl's function implements, and the struct or enum (outermost) the impl is
+    // for: the analysis counts it for trait dispatch only once reachable code needs that type
+    // to implement that trait (a call with that bound, a cast to `dyn Trait`).
+    let impl_of = implements.and_then(|_| tcx.impl_of_assoc(def_id.to_def_id()));
+    let impl_trait = impl_of.and_then(|imp| tcx.impl_opt_trait_id(imp));
+    let impl_adt = impl_of.and_then(|imp| {
+        match *tcx.type_of(imp).instantiate_identity().skip_normalization().kind() {
+            rustc_middle::ty::Adt(adt, _) => Some(adt.did()),
+            _ => None,
+        }
+    });
+    let spec = match (impl_of, impl_trait) {
+        (Some(imp), Some(t)) => specializes(tcx, t, imp),
+        _ => (false, false),
+    };
+    // Runs only when the compiler has a bug: no path returns, and every path that ends ends in
+    // a panic (`bug!`, `unreachable!`, `.unwrap()` on `None`), directly or through such a body.
+    let endings = endings(tcx, body);
+    let mut out = vec![format!(
+        "body\t{caller}\t{}\t{}\t{}\t{kind}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+        path_of(tcx, def_id.to_def_id()),
+        implements.map_or("-".to_string(), hash),
+        implements.map_or("-".to_string(), |it| defining_path_of(tcx, it)),
+        self_adt.map_or("-".to_string(), hash),
+        self_adt.map_or("-".to_string(), |it| defining_path_of(tcx, it)),
+        impl_trait.map_or("-".to_string(), hash),
+        impl_trait.map_or("-".to_string(), |it| defining_path_of(tcx, it)),
+        impl_adt.map_or("-".to_string(), hash),
+        if spec.0 || spec.1 { "specialized" } else { "-" },
+        match &endings {
+            None => "-",
+            Some((true, others)) if others.is_empty() => "ice-only",
+            Some(_) => "diverges",
+        },
+    )];
+    // The rest is the analysis's: `diverges <callee>` for each other function ending a path.
+    if let Some((_, others)) = &endings {
+        for callee in others {
+            out.push(format!("diverges\t{caller}\t{}", hash(*callee)));
+        }
+    }
+    // An impl of a specialized trait proves its bounds (`T: SpecIntoSelfProfilingString`) only
+    // when monomorphization picks it: their impls are not gated on bounds either.
+    // (Only a specializing impl's: the one it specializes has its bounds proved where it is used.)
+    if let Some(imp) = impl_of
+        && spec.0
+    {
+        for (clause, _) in tcx.clauses_of(imp).clauses {
+            if let Some(t) = clause.as_trait_clause() {
+                out.push(format!("specbound\t{}", hash(t.skip_binder().def_id())));
+            }
+        }
+    }
+    let mut edges = std::collections::HashSet::new();
+    let mut demands = std::collections::HashSet::new();
+    struct Refs<'a, 'tcx> {
+        tcx: TyCtxt<'tcx>,
+        typing_env: TypingEnv<'tcx>,
+        edges: &'a mut std::collections::HashSet<(DefId, &'static str)>,
+        demands: &'a mut std::collections::HashSet<(DefId, DefId)>,
+        locals: &'a rustc_middle::mir::LocalDecls<'tcx>,
+        selected: std::collections::HashSet<rustc_middle::ty::TraitRef<'tcx>>,
+    }
+    impl<'tcx> Refs<'_, 'tcx> {
+        /// `trait` needed for every struct and enum in `args`.
+        fn demand(&mut self, r#trait: DefId, args: GenericArgsRef<'tcx>) {
+            for arg in args.iter().flat_map(|arg| arg.walk()) {
+                if let Some(t) = arg.as_type()
+                    && let rustc_middle::ty::Adt(adt, _) = *t.kind()
+                {
+                    self.demands.insert((r#trait, adt.did()));
+                }
+            }
+        }
+        /// What using `target` with `args` needs implemented: its bounds (and their
+        /// supertraits), and its own trait for its `Self`, if it is a trait's item.
+        fn bounds(&mut self, target: DefId, args: GenericArgsRef<'tcx>) {
+            if let Some(of) = self.tcx.trait_of_assoc(target) {
+                self.demand(of, args);
+            }
+            if !matches!(
+                self.tcx.def_kind(target),
+                DefKind::Fn
+                    | DefKind::AssocFn
+                    | DefKind::Ctor(..)
+                    | DefKind::Closure
+                    | DefKind::Const { .. }
+                    | DefKind::AssocConst { .. }
+            ) {
+                return;
+            }
+            let clauses = self.tcx.clauses_of(target).instantiate(self.tcx, args).clauses;
+            self.clauses(clauses.into_iter().map(|clause| clause.skip_normalization()).collect(), 0);
+        }
+        /// The impl that proves `trait_ref` in this body (whose bounds hold for its generic
+        /// parameters), with its arguments: what codegen's selection does, also for a generic body.
+        fn select(&self, trait_ref: rustc_middle::ty::TraitRef<'tcx>) -> Option<(DefId, GenericArgsRef<'tcx>)> {
+            use rustc_infer::infer::TyCtxtInferExt;
+            use rustc_middle::ty::TypeVisitableExt;
+            let (infcx, param_env) = self.tcx.infer_ctxt().ignoring_regions().build_with_typing_env(self.typing_env);
+            let obligation = rustc_infer::traits::Obligation::new(
+                self.tcx,
+                rustc_infer::traits::ObligationCause::dummy(),
+                param_env,
+                trait_ref,
+            );
+            let mut selcx = rustc_trait_selection::traits::SelectionContext::new(&infcx);
+            match selcx.select(&obligation) {
+                Ok(Some(rustc_middle::traits::ImplSource::UserDefined(imp))) => {
+                    let args = infcx.deeply_resolve_ignoring_regions(imp.args);
+                    let args = self.tcx.erase_and_anonymize_regions(args);
+                    (!args.has_infer()).then_some((imp.impl_def_id, args))
+                }
+                _ => None,
+            }
+        }
+        /// Each trait bound in `clauses` (with supertraits), normalized (`<Op as TypeOp>::ErrorInfo`
+        /// names a type only then); and for one on concrete types, the bounds of the impl that
+        /// satisfies it (a blanket impl's `T: From<U>`) and of the trait's associated types
+        /// (`type Domain: JoinSemiLattice`), and theirs.
+        fn clauses(&mut self, clauses: Vec<rustc_middle::ty::Clause<'tcx>>, depth: usize) {
+            use rustc_middle::ty::{TypeVisitableExt, Unnormalized};
+            for clause in rustc_infer::traits::util::elaborate(self.tcx, clauses) {
+                let Some(t) = clause.as_trait_clause() else { continue };
+                let trait_ref = self.tcx.instantiate_bound_regions_with_erased(t).trait_ref;
+                self.demand(trait_ref.def_id, trait_ref.args);
+                if trait_ref.has_infer() || trait_ref.has_escaping_bound_vars() {
+                    continue;
+                }
+                let trait_ref = self
+                    .tcx
+                    .try_normalize_erasing_regions(self.typing_env, Unnormalized::new_wip(trait_ref))
+                    .unwrap_or(trait_ref);
+                self.demand(trait_ref.def_id, trait_ref.args);
+                if depth >= 8 || !self.selected.insert(trait_ref) {
+                    continue;
+                }
+                if let Some((impl_def_id, impl_args)) = self.select(trait_ref) {
+                    let nested = self.tcx.clauses_of(impl_def_id).instantiate(self.tcx, impl_args).clauses;
+                    self.clauses(nested.into_iter().map(|clause| clause.skip_normalization()).collect(), depth + 1);
+                }
+                let mut bounds = vec![];
+                for item in self.tcx.associated_items(trait_ref.def_id).in_definition_order() {
+                    if item.is_type() && self.tcx.generics_of(item.def_id).own_params.is_empty() {
+                        bounds.extend(
+                            self.tcx
+                                .explicit_item_bounds(item.def_id)
+                                .iter_instantiated_copied(self.tcx, trait_ref.args)
+                                .map(|bound| bound.skip_normalization().0),
+                        );
+                    }
+                }
+                if !bounds.is_empty() {
+                    self.clauses(bounds, depth + 1);
+                }
+            }
+        }
+        /// Every struct and enum a type mentions counts as built (an over-approximation).
+        fn types_in(&mut self, ty: Ty<'tcx>) {
+            for arg in ty.walk() {
+                if let Some(t) = arg.as_type()
+                    && let rustc_middle::ty::Adt(adt, _) = *t.kind()
+                {
+                    self.edges.insert((adt.did(), "construct"));
+                }
+            }
+        }
+        /// A tuple struct's or variant's constructor, called or used as a function, builds its type.
+        fn constructor(&mut self, target: DefId) {
+            if let DefKind::Ctor(of, _) = self.tcx.def_kind(target) {
+                let parent = self.tcx.parent(target);
+                let adt = match of {
+                    rustc_hir::def::CtorOf::Struct => parent,
+                    rustc_hir::def::CtorOf::Variant => self.tcx.parent(parent),
+                };
+                self.edges.insert((adt, "construct"));
+            }
+        }
+    }
+    impl<'tcx> Visitor<'tcx> for Refs<'_, 'tcx> {
+        fn visit_terminator(&mut self, terminator: &rustc_middle::mir::Terminator<'tcx>, at: Location) {
+            if let TerminatorKind::Call { func, args, .. } = &terminator.kind {
+                if let Some((target, generic_args)) = func.const_fn_def() {
+                    self.edges.insert((target, "call"));
+                    self.constructor(target);
+                    self.bounds(target, generic_args);
+                    // Types named in the call's arguments (a unit struct passed by reference
+                    // leaves no value behind in optimized MIR).
+                    for ty in generic_args.types() {
+                        self.types_in(ty);
+                    }
+                    if self.tcx.trait_of_assoc(target).is_some() {
+                        // A closure or function called through `Fn*` is its own body.
+                        if let Some(own) = generic_args.types().next().and_then(|ty| match *ty.kind() {
+                            rustc_middle::ty::Closure(d, _)
+                            | rustc_middle::ty::Coroutine(d, _)
+                            | rustc_middle::ty::CoroutineClosure(d, _)
+                            | rustc_middle::ty::FnDef(d, _) => Some(d),
+                            _ => None,
+                        }) {
+                            self.edges.insert((own, "call"));
+                        }
+                        // The implementation, where the caller's types already decide it.
+                        if let Ok(Some(instance)) = rustc_middle::ty::Instance::try_resolve(
+                            self.tcx,
+                            self.typing_env,
+                            target,
+                            generic_args,
+                        ) && let rustc_middle::ty::InstanceKind::Item(resolved) = instance.def
+                            && resolved != target
+                        {
+                            self.edges.insert((resolved, "resolved"));
+                            // The impl's own bounds (`impl<A: Step> Iterator for Range<A>`).
+                            self.bounds(resolved, instance.args);
+                        }
+                    }
+                }
+                // Function items passed as arguments are references, not this call's callee.
+                for arg in args.iter() {
+                    self.visit_operand(&arg.node, at);
+                }
+                return;
+            }
+            self.super_terminator(terminator, at);
+        }
+        fn visit_operand(&mut self, operand: &Operand<'tcx>, at: Location) {
+            if let Some((target, generic_args)) = operand.const_fn_def() {
+                self.edges.insert((target, "ref"));
+                self.constructor(target);
+                self.bounds(target, generic_args);
+                // `<T as Debug>::fmt` as a value (formatting arguments): the implementation.
+                if self.tcx.trait_of_assoc(target).is_some()
+                    && let Ok(Some(instance)) = rustc_middle::ty::Instance::try_resolve(
+                        self.tcx,
+                        self.typing_env,
+                        target,
+                        generic_args,
+                    )
+                    && let rustc_middle::ty::InstanceKind::Item(resolved) = instance.def
+                    && resolved != target
+                {
+                    self.edges.insert((resolved, "resolved"));
+                    self.bounds(resolved, instance.args);
+                }
+            }
+            // A constant still to evaluate (`<Combine<X> as AttributeParser>::ATTRIBUTES`): its
+            // bounds, and the impl's constant it resolves to.
+            if let Operand::Constant(constant) = operand
+                && let rustc_middle::mir::Const::Unevaluated(uv, _) = constant.const_
+            {
+                self.bounds(uv.def, uv.args);
+                if self.tcx.trait_of_assoc(uv.def).is_some()
+                    && let Ok(Some(instance)) =
+                        rustc_middle::ty::Instance::try_resolve(self.tcx, self.typing_env, uv.def, uv.args)
+                    && instance.def_id() != uv.def
+                {
+                    self.edges.insert((instance.def_id(), "resolved"));
+                    self.bounds(instance.def_id(), instance.args);
+                }
+            }
+            // A constant of a struct or an enum type (a unit struct, a fieldless variant).
+            if let Operand::Constant(constant) = operand
+                && let rustc_middle::ty::Adt(adt, _) = *constant.const_.ty().kind()
+            {
+                self.edges.insert((adt.did(), "construct"));
+            }
+            self.super_operand(operand, at);
+        }
+        fn visit_rvalue(&mut self, rvalue: &Rvalue<'tcx>, at: Location) {
+            // A cast to `dyn Trait` (a vtable): the source type implements the trait and its
+            // supertraits.
+            if let Rvalue::Cast(rustc_middle::mir::CastKind::PointerCoercion(
+                rustc_middle::ty::adjustment::PointerCoercion::Unsize,
+                _,
+            ), operand, target) = rvalue
+            {
+                let source = operand.ty(self.locals, self.tcx);
+                for t in target.walk() {
+                    if let Some(t) = t.as_type()
+                        && let rustc_middle::ty::Dynamic(preds, ..) = *t.kind()
+                        && let Some(principal) = preds.principal()
+                    {
+                        use rustc_middle::ty::Upcast;
+                        // The pointee: `&T` and `Box<T>` to `&dyn Trait`, `Box<dyn Trait>`.
+                        let pointee = source.builtin_deref(true).unwrap_or(source);
+                        let pointee = if pointee.is_box() { pointee.expect_boxed_ty() } else { pointee };
+                        for ty in [source, pointee] {
+                            let clause: rustc_middle::ty::Clause<'tcx> =
+                                principal.with_self_ty(self.tcx, ty).upcast(self.tcx);
+                            self.clauses(vec![clause], 0);
+                        }
+                    }
+                }
+            }
+            if let Rvalue::Aggregate(kind, _) = rvalue {
+                if let AggregateKind::Adt(adt, ..) = **kind {
+                    self.edges.insert((adt, "construct"));
+                }
+                match **kind {
+                    AggregateKind::Closure(target, _)
+                    | AggregateKind::Coroutine(target, _)
+                    | AggregateKind::CoroutineClosure(target, _) => {
+                        self.edges.insert((target, "ref"));
+                    }
+                    _ => {}
+                }
+            }
+            self.super_rvalue(rvalue, at);
+        }
+    }
+    let typing_env = TypingEnv::post_analysis(tcx, def_id.to_def_id());
+    let mut refs = Refs { tcx, typing_env, edges: &mut edges, demands: &mut demands, locals: &body.local_decls, selected: Default::default() };
+    refs.visit_body(body);
+    // A body with a local of a type may hold a value of it.
+    for local in body.local_decls.iter() {
+        refs.types_in(local.ty);
+    }
+    // A call MIR inlining merged in leaves no call behind: its bounds, with the inlined
+    // instance's types.
+    for scope in body.source_scopes.iter() {
+        if let Some((instance, _)) = scope.inlined {
+            refs.bounds(instance.def_id(), instance.args);
+        }
+    }
+    // Promoted constants (`&[f, g]`, `&(f as fn())`) have their own bodies.
+    for promoted in tcx.promoted_mir(def_id.to_def_id()).iter() {
+        Refs { tcx, typing_env, edges: &mut edges, demands: &mut demands, locals: &promoted.local_decls, selected: Default::default() }
+            .visit_body(promoted);
+    }
+    for scope in body.source_scopes.iter() {
+        if let Some((instance, _)) = scope.inlined {
+            edges.insert((instance.def_id(), "inline"));
+        }
+    }
+    let mut lines: Vec<String> = edges
+        .into_iter()
+        .map(|(callee, kind)| format!("edge\t{caller}\t{}\t{kind}\t{}", hash(callee), defining_path_of(tcx, callee)))
+        .collect();
+    lines.extend(demands.into_iter().map(|(r#trait, adt)| format!("demand\t{caller}\t{}\t{}", hash(r#trait), hash(adt))));
+    lines.sort();
+    out.extend(lines);
+    out
+}
+
+/// How a body ends: `None` when some path returns (or yields); otherwise whether it panics on
+/// every path, and the other functions that never return which end the rest (a fatal error,
+/// `process::exit`, or a helper that panics itself: the analysis decides those).
+fn endings<'tcx>(tcx: TyCtxt<'tcx>, body: &Body<'tcx>) -> Option<(bool, Vec<DefId>)> {
+    let mut panics = false;
+    let mut others = vec![];
+    for block in body.basic_blocks.iter() {
+        if block.is_cleanup {
+            continue;
+        }
+        match &block.terminator().kind {
+            TerminatorKind::Return | TerminatorKind::Yield { .. } | TerminatorKind::CoroutineDrop => {
+                return None;
+            }
+            TerminatorKind::Call { func, target: None, .. } => {
+                let Some((callee, _)) = func.const_fn_def() else { return None };
+                let path = defining_path_of(tcx, callee);
+                let panicking = path.starts_with("core::panicking::")
+                    || path.starts_with("std::panicking::")
+                    || path.starts_with("std::rt::begin_panic")
+                    // `bug!` (through `rustc_span::macros::bug_impl`), its only user here
+                    || path == "std::panic::panic_any"
+                    || path.starts_with("core::option::unwrap_failed")
+                    || path.starts_with("core::option::expect_failed")
+                    || path.starts_with("core::result::unwrap_failed")
+                    || path.starts_with("core::slice::index::")
+                    || path.ends_with("::bug_fmt")
+                    || path.ends_with("::span_bug_fmt")
+                    || (path.starts_with("rustc_errors::")
+                        && (path.ends_with("::bug") || path.ends_with("::span_bug")));
+                if panicking {
+                    panics = true;
+                } else {
+                    others.push(callee);
+                }
+            }
+            TerminatorKind::TailCall { .. } => return None,
+            _ => {}
+        }
+    }
+    Some((panics, others))
+}
+
+/// Whether `imp` specializes another impl of `r#trait`, or another impl specializes it: which
+/// of them a call reaches is then decided at monomorphization, by more than the bounds say.
+fn specializes(tcx: TyCtxt<'_>, r#trait: DefId, imp: DefId) -> (bool, bool) {
+    let Ok(graph) = tcx.specialization_graph_of(r#trait) else { return (false, false) };
+    let specializing = graph.parent.get(&imp).is_some_and(|parent| *parent != r#trait);
+    let specialized = graph.children.get(&imp).is_some_and(|children| {
+        !children.non_blanket_impls.is_empty() || !children.blanket_impls.is_empty()
+    });
+    (specializing, specialized)
+}
+
+/// A function's defining path, also for one in another crate, where `path_of` prints the
+/// path it is visible at (through re-exports): a body's own name in the call graph.
+pub fn defining_path_of(tcx: TyCtxt<'_>, def_id: DefId) -> String {
+    rustc_middle::ty::print::with_no_visible_paths!(path_of(tcx, def_id))
 }
 
 /// The path of every function a body calls directly.

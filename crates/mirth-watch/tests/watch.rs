@@ -462,6 +462,59 @@ fn coverage_records_which_functions_ran() {
     assert!(covers.len() > hit.len(), "not everything instrumented ran");
 }
 
+#[test]
+fn callgraph_records_calls_references_and_trait_items() {
+    let root = scratch("callgraph");
+    let project = root.join("effects");
+    copy(&workspace().join("fixtures/effects"), &project);
+    std::fs::remove_file(project.join("watch.toml")).expect("removing the frames");
+    std::fs::write(
+        project.join("mirth.toml"),
+        "[scope]\ncrates = [\"store\", \"app\"]\n\n[diagnostics]\ncallgraph = true\n",
+    )
+    .expect("writing the configuration");
+    let built = Command::new(env!("CARGO_BIN_EXE_cargo-mirth"))
+        .args(["mirth", "build", "--quiet"])
+        .current_dir(&project)
+        .env_remove("CARGO_TARGET_DIR")
+        .output()
+        .expect("running cargo mirth");
+    assert!(built.status.success(), "{}", text(&built.stderr));
+    let sites = project.join("target").join("mirth").join("sites");
+    // `<crate>-<stable crate id>.graph`
+    let graph = |krate: &str| {
+        let file = std::fs::read_dir(&sites)
+            .expect("a site directory")
+            .map(|entry| entry.expect("an entry").path())
+            .find(|path| {
+                path.extension().is_some_and(|it| it == "graph")
+                    && path.file_stem().and_then(|it| it.to_str()).and_then(|it| it.rsplit_once('-')).map(|it| it.0)
+                        == Some(krate)
+            })
+            .expect("a graph");
+        std::fs::read_to_string(file).expect("a graph")
+    };
+    // body <hash> <path> <trait item>; edge <caller> <callee> <kind> <callee path>
+    let mut hash_of = std::collections::HashMap::new();
+    let mut edges = Vec::new();
+    for krate in ["app", "store"] {
+        for line in graph(krate).lines() {
+            let f: Vec<&str> = line.split('\t').collect();
+            match f[0] {
+                "body" => {
+                    hash_of.insert(f[2].to_string(), f[1].to_string());
+                }
+                _ => edges.push((f[1].to_string(), f[2].to_string(), f[3].to_string())),
+            }
+        }
+    }
+    let edge = |from: &str, to: &str, kind: &str| {
+        edges.contains(&(hash_of[from].clone(), hash_of[to].clone(), kind.to_string()))
+    };
+    assert!(edge("app::main", "store::save", "call"), "{edges:?}");
+    assert!(edge("store::in_closure", "store::in_closure::{closure#0}", "call"), "{edges:?}");
+}
+
 fn copy(from: &Path, to: &Path) {
     std::fs::create_dir_all(to).expect("a directory");
     for entry in std::fs::read_dir(from).expect("a fixture") {
