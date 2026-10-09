@@ -52,6 +52,9 @@ CARGO_DROP = {
     "-Clto": None,  # rejected for rlibs and dylibs; Cargo's profile applies it to final artifacts only
     # LLVM's pass listing from codegen threads interleaves with rustc's lines on stderr; a split
     # -Ztime-passes-format=json line then reaches Cargo as a bare JSON message.
+    # Makes a crate behave like the standard library, which needs stability attributes on
+    # `const trait`s (fixtures/sink/nightly has one).
+    "-Zforce-unstable-if-unmarked": ["yes"],
     "-Zprint-llvm-passes": ["yes"],
     "-Ztime-passes-format": ["json"],
 }
@@ -62,6 +65,8 @@ CARGO_NEEDS = [
     # Findings 13 and 14 (in LLVM, not patched): retpolines with the machine outliner, or with
     # the large code model.
     ("-Zretpoline", "yes", ["-Ccode-model"], '[Ccode_model] <> "large"'),
+    # Finding 16 (no stopgap): cached derive expansions with the HIR crate hash.
+    ("-Zcache-proc-macros", "yes", ["-Zmetadata-crate-hash"], '[Zmetadata_crate_hash] <> "no"'),
 ]
 # Bugs in docs/hunt.md that have a local stopgap: excluded unless --allow-known (for a
 # compiler with the stopgaps).
