@@ -14,7 +14,7 @@ working directory), and compare:
   status  both succeed, both fail, or both crash
   diag    the diagnostics, with paths and the incremental directory taken out
   output  the .rmeta and .rlib (normalized as artifacts.py does) when both succeed
-  ice     neither crashes
+  ice     both crash or neither does
 
 A clean build is made again before a difference counts (nondeterminism). Findings go to
 <work>/findings/<test>-<n>/ with the source, both outputs and the edit history.
@@ -91,7 +91,8 @@ def build(directory, source, flags, edition, kind, incremental):
         code, err = -1, "timeout"
     ice = ("internal compiler error" in err or "the compiler unexpectedly panicked" in err
            or "rustc interrupted by SIG" in err)
-    diag = sorted(set(l for l in err.splitlines() if l and not l.startswith(("note: ", "  ", "query stack", "#"))))
+    diag = sorted(set(re.sub(r"\(\d+\)", "(…)", l) for l in err.splitlines()
+                      if l and not l.startswith(("note: ", "  ", "query stack", "#"))))
     files = {}
     for f in sorted(out.iterdir()):
         if f.suffix == ".rmeta":
@@ -103,8 +104,9 @@ def build(directory, source, flags, edition, kind, incremental):
 
 def compare(inc, clean):
     found = []
-    if inc["ice"] or clean["ice"]:
-        found.append("ICE " + ("incremental" if inc["ice"] else "") + (" clean" if clean["ice"] else ""))
+    # Some tests crash the compiler on purpose; only a crash on one side counts.
+    if inc["ice"] != clean["ice"]:
+        found.append("ICE " + ("incremental" if inc["ice"] else "clean") + " only")
     if (inc["code"] == 0) != (clean["code"] == 0):
         found.append(f"status: incremental {inc['code']}, clean {clean['code']}")
     if inc["diag"] != clean["diag"]:

@@ -51,3 +51,35 @@ functions that never ran, at least 12,651 (28%) are diagnostics or error paths b
 (`report`, `error`, `suggest`, `lint`, `emit_`, …); in `rustc_trait_selection`,
 `rustc_borrowck` and `rustc_hir_typeck` more than half. More syntax will not reach those;
 programs that fail to compile, built incrementally, will.
+
+## With option configurations
+
+`rustc/coverage-flags.py` builds sink once per row of a pairwise transitions table (clean with
+the row's A options, then rebuilt after one random edit with its B options). 60 rows, 1,586
+rustc processes in all with the run above: **30,657 functions (42.8%)**. The largest gains: MIR
+optimization passes (+460, from `-Copt-level` and `-Zmir-opt-level`), `rustc_trait_selection`
+(+409, from `-Znext-solver` and edits that fail to compile), `rustc_session` (+351, option
+handling), `rustc_thread_pool` (+226, `-Zthreads`).
+
+## rustc's UI tests
+
+`rustc/ui-coverage.py run` compiles each UI test file (the way its `//@` headers say) with the
+instrumented compiler and keeps the functions it reaches beyond sink's; `pick` chooses tests
+greedily. Of 20,419 files, 1,839 were skipped (auxiliary crates, other targets); together the rest
+reach **17,668 functions sink does not (61% of the compiler with sink's)**; **300 picked tests
+reach 13,626 of them (55%)**. The first few:
+
+| test | adds |
+|---|---:|
+| `parallel-rustc/generic-const-exprs-deadlock-issue-120757.rs` | 1,249 |
+| `layout/uninitialized-gat-projection-cycle-issue-153205.rs` | 811 |
+| `self-profile/pretty_print_no_ice.rs` | 504 |
+| `attributes/malformed-attrs.rs` | 444 |
+| `abi/stack-protector.rs` | 432 |
+
+`rustc/ui-fuzz.py` runs the picked tests through incremental rebuilds after the fuzzer's edits,
+each compared with a clean build (status, diagnostics, outputs): error reporting and recovery
+under incremental compilation, which sink cannot reach.
+
+Running every UI test outside compiletest also showed that compiletest pins the old trait
+solver, while nightly defaults to the new one: [`solver.md`](solver.md).

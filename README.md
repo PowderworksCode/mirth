@@ -40,6 +40,7 @@ fixture, the third from fuzzing edits and replaying ten crates' git histories.
 - [`docs/untracked-reads.md`](docs/untracked-reads.md): reporting reads of untracked state inside rustc
 - [`docs/grammar.md`](docs/grammar.md): measuring the fixture against Ur's Rust grammar, and filling the gaps
 - [`docs/coverage.md`](docs/coverage.md): which of the compiler's functions compiling the fixture reaches
+- [`docs/solver.md`](docs/solver.md): the UI suite under nightly's default trait solver, which the suite does not test
 - [`docs/props.md`](docs/props.md): MIR validation, optimization levels and the new trait solver on the same corpus
 - [`docs/plan.md`](docs/plan.md): the plan the work followed, with the properties
 
