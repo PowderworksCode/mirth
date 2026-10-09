@@ -50,6 +50,8 @@ p.add_argument("--pause-on-finding", action="store_true")
 args = p.parse_args()
 WORK = Path(args.work).resolve()
 NO_BUILD = ("check-pass", "check-fail")
+# Tests that hit bugs already in docs/hunt.md every time: finding 17.
+KNOWN = ("-Zunleash-the-miri-inside-of-you",)
 
 
 def headers(text):
@@ -79,10 +81,11 @@ def build(directory, source, flags, edition, kind, incremental):
     out.mkdir(parents=True)
     emit = "--emit=metadata" if kind in NO_BUILD or kind is None else "--emit=link,metadata"
     argv = [args.rustc, source.name, "--edition", edition or "2015", emit, "--out-dir", "out",
-            "-Zunstable-options", "-Ainternal_features", "-Aincomplete_features", "--error-format=short",
-            *flags, *args.flags.split()]
+            "-Zunstable-options", "-Ainternal_features", "-Aincomplete_features", "--error-format=short"]
+    # Before the test's own flags, which may end with an option expecting a value.
     if incremental:
         argv.append(f"-Cincremental={incremental}")
+    argv += [*flags, *args.flags.split()]
     try:
         r = subprocess.run(argv, capture_output=True, text=True, timeout=300, cwd=directory,
                            env=dict(os.environ, RUSTC_BOOTSTRAP="1", RUST_BACKTRACE="0"))
@@ -91,6 +94,8 @@ def build(directory, source, flags, edition, kind, incremental):
         code, err = -1, "timeout"
     ice = ("internal compiler error" in err or "the compiler unexpectedly panicked" in err
            or "rustc interrupted by SIG" in err)
+    if incremental:
+        err = err.replace(incremental, "<incremental>")
     diag = sorted(set(re.sub(r"\(\d+\)", "(…)", l) for l in err.splitlines()
                       if l and not l.startswith(("note: ", "  ", "query stack", "#"))))
     files = {}
@@ -125,6 +130,8 @@ def fuzz(test):
     path = Path(args.tests) / test
     text = path.read_text(errors="replace")
     flags, edition, kind = headers(text)
+    if any(k in text for k in KNOWN):
+        return test, "skipped (known)"
     name = re.sub(r"\W", "_", test)
     home = WORK / "w" / name
     shutil.rmtree(home, ignore_errors=True)
@@ -182,6 +189,6 @@ done = set(done_path.read_text().split()) if done_path.exists() else set()
 with ThreadPoolExecutor(args.jobs) as ex, done_path.open("a") as log:
     for test, result in ex.map(fuzz, [t for t in tests if t not in done]):
         print(f"{test}: {result}", flush=True)
-        if result != "not run" and not (WORK / "PAUSED").exists():
+        if not result.startswith("not run") and not (WORK / "PAUSED").exists():
             log.write(test + "\n")
             log.flush()
