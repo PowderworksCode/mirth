@@ -117,18 +117,18 @@ def one(path, flags, edition, kind):
             found.append({"what": "ub (safe code)", "stderr": miri["miri0"]["stderr"][-3000:]})
         elif miri["miri0"]["status"] == "ub":
             record["note"] = "ub in a test with unsafe code"
+        threaded = THREADS.search(path.read_text(errors="replace"))
         for name in ("miri2", "miri4"):
             m = miri[name]
             if m["status"] == "ub" and miri["miri0"]["status"] != "ub":
                 found.append({"what": f"ub-opt ({name})", "stderr": m["stderr"][-3000:]})
             elif m["status"] == "ice":
                 found.append({"what": f"ice ({name})", "stderr": m["stderr"][-3000:]})
-            elif (m["status"] == "ok" and miri["miri0"]["status"] == "ok"
+            elif (m["status"] == "ok" and miri["miri0"]["status"] == "ok" and not threaded
                   and (m["exit"], m["stdout"]) != (miri["miri0"]["exit"], miri["miri0"]["stdout"])):
                 found.append({"what": f"opt-differs ({name})", "miri0": miri["miri0"]["stdout"][-1500:],
                               "got": m["stdout"][-1500:], "exits": [miri["miri0"]["exit"], m["exit"]]})
         m0 = miri["miri0"]
-        threaded = THREADS.search(path.read_text(errors="replace"))
         # Native threads race; Miri's do not without preemption: no comparison for threaded tests.
         if m0["status"] == "ok" and not threaded and rel not in UNSPECIFIED:
             # Miri exits 1 on a panic that reaches main, native code 101.
