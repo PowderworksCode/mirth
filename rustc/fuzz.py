@@ -60,7 +60,7 @@ p.add_argument("--toolchain", default="nightly-2026-10-06")
 p.add_argument("--rustflags", default="-Zincremental-verify-ich")
 p.add_argument("--seed", type=int, default=0)
 p.add_argument("--timeout", type=int, default=180, help="seconds before a build counts as hung")
-p.add_argument("--p5-builds", type=int, default=1,
+p.add_argument("--p5-builds", type=int, default=12,
                help="clean builds made again when anything differs, to tell nondeterminism from P6")
 p.add_argument("--min-free-gb", type=int, default=20, help="stop when the disk has less free")
 p.add_argument("--check", action="store_true",
@@ -77,6 +77,9 @@ args = p.parse_args()
 WORK = Path(args.work).resolve()
 FIXTURE = Path(args.fixture).resolve()
 BIN = FIXTURE.name
+# Kinds not compared here: metadata is compared separately; with split debuginfo, objects and
+# binaries name .dwo files by session, so two clean builds differ too.
+SKIP = {"rmeta"} | ({"rlib", "exe"} if re.search(r"-Csplit-debuginfo=(packed|unpacked)", args.rustflags) else set())
 
 from mutations import EDITS, int_literal, str_literal  # noqa: E402
 
@@ -311,7 +314,7 @@ def worker(k):
             stats["compared"] += 1
             a, b = inc["rmetas"], clean["rmetas"]
             differ = sorted(r for r in set(a) | set(b) if a.get(r) != b.get(r))
-            others = {k: v for k, v in artifacts.compare(inc["art"], clean["art"]).items() if k != "rmeta"}
+            others = {k: v for k, v in artifacts.compare(inc["art"], clean["art"]).items() if k not in SKIP}
             if differ or others:
                 # Build clean once more: if two clean builds differ, the difference is
                 # nondeterminism (P5), not incremental reuse.
@@ -322,7 +325,7 @@ def worker(k):
                     c = again["rmetas"]
                     p5 = sorted(r for r in set(b) | set(c) if b.get(r) != c.get(r))
                     p5 += [f"{k}: {v[0]}" for k, v in artifacts.compare(clean["art"], again["art"]).items()
-                           if k != "rmeta"]
+                           if k not in SKIP]
                     if p5 or not again["ok"]:
                         break
                 if again["ok"] and p5:
