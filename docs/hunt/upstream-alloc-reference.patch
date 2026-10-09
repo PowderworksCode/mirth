@@ -23,24 +23,28 @@
  }
  
  pub fn specialized_encode_alloc_id<'tcx, E: TyEncoder<'tcx>>(
-@@ -115,7 +122,15 @@
+@@ -115,8 +122,20 @@
              trace!("encoding {:?} with {:#?}", alloc_id, alloc);
              let deduplicated = tcx.alloc_map.dedup.lock().get(&(GlobalAlloc::Memory(alloc), CTFE_ALLOC_SALT))
                  == Some(&alloc_id);
--            if deduplicated {
 +            let upstream = if E::CLEAR_CROSS_CRATE {
 +                None
 +            } else {
 +                tcx.alloc_map.upstream_of.lock().get(&alloc_id).copied()
 +            };
-+            if let Some(krate) = upstream {
++            // A deduplicated allocation is found by its contents already, whichever crate's
++            // metadata or literal made it first, so it is written as one even if it also came
++            // from another crate's metadata: which of the two happens first can differ between
++            // sessions.
+             if deduplicated {
+                 AllocDiscriminant::DedupAlloc.encode(encoder);
++            } else if let Some(krate) = upstream {
 +                AllocDiscriminant::Upstream.encode(encoder);
 +                krate.encode(encoder);
-+            } else if deduplicated {
-                 AllocDiscriminant::DedupAlloc.encode(encoder);
              } else {
                  AllocDiscriminant::Alloc.encode(encoder);
-@@ -161,6 +176,9 @@
+             }
+@@ -161,6 +180,9 @@
      decoding_state: Vec<Lock<State>>,
      // The offsets of each allocation in the data stream.
      data_offsets: Vec<u64>,
@@ -50,7 +54,7 @@
  }
  
  impl AllocDecodingState {
-@@ -173,7 +191,12 @@
+@@ -173,7 +195,12 @@
          let decoding_state =
              std::iter::repeat_with(|| Lock::new(State::Empty)).take(data_offsets.len()).collect();
  
@@ -64,7 +68,7 @@
      }
  }
  
-@@ -224,13 +247,38 @@
+@@ -224,13 +251,38 @@
                  trace!("creating memory alloc ID");
                  let alloc = <ConstAllocation<'tcx> as Decodable<_>>::decode(decoder);
                  trace!("decoded alloc {:?}", alloc);
@@ -105,7 +109,7 @@
              }
              AllocDiscriminant::Fn => {
                  trace!("creating fn alloc ID");
-@@ -259,6 +307,14 @@
+@@ -259,6 +311,14 @@
              }
          });
  
@@ -120,7 +124,7 @@
          *entry = State::Done(alloc_id);
  
          alloc_id
-@@ -442,6 +498,12 @@
+@@ -442,6 +502,12 @@
      /// the actual guarantees.
      dedup: Lock<FxHashMap<(GlobalAlloc<'tcx>, usize), AllocId>>,
  
@@ -133,7 +137,7 @@
      /// The `AllocId` to assign to the next requested ID.
      /// Always incremented; never gets smaller.
      next_id: AtomicU64,
-@@ -452,6 +514,8 @@
+@@ -452,6 +518,8 @@
          AllocMap {
              to_alloc: Default::default(),
              dedup: Default::default(),
