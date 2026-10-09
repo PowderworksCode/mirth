@@ -48,6 +48,131 @@ impl Hooks {
     }
 }
 
+/// A body's edges for the call graph, as lines of `<crate>.graph`, functions named by their
+/// `DefPathHash` (the same from every crate): `body <hash> <path> <trait item hash> <trait item
+/// path> <fn, extern or const>` (`-` for a body implementing no trait item; `extern` for a
+/// function with a foreign ABI, `const` for a constant's or a static's initializer), then
+/// `edge <caller hash> <callee hash> <kind> <callee path>`, kind
+/// `call` (a direct call, the callee as written: a trait item for a call through a trait, plus
+/// the closure or function item a call through `Fn*` names), `resolved` (the implementation a
+/// trait call resolves to in the caller's context, where it does),
+/// `ref` (a function or closure used as a value), or `inline` (a callee whose body MIR
+/// inlining merged into this one).
+pub fn graph<'tcx>(tcx: TyCtxt<'tcx>, def_id: LocalDefId, body: &Body<'tcx>, kind: &str) -> Vec<String> {
+    use rustc_middle::mir::{AggregateKind, Operand, Rvalue};
+    let hash = |id: DefId| tcx.def_path_hash(id).0.to_hex();
+    let caller = hash(def_id.to_def_id());
+    let implements = if matches!(tcx.def_kind(def_id), DefKind::AssocFn) {
+        tcx.associated_item(def_id.to_def_id()).trait_item_def_id()
+    } else {
+        None
+    };
+    // Called from outside Rust (C, C++, LLVM callbacks): a root.
+    let kind = if kind == "fn"
+        && matches!(tcx.def_kind(def_id), DefKind::Fn | DefKind::AssocFn)
+        && !matches!(
+            tcx.fn_sig(def_id.to_def_id()).skip_binder().abi(),
+            rustc_abi::ExternAbi::Rust | rustc_abi::ExternAbi::RustCall
+        ) {
+        "extern"
+    } else {
+        kind
+    };
+    let mut out = vec![format!(
+        "body\t{caller}\t{}\t{}\t{}\t{kind}",
+        path_of(tcx, def_id.to_def_id()),
+        implements.map_or("-".to_string(), hash),
+        implements.map_or("-".to_string(), |it| defining_path_of(tcx, it)),
+    )];
+    let mut edges = std::collections::HashSet::new();
+    struct Refs<'a, 'tcx> {
+        tcx: TyCtxt<'tcx>,
+        typing_env: TypingEnv<'tcx>,
+        edges: &'a mut std::collections::HashSet<(DefId, &'static str)>,
+    }
+    impl<'tcx> Visitor<'tcx> for Refs<'_, 'tcx> {
+        fn visit_terminator(&mut self, terminator: &rustc_middle::mir::Terminator<'tcx>, at: Location) {
+            if let TerminatorKind::Call { func, args, .. } = &terminator.kind {
+                if let Some((target, generic_args)) = func.const_fn_def() {
+                    self.edges.insert((target, "call"));
+                    if self.tcx.trait_of_assoc(target).is_some() {
+                        // A closure or function called through `Fn*` is its own body.
+                        if let Some(own) = generic_args.types().next().and_then(|ty| match *ty.kind() {
+                            rustc_middle::ty::Closure(d, _)
+                            | rustc_middle::ty::Coroutine(d, _)
+                            | rustc_middle::ty::CoroutineClosure(d, _)
+                            | rustc_middle::ty::FnDef(d, _) => Some(d),
+                            _ => None,
+                        }) {
+                            self.edges.insert((own, "call"));
+                        }
+                        // The implementation, where the caller's types already decide it.
+                        if let Ok(Some(instance)) = rustc_middle::ty::Instance::try_resolve(
+                            self.tcx,
+                            self.typing_env,
+                            target,
+                            generic_args,
+                        ) && let rustc_middle::ty::InstanceKind::Item(resolved) = instance.def
+                            && resolved != target
+                        {
+                            self.edges.insert((resolved, "resolved"));
+                        }
+                    }
+                }
+                // Function items passed as arguments are references, not this call's callee.
+                for arg in args.iter() {
+                    self.visit_operand(&arg.node, at);
+                }
+                return;
+            }
+            self.super_terminator(terminator, at);
+        }
+        fn visit_operand(&mut self, operand: &Operand<'tcx>, at: Location) {
+            if let Some((target, _)) = operand.const_fn_def() {
+                self.edges.insert((target, "ref"));
+            }
+            self.super_operand(operand, at);
+        }
+        fn visit_rvalue(&mut self, rvalue: &Rvalue<'tcx>, at: Location) {
+            if let Rvalue::Aggregate(kind, _) = rvalue {
+                match **kind {
+                    AggregateKind::Closure(target, _)
+                    | AggregateKind::Coroutine(target, _)
+                    | AggregateKind::CoroutineClosure(target, _) => {
+                        self.edges.insert((target, "ref"));
+                    }
+                    _ => {}
+                }
+            }
+            self.super_rvalue(rvalue, at);
+        }
+    }
+    let typing_env = TypingEnv::post_analysis(tcx, def_id.to_def_id());
+    Refs { tcx, typing_env, edges: &mut edges }.visit_body(body);
+    // Promoted constants (`&[f, g]`, `&(f as fn())`) have their own bodies.
+    for promoted in tcx.promoted_mir(def_id.to_def_id()).iter() {
+        Refs { tcx, typing_env, edges: &mut edges }.visit_body(promoted);
+    }
+    for scope in body.source_scopes.iter() {
+        if let Some((instance, _)) = scope.inlined {
+            edges.insert((instance.def_id(), "inline"));
+        }
+    }
+    let mut lines: Vec<String> = edges
+        .into_iter()
+        .map(|(callee, kind)| format!("edge\t{caller}\t{}\t{kind}\t{}", hash(callee), defining_path_of(tcx, callee)))
+        .collect();
+    lines.sort();
+    out.extend(lines);
+    out
+}
+
+/// A function's defining path, also for one in another crate, where `path_of` prints the
+/// path it is visible at (through re-exports): a body's own name in the call graph.
+pub fn defining_path_of(tcx: TyCtxt<'_>, def_id: DefId) -> String {
+    rustc_middle::ty::print::with_no_visible_paths!(path_of(tcx, def_id))
+}
+
 /// The path of every function a body calls directly.
 pub fn callees<'tcx>(tcx: TyCtxt<'tcx>, body: &Body<'tcx>) -> Vec<String> {
     body.basic_blocks

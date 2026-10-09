@@ -24,6 +24,7 @@
 //!
 //! [diagnostics]
 //! paths = true                  # write every path a pattern could match
+//! callgraph = true              # write each body's calls and references
 //! ```
 //!
 //! A pattern is a function's path, as rustc prints it with the crate's name
@@ -64,6 +65,11 @@ pub struct Diagnostics {
     /// table.
     #[serde(default)]
     pub paths: bool,
+    /// Write each body's outgoing edges to `<crate>.graph` beside the site table: direct calls,
+    /// functions and closures used as values, and callees MIR inlining merged in; and, for a
+    /// method implementing a trait's, which trait item (rustc/callgraph.py reads them).
+    #[serde(default)]
+    pub callgraph: bool,
 }
 
 #[derive(Deserialize, Default)]

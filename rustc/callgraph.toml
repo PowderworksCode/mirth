@@ -1,0 +1,7 @@
+# The compiler's call graph: every body in the compiler's own crates writes its calls and
+# references to <crate>.graph (rustc/callgraph.py reads them, with rustc/coverage.toml's sites).
+[scope]
+crates = ["rustc_*"]
+
+[diagnostics]
+callgraph = true

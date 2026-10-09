@@ -1,0 +1,30 @@
+--- a/src/tools/compiletest/src/runtest.rs
++++ b/src/tools/compiletest/src/runtest.rs
+@@ -1042,7 +1042,8 @@
+             .arg("internal_features")
+             // FIXME(#160895): While the new solver is enabled by default on nightly,
+             // we don't want to use it in our tests for now.
+-            .arg("-Znext-solver=coherence")
++            // mirth: COMPILETEST_NO_SOLVER_PIN runs the tests under nightly's default instead.
++            .args(solver_pin())
+             .args(&self.props.compile_flags)
+             .args(&self.props.doc_flags);
+ 
+@@ -1934,7 +1935,7 @@
+ 
+         // FIXME(#160895): While the new solver is enabled by default on nightly,
+         // we don't want to use it in our tests for now.
+-        compiler.args(["-Znext-solver=coherence"]);
++        compiler.args(solver_pin());
+ 
+         match self.config.compare_mode {
+             Some(CompareMode::Polonius) => {
+@@ -3174,3 +3175,8 @@
+         matches!(self, CompareOutcome::Differed)
+     }
+ }
++
++/// mirth: `-Znext-solver=coherence`, unless `COMPILETEST_NO_SOLVER_PIN` is set.
++fn solver_pin() -> &'static [&'static str] {
++    if std::env::var_os("COMPILETEST_NO_SOLVER_PIN").is_some() { &[] } else { &["-Znext-solver=coherence"] }
++}
