@@ -150,15 +150,22 @@ for node, path in path_of.items():
 functions = {}  # site -> (crate, path)
 span_of = {}
 blocks = {}  # site -> (crate, function path, block, span, snippet, only panics)
+logging = set()  # blocks all of whose code is a logging macro's: they run only with RUSTC_LOG
 for table in Path(args.sites).glob("*.sites"):
     for line in table.read_text(errors="replace").splitlines():
         f = line.split("\t")
-        if len(f) >= 7 and f[1] == "cover":
-            functions[f[0]] = (f[3], f[4])
+        if len(f) < 7:
+            continue
+        # Newer tables name the crate with its stable id (`rustc_hash-<16 hex digits>`).
+        krate = re.sub(r"-[0-9a-f]{16}$", "", f[3])
+        if f[1] == "cover":
+            functions[f[0]] = (krate, f[4])
             span_of[f[4]] = f[6]
-        elif len(f) >= 7 and f[1] == "block":
-            name, _, tag = f[5].partition(" ")
-            blocks[f[0]] = (f[3], f[4], name, f[6], f[7] if len(f) > 7 else "", tag == "panics")
+        elif f[1] == "block":
+            name, *tags = f[5].split(" ")
+            if "log" in tags:
+                logging.add(f[0])
+            blocks[f[0]] = (krate, f[4], name, f[6], f[7] if len(f) > 7 else "", "panics" in tags)
 external = set()
 for u in args.external:
     external |= set(Path(u).read_text().split())
@@ -301,8 +308,13 @@ if hit:
                 row[1] += path in hit_paths
                 row[2] += path in ice_only
                 row[3] += path in ice_only and path in hit_paths
+        logged = [0, 0]
         for site, (krate, path, _, _, _, panics) in blocks.items():
             if krate in NOT_AT_RUN_TIME or path in unreach or path not in paths:
+                continue
+            if site in logging:
+                logged[0] += 1
+                logged[1] += site in hit
                 continue
             row = rows[krate]
             row[0] += 1
@@ -313,7 +325,8 @@ if hit:
         n, r, pn, pr = (sum(row[i] for row in rows.values()) for i in range(4))
         print(f"blocks: of the {n} in reachable functions, {r} ran ({100 * r / max(n, 1):.1f}%); "
               f"{pn} only panic ({pr} ran): without them, {r - pr} of {n - pn} "
-              f"({100 * (r - pr) / max(n - pn, 1):.1f}%)")
+              f"({100 * (r - pr) / max(n - pn, 1):.1f}%); not counted: {logged[0]} blocks of logging "
+              f"macros, which run only with RUSTC_LOG ({logged[1]} ran)")
         print(f"{'crate':40} {'ran':>7} {'blocks':>9} {'%':>6}   (panic-only blocks aside)")
         for krate, (n, r, pn, pr) in sorted(rows.items(), key=lambda kv: (kv[1][1] - kv[1][3]) / max(kv[1][0] - kv[1][2], 1)):
             if n - pn:
@@ -361,7 +374,7 @@ if args.block_gaps and blocks:
     # by crate and file, the lines with the most first.
     files = defaultdict(list)
     for site, (krate, path, name, span, snippet, panics) in blocks.items():
-        if path in hit_paths and site not in hit and krate not in NOT_AT_RUN_TIME:
+        if path in hit_paths and site not in hit and krate not in NOT_AT_RUN_TIME and site not in logging:
             files[(krate, span.rsplit(":", 2)[0])].append((span, path, name, snippet, panics or path in ice_only))
     with open(args.block_gaps, "w") as out:
         out.write(f"# Blocks that never ran in functions that did: {sum(map(len, files.values()))}\n\n")

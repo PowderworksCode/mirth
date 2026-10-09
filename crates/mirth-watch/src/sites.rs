@@ -487,6 +487,20 @@ fn is_panicking(tcx: TyCtxt<'_>, callee: DefId) -> bool {
             && (path.ends_with("::bug") || path.ends_with("::span_bug")))
 }
 
+/// Whether all of a block's code comes from expanding a logging macro (`tracing`'s
+/// `#[instrument]`, `debug!`, `trace!`, or `log`'s).
+fn log_only<'tcx>(tcx: TyCtxt<'tcx>, data: &rustc_middle::mir::BasicBlockData<'tcx>) -> bool {
+    let from_log = |span: rustc_span::Span| {
+        span.macro_backtrace().any(|expn| {
+            expn.macro_def_id.is_some_and(|def| {
+                matches!(tcx.crate_name(def.krate).as_str(), "tracing" | "tracing_attributes" | "tracing_core" | "log")
+            })
+        })
+    };
+    data.statements.iter().all(|statement| from_log(statement.source_info.span))
+        && from_log(data.terminator().source_info.span)
+}
+
 /// The blocks every path from which ends in a panic: no path reaches a return, a yield, or a
 /// call that diverges for another reason (`FatalError::raise`, `process::exit`), and some path
 /// reaches a panicking call. Cleanup blocks lead nowhere here.
@@ -651,9 +665,12 @@ enum What<'tcx> {
     },
     Cover,
     /// A basic block's start, under `[coverage] blocks`; `panics` when every path from it ends
-    /// in a panic (it runs only on a compiler bug).
+    /// in a panic (it runs only on a compiler bug), `log` when all its code comes from a logging
+    /// macro (`#[instrument]`, `debug!`: it runs only with `RUSTC_LOG`, or never in a build that
+    /// compiles the level out).
     Block {
         panics: bool,
+        log: bool,
     },
 }
 
@@ -830,7 +847,8 @@ pub fn instrument<'tcx>(
             if entry || data.is_cleanup || never {
                 continue;
             }
-            found.push(Found { at: block.start_location(), what: What::Block { panics: panics[block] } });
+            let log = log_only(tcx, data);
+            found.push(Found { at: block.start_location(), what: What::Block { panics: panics[block], log } });
         }
     }
     if found.is_empty() {
@@ -912,9 +930,15 @@ pub fn instrument<'tcx>(
                     });
                 }
             }
-            What::Block { panics } => {
-                let tag = if panics { " panics" } else { "" };
-                site("block", Mode::Count, format!("{:?}{tag}", at.block));
+            What::Block { panics, log } => {
+                let mut name = format!("{:?}", at.block);
+                if panics {
+                    name.push_str(" panics");
+                }
+                if log {
+                    name.push_str(" log");
+                }
+                site("block", Mode::Count, name);
                 hooks_here.push(Hook {
                     callee: hooks.cover.expect("checked above"),
                     over: Vec::new(),

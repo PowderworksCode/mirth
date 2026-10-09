@@ -22,6 +22,7 @@ suites=${COV_SUITES:-$work/cov-suites}
 build=${COV_BUILD:-$work/build-cov}
 report=${COV_OUT:-$work}
 runs=()
+shopt -s nullglob
 for f in "$suites"/*/union.txt; do
   case $f in
     *fulldeps*|*compiler-unit*) runs+=(--external "$f") ;;
