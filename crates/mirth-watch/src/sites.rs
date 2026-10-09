@@ -454,20 +454,7 @@ fn endings<'tcx>(tcx: TyCtxt<'tcx>, body: &Body<'tcx>) -> Option<(bool, Vec<DefI
             }
             TerminatorKind::Call { func, target: None, .. } => {
                 let Some((callee, _)) = func.const_fn_def() else { return None };
-                let path = defining_path_of(tcx, callee);
-                let panicking = path.starts_with("core::panicking::")
-                    || path.starts_with("std::panicking::")
-                    || path.starts_with("std::rt::begin_panic")
-                    // `bug!` (through `rustc_span::macros::bug_impl`), its only user here
-                    || path == "std::panic::panic_any"
-                    || path.starts_with("core::option::unwrap_failed")
-                    || path.starts_with("core::option::expect_failed")
-                    || path.starts_with("core::result::unwrap_failed")
-                    || path.starts_with("core::slice::index::")
-                    || path.ends_with("::bug_fmt")
-                    || path.ends_with("::span_bug_fmt")
-                    || (path.starts_with("rustc_errors::")
-                        && (path.ends_with("::bug") || path.ends_with("::span_bug")));
+                let panicking = is_panicking(tcx, callee);
                 if panicking {
                     panics = true;
                 } else {
@@ -479,6 +466,73 @@ fn endings<'tcx>(tcx: TyCtxt<'tcx>, body: &Body<'tcx>) -> Option<(bool, Vec<DefI
         }
     }
     Some((panics, others))
+}
+
+/// Whether a call to `callee` that does not return is a panic: `panic!`, `bug!`, a failed
+/// `unwrap`, an index out of bounds.
+fn is_panicking(tcx: TyCtxt<'_>, callee: DefId) -> bool {
+    let path = defining_path_of(tcx, callee);
+    path.starts_with("core::panicking::")
+        || path.starts_with("std::panicking::")
+        || path.starts_with("std::rt::begin_panic")
+        // `bug!` (through `rustc_span::macros::bug_impl`), its only user here
+        || path == "std::panic::panic_any"
+        || path.starts_with("core::option::unwrap_failed")
+        || path.starts_with("core::option::expect_failed")
+        || path.starts_with("core::result::unwrap_failed")
+        || path.starts_with("core::slice::index::")
+        || path.ends_with("::bug_fmt")
+        || path.ends_with("::span_bug_fmt")
+        || (path.starts_with("rustc_errors::")
+            && (path.ends_with("::bug") || path.ends_with("::span_bug")))
+}
+
+/// The blocks every path from which ends in a panic: no path reaches a return, a yield, or a
+/// call that diverges for another reason (`FatalError::raise`, `process::exit`), and some path
+/// reaches a panicking call. Cleanup blocks lead nowhere here.
+fn panic_only_blocks<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    body: &Body<'tcx>,
+) -> rustc_index::IndexVec<BasicBlock, bool> {
+    use rustc_index::IndexVec;
+    let blocks = &body.basic_blocks;
+    let mut normal: IndexVec<BasicBlock, bool> = IndexVec::from_elem(false, blocks);
+    let mut panic: IndexVec<BasicBlock, bool> = IndexVec::from_elem(false, blocks);
+    let mut normal_work = vec![];
+    let mut panic_work = vec![];
+    for (block, data) in blocks.iter_enumerated() {
+        if data.is_cleanup {
+            continue;
+        }
+        match &data.terminator().kind {
+            TerminatorKind::Return
+            | TerminatorKind::Yield { .. }
+            | TerminatorKind::CoroutineDrop
+            | TerminatorKind::TailCall { .. } => normal_work.push(block),
+            TerminatorKind::Call { func, target: None, .. } => {
+                if func.const_fn_def().is_some_and(|(callee, _)| is_panicking(tcx, callee)) {
+                    panic_work.push(block);
+                } else {
+                    normal_work.push(block);
+                }
+            }
+            TerminatorKind::InlineAsm { targets, .. } if targets.is_empty() => normal_work.push(block),
+            _ => {}
+        }
+    }
+    for (marks, mut work) in [(&mut normal, normal_work), (&mut panic, panic_work)] {
+        while let Some(block) = work.pop() {
+            if std::mem::replace(&mut marks[block], true) {
+                continue;
+            }
+            for &pred in &blocks.predecessors()[block] {
+                if !blocks[pred].is_cleanup && !marks[pred] {
+                    work.push(pred);
+                }
+            }
+        }
+    }
+    normal.into_iter_enumerated().map(|(block, n)| !n && panic[block]).collect()
 }
 
 /// Whether `imp` specializes another impl of `r#trait`, or another impl specializes it: which
@@ -596,6 +650,11 @@ enum What<'tcx> {
         mode: Mode,
     },
     Cover,
+    /// A basic block's start, under `[coverage] blocks`; `panics` when every path from it ends
+    /// in a panic (it runs only on a compiler bug).
+    Block {
+        panics: bool,
+    },
 }
 
 struct Found<'tcx> {
@@ -760,6 +819,20 @@ pub fn instrument<'tcx>(
     if config.coverage.functions && runs && hooks.cover.is_some() {
         found.push(Found { at: START_BLOCK.start_location(), what: What::Cover });
     }
+    if config.coverage.blocks && runs && hooks.cover.is_some() {
+        let panics = panic_only_blocks(tcx, original);
+        for (block, data) in original.basic_blocks.iter_enumerated() {
+            // The function's own site stands for its entry block.
+            let entry = block == START_BLOCK && config.coverage.functions;
+            // Unwinding paths: not instrumented (a call there would need its own unwind edge).
+            // An empty `unreachable` block never runs.
+            let never = data.statements.is_empty() && matches!(data.terminator().kind, TerminatorKind::Unreachable);
+            if entry || data.is_cleanup || never {
+                continue;
+            }
+            found.push(Found { at: block.start_location(), what: What::Block { panics: panics[block] } });
+        }
+    }
     if found.is_empty() {
         return None;
     }
@@ -776,6 +849,7 @@ pub fn instrument<'tcx>(
             What::Enter { .. } | What::Exit => frame_site,
             // The runtime's coverage table keeps sites with the low bit set.
             What::Cover => mirth::identity::identity(&format!("{caller}|cover")) | 1,
+            What::Block { .. } => mirth::identity::identity(&format!("{caller}|cover|{:?}", at.block)) | 1,
             _ => mirth::identity::identity(&format!(
                 "{caller}|{:?}|{}|{}|{n}",
                 at.block,
@@ -837,6 +911,16 @@ pub fn instrument<'tcx>(
                         before: Vec::new(),
                     });
                 }
+            }
+            What::Block { panics } => {
+                let tag = if panics { " panics" } else { "" };
+                site("block", Mode::Count, format!("{:?}{tag}", at.block));
+                hooks_here.push(Hook {
+                    callee: hooks.cover.expect("checked above"),
+                    over: Vec::new(),
+                    arguments: vec![build.number(id)],
+                    before: Vec::new(),
+                });
             }
             What::Cover => {
                 site("cover", Mode::Count, caller.clone());

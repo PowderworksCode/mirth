@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Run any command with MIRTH_OUT set, folding the coverage logs of the instrumented compiler's
 # processes into $WORK/cov-suites/<name>/union.txt as they finish (rustc/coverage-compact.py),
-# where rustc/coverage-report.sh picks them up.
+# where rustc/coverage-report.sh picks them up (COV_SUITES: another directory instead).
 #
 #   WORK=~/mirth-work rustc/coverage-run.sh <name> <command...>
 #
@@ -13,7 +13,7 @@ set -uo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 work=${WORK:-$HOME/mirth-work}
 name=$1; shift
-out=$work/cov-suites/$name
+out=${COV_SUITES:-$work/cov-suites}/$name
 mkdir -p "$out/logs"
 rm -f "$out/done"
 python3 "$here/coverage-compact.py" --logs "$out/logs" --out "$out" --until "$out/done" > "$out/compact.log" 2>&1 &

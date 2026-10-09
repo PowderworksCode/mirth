@@ -49,6 +49,8 @@ p.add_argument("--json")
 p.add_argument("--unreachable", action="append", default=[])
 p.add_argument("--why", action="append", default=[], help="print how a function is reached")
 p.add_argument("--gaps", help="write the reachable functions that never ran, by crate and file, to this file")
+p.add_argument("--block-gaps", help="write the blocks that never ran in functions that did, by crate and file, "
+                                    "to this file (a compiler built with `[coverage] blocks`)")
 args = p.parse_args()
 
 ROOTS = {"rustc_main::main", "rustc_driver_impl::main", "rustdoc::main"}
@@ -147,12 +149,16 @@ for node, path in path_of.items():
 
 functions = {}  # site -> (crate, path)
 span_of = {}
+blocks = {}  # site -> (crate, function path, block, span, snippet, only panics)
 for table in Path(args.sites).glob("*.sites"):
     for line in table.read_text(errors="replace").splitlines():
         f = line.split("\t")
         if len(f) >= 7 and f[1] == "cover":
             functions[f[0]] = (f[3], f[4])
             span_of[f[4]] = f[6]
+        elif len(f) >= 7 and f[1] == "block":
+            name, _, tag = f[5].partition(" ")
+            blocks[f[0]] = (f[3], f[4], name, f[6], f[7] if len(f) > 7 else "", tag == "panics")
 external = set()
 for u in args.external:
     external |= set(Path(u).read_text().split())
@@ -284,6 +290,34 @@ if hit:
     print(f"ran although unreachable (edges the analysis misses): {len(wrong)}")
     for w in wrong[:30]:
         print("   ", w)
+    if blocks:
+        # Blocks: each function's entry (its own site) and its other blocks, in the functions
+        # that can run. A block only panics when every path from it does, or its function does.
+        rows = defaultdict(lambda: [0, 0, 0, 0])  # crate -> reachable, ran, panic-only, panic-only ran
+        for site, (krate, path) in functions.items():
+            if path not in unreach:
+                row = rows[krate]
+                row[0] += 1
+                row[1] += path in hit_paths
+                row[2] += path in ice_only
+                row[3] += path in ice_only and path in hit_paths
+        for site, (krate, path, _, _, _, panics) in blocks.items():
+            if krate in NOT_AT_RUN_TIME or path in unreach or path not in paths:
+                continue
+            row = rows[krate]
+            row[0] += 1
+            row[1] += site in hit
+            panics = panics or path in ice_only
+            row[2] += panics
+            row[3] += panics and site in hit
+        n, r, pn, pr = (sum(row[i] for row in rows.values()) for i in range(4))
+        print(f"blocks: of the {n} in reachable functions, {r} ran ({100 * r / max(n, 1):.1f}%); "
+              f"{pn} only panic ({pr} ran): without them, {r - pr} of {n - pn} "
+              f"({100 * (r - pr) / max(n - pn, 1):.1f}%)")
+        print(f"{'crate':40} {'ran':>7} {'blocks':>9} {'%':>6}   (panic-only blocks aside)")
+        for krate, (n, r, pn, pr) in sorted(rows.items(), key=lambda kv: (kv[1][1] - kv[1][3]) / max(kv[1][0] - kv[1][2], 1)):
+            if n - pn:
+                print(f"{krate:40} {r - pr:7} {n - pn:9} {100 * (r - pr) / (n - pn):6.1f}")
     print(f"{'crate':40} {'ran':>7} {'reachable':>9} {'%':>6}")
     for krate, (n, r, _) in sorted(by_crate.items(), key=lambda kv: kv[1][1] / max(kv[1][0], 1)):
         if n:
@@ -321,3 +355,31 @@ if args.gaps:
                     out.write(f"- `{path}` {span.rsplit(':', 2)[-2] if ':' in span else ''}{tag}\n")
                 out.write("\n")
     print(f"gaps written to {args.gaps}")
+
+if args.block_gaps and blocks:
+    # The blocks that never ran, in functions that did (gaps.md has the functions that did not),
+    # by crate and file, the lines with the most first.
+    files = defaultdict(list)
+    for site, (krate, path, name, span, snippet, panics) in blocks.items():
+        if path in hit_paths and site not in hit and krate not in NOT_AT_RUN_TIME:
+            files[(krate, span.rsplit(":", 2)[0])].append((span, path, name, snippet, panics or path in ice_only))
+    with open(args.block_gaps, "w") as out:
+        out.write(f"# Blocks that never ran in functions that did: {sum(map(len, files.values()))}\n\n")
+        by_crate = defaultdict(int)
+        for (krate, _), bs in files.items():
+            by_crate[krate] += len(bs)
+        for krate in sorted(by_crate, key=lambda k: -by_crate[k]):
+            out.write(f"## {krate} ({by_crate[krate]})\n\n")
+            for (k, file), bs in sorted(files.items(), key=lambda kv: -len(kv[1])):
+                if k != krate:
+                    continue
+                out.write(f"### {file} ({len(bs)})\n\n")
+                def line_of(b):
+                    parts = b[0].rsplit(":", 2)
+                    return (int(parts[1]), int(parts[2])) if len(parts) == 3 and parts[1].isdigit() else (0, 0)
+                for b in sorted(bs, key=line_of):
+                    span, path, name, snippet, panics = b
+                    tag = " (only panics)" if panics else ""
+                    out.write(f"- {line_of(b)[0]} `{path}` {name}{tag}: `{snippet[:100]}`\n")
+                out.write("\n")
+    print(f"block gaps written to {args.block_gaps}")

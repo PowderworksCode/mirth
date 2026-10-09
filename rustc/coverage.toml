@@ -5,3 +5,5 @@ crates = ["rustc_*"]
 
 [coverage]
 functions = true
+# Every basic block too (rustc/callgraph.py --block-gaps).
+blocks = true

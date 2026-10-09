@@ -48,12 +48,15 @@ pub struct Config {
     pub diagnostics: Diagnostics,
 }
 
-/// Coverage: each function and closure body in scope calls the runtime's `cover` on entry.
+/// Coverage: each function and closure body in scope calls the runtime's `cover` on entry; with
+/// `blocks`, also at the start of each of its other basic blocks (cleanup blocks aside).
 #[derive(Deserialize, Default)]
 #[serde(deny_unknown_fields)]
 pub struct Coverage {
     #[serde(default)]
     pub functions: bool,
+    #[serde(default)]
+    pub blocks: bool,
 }
 
 /// For writing a configuration: what could be matched.
