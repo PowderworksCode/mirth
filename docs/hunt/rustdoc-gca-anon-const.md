@@ -27,10 +27,21 @@ is `Maybe<()>`.
 
 ## Where
 
-The error is `compiler/rustc_hir_analysis/src/hir_ty_lowering/mod.rs:2434`: the anonymous
-constant's expected type `has_non_region_param()`. Under rustc the type is `Maybe<()>`; the
-error means rustdoc's lowering of the bound reaches this check with the associated const's type
-not instantiated with the binding's arguments (`Maybe<T>`). Not narrowed further.
+`src/librustdoc/clean/mod.rs:530`, `clean_hir_term`, for a constant on the right of an
+associated-item binding:
+
+```rust
+        hir::Term::Const(c) => {
+            // FIXME(generic_const_items): this should instantiate with the alias item's args
+            let ty = cx.tcx.type_of(assoc_item.unwrap()).instantiate_identity().skip_norm_wip();
+            let ct = lower_const_arg_for_rustdoc(cx.tcx, c, ty);
+```
+
+The type passed on is `Maybe<T>` (identity arguments), not `Maybe<()>`, and lowering the
+anonymous constant against it reports
+`compiler/rustc_hir_analysis/src/hir_ty_lowering/mod.rs:2434` (the expected type
+`has_non_region_param()`). The FIXME records the missing instantiation; this is what it does
+to a program rustc accepts. Also `const-generics/associated-const-bindings/bound-var-in-ty.rs`.
 
 ## Versions
 

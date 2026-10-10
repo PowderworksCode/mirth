@@ -61,7 +61,11 @@ const NOISE: &[(&str, &str)] = &[
 ];
 
 /// rustdoc ICEs already reported upstream: a line of the panic, and the issue.
-const KNOWN_ICE: &[(&str, &str)] = &[("cx.impl_trait_bounds.is_empty()", "rust-lang/rust#155728 (fn_delegation)")];
+const KNOWN_ICE: &[(&str, &str)] = &[
+    ("cx.impl_trait_bounds.is_empty()", "rust-lang/rust#155728 (fn_delegation)"),
+    // `UnsafeBinder(_) => unimplemented!()` under `FIXME(unsafe_binder): Implement rustdoc-json`.
+    ("json/conversions.rs:706:32", "FIXME(unsafe_binder) in rustdoc JSON"),
+];
 
 const AUTO_TRAITS: &[&str] = &["Send", "Sync", "Unpin", "UnwindSafe", "RefUnwindSafe"];
 
@@ -738,7 +742,10 @@ fn check(args: &Args, tools: &Tools, test: &Test) -> Rec {
             Status::Timeout => rec.notes.push(format!("rustdoc timeout ({name})")),
             Status::Error if accepted => {
                 let names = error_names(&d.stderr);
-                match noise(&names) {
+                // A test that sets a tiny recursion limit: rustdoc's extra trait work (blanket
+                // impls over std types) passes a depth rustc happens to stay under.
+                let overflow_only = test.text.contains("#![recursion_limit") && d.stderr.contains("overflow");
+                match noise(&names).or(overflow_only.then_some("overflow under the test's recursion_limit")) {
                     Some(why) => rec.notes.push(format!("{name}: {why}")),
                     None => {
                         rec.found.push(format!("rejects ({name}): {}", names.join(", ").chars().take(150).collect::<String>()));
