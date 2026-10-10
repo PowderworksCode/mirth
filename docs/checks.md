@@ -342,3 +342,21 @@ about 600 of the 1,000.
 - "Would have caught" assumes the input that reaches the bug is in the corpus. For most
   checks, the input side (feature mutation, real crates, runnable programs) is as much work as
   the check.
+
+## Built (2026-10-09/10)
+
+The first seven checks of the build order, as scripts in `rustc/` sharing `rustc/uitest.py`, run
+over the standalone UI tests at the pin (and real crates for release-to-release). Each has
+`--recheck`, `--known` and `--pause-on-finding` for the frontier loop.
+
+| check | script | swept | result |
+|---|---|---|---|
+| optimization and pass differential | `opt-diff.py` | 3,217 runnable tests × 13 configurations (opt levels, MIR opt levels, LTO, target CPU, Cranelift) | nothing; Cranelift's gaps (tail calls, some linkages and SIMD intrinsics) noted |
+| solver differential | `solver-diff.py` | 17,634 tests × old/new solver × NLL/Polonius | the 26 rejections and 3 crashes of [`solver.md`](solver.md); Polonius agrees with NLL everywhere |
+| Miri differential | `miri-diff.py` | 3,094 runnable tests at MIR opt levels 0, 2, 4 and natively | nothing; tests asserting unspecified behavior (function pointer equality, ZST addresses) listed |
+| equivalent rewrites | `mirth-rewrite` + `rewrite-diff.py` | 18,624 tests × generic-wrap, alias, reorder, unused | findings 25 (generic-wrap) and 28 (reorder) |
+| ABI vs clang | `abi-diff.py` | 21 main targets × 10 seeds × 300 random signatures | findings 19 and 20; #163911 reproduced; i686 MSVC small-struct returns and a PowerPC64 `inreg` float undecided |
+| internal checks on | `crash-diff.py` + a debug-assertions compiler | 18,624 tests with `-Zvalidate-mir` | findings 21–24 (17 tests) |
+| release-to-release | `release-diff.py` | 87 real repositories, nightly-2026-07-18 → 10-06 | findings 26 and 27; `allocative` (unstable features) noted |
+
+Ten new findings (19–28) in [`hunt.md`](hunt.md), none from the checks mirth had before.

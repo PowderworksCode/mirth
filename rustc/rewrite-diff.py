@@ -40,6 +40,8 @@ STRICT = set()
 NOISE = {
     ("consts/chained-constants-stackoverflow.rs", "reorder"),  # 10,000 chained consts: query depth
     ("consts/interior-mut-const-via-union.rs", "generic-wrap"),  # finding 25 (docs/hunt.md)
+    # recursion_limit = "6": evaluation order nests the query stack one level deeper
+    ("traits/next-solver/overflow/dont-lower-depth-for-witness-and-rigid-opaque.rs", "reorder"),
     ("imports/ambiguous-9.rs", "reorder"),  # finding 28
     ("imports/ambiguous-14.rs", "reorder"),  # finding 28
     ("imports/overwrite-different-ambig-2.rs", "reorder"),  # finding 28
