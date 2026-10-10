@@ -6,7 +6,7 @@
 #   WORK=~/mirth-work rustc/coverage-run.sh <name> <command...>
 #
 # For example, the UI tests through incremental rebuilds:
-#   rustc/coverage-run.sh ui-fuzz python3 rustc/ui-fuzz.py --rustc $COV_RUSTC \
+#   rustc/coverage-run.sh ui-fuzz target/release/mirth-lab ui-fuzz --rustc $COV_RUSTC \
 #     --tests $MIRTH_RUST/tests/ui --list ~/mirth-work/ui-cov/all-runnable.json \
 #     --work ~/mirth-work/ui-fuzz-cov --edits 3 --jobs 6
 set -uo pipefail

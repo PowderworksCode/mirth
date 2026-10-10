@@ -77,7 +77,7 @@ reach 13,626 of them (55%)**. The first few:
 | `attributes/malformed-attrs.rs` | 444 |
 | `abi/stack-protector.rs` | 432 |
 
-`rustc/ui-fuzz.py` runs the picked tests through incremental rebuilds after the fuzzer's edits,
+`mirth-lab ui-fuzz` runs the picked tests through incremental rebuilds after the fuzzer's edits,
 each compared with a clean build (status, diagnostics, outputs): error reporting and recovery
 under incremental compilation, which sink cannot reach.
 
@@ -86,7 +86,7 @@ solver, while nightly defaults to the new one: [`solver.md`](solver.md).
 
 ### Through incremental rebuilds
 
-`rustc/ui-fuzz.py` over every UI test that compiles standalone (18,553 files), up to 8 random
+`mirth-lab ui-fuzz` over every UI test that compiles standalone (18,553 files), up to 8 random
 edits each: **123,063 edit, incremental rebuild and clean rebuild cycles**, each compared on exit
 status, diagnostics and outputs. Checked first on finding 7's shape (a warning from inline
 assembly, lost when a codegen unit is reused), which it finds in 2 of 37 edits.
@@ -201,7 +201,7 @@ logs the same way.
 
 | run | functions reached |
 |---|---:|
-| ui tests through incremental rebuilds (`ui-fuzz.py`, 18,553 tests, 3 edits each) | 44,196 |
+| ui tests through incremental rebuilds (`mirth-lab ui-fuzz`, 18,553 tests, 3 edits each) | 44,196 |
 | `coverage-generators.py`: every `--print` request on the host and on all 334 targets; minicore and an ABI file compiled for every target at `-Copt-level=0` and 3; the 300 picked UI tests under 48 debugging and printing options | 41,768 |
 | `coverage-generators.py --only links`: a binary, cdylib, staticlib and dylib on minicore for every target with `-Clinker=true`, under 11 sets of linker options | 18,228 |
 
