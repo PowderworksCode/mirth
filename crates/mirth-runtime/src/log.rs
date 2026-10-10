@@ -142,6 +142,12 @@ extern "C" fn finish() {
     for site in crate::coverage::hits() {
         text.push_str(&format!("V\t{site}\n"));
     }
+    for (combined, site, key) in crate::coverage::keyed() {
+        text.push_str(&format!("K\t{combined}\t{site}\t{key}\n"));
+    }
+    for (caller, callee) in crate::coverage::pairs() {
+        text.push_str(&format!("D\t{caller}\t{callee}\n"));
+    }
     let ns = log.start_ns + log.start.elapsed().as_nanos();
     text.push_str(&format!("X\t{ns}\n"));
     let file = log.file.lock().unwrap_or_else(|it| it.into_inner());

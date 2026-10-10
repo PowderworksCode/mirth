@@ -1,0 +1,154 @@
+diff --git a/compiler/rustc_data_structures/src/sync/lock.rs b/compiler/rustc_data_structures/src/sync/lock.rs
+index f183af0c0dab..6543c824ee7f 100644
+--- a/compiler/rustc_data_structures/src/sync/lock.rs
++++ b/compiler/rustc_data_structures/src/sync/lock.rs
+@@ -155,7 +155,17 @@ fn lock_held() -> ! {
+                         lock_held()
+                     }
+                 }
+-                Mode::Sync => self.mode_union.sync.lock(),
++                Mode::Sync => {
++                    // `RUSTC_LOCK_CONTENTION`: try first, and record where a lock was found held.
++                    if contention::enabled() {
++                        if !self.mode_union.sync.try_lock() {
++                            contention::record(std::panic::Location::caller());
++                            self.mode_union.sync.lock()
++                        }
++                    } else {
++                        self.mode_union.sync.lock()
++                    }
++                }
+             }
+         }
+         LockGuard { lock: self, marker: PhantomData, mode }
+@@ -215,3 +225,38 @@ fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+         }
+     }
+ }
++
++/// `RUSTC_LOCK_CONTENTION=<dir>`: the call sites (`#[track_caller]` locations) of `Lock::lock`
++/// that found the lock held, under the parallel front end (coverage of contention, mirth's
++/// docs/coverage-plan.md). Each site is written once per process to `<dir>/<pid>.locks`, with
++/// how many times it had been contended when the count reached a power of two.
++pub mod contention {
++    use std::io::Write;
++    use std::panic::Location;
++    use std::sync::{Mutex, OnceLock};
++
++    use crate::fx::FxHashMap;
++
++    static OUT: OnceLock<Option<std::path::PathBuf>> = OnceLock::new();
++    static SEEN: Mutex<Option<FxHashMap<(&'static str, u32, u32), u64>>> = Mutex::new(None);
++
++    #[inline]
++    pub fn enabled() -> bool {
++        OUT.get_or_init(|| std::env::var_os("RUSTC_LOCK_CONTENTION").map(Into::into)).is_some()
++    }
++
++    #[cold]
++    pub fn record(at: &'static Location<'static>) {
++        let Some(Some(dir)) = OUT.get() else { return };
++        let mut seen = SEEN.lock().unwrap_or_else(|e| e.into_inner());
++        let count = seen.get_or_insert_with(Default::default).entry((at.file(), at.line(), at.column())).or_insert(0);
++        *count += 1;
++        if !count.is_power_of_two() {
++            return;
++        }
++        let path = dir.join(format!("{}.locks", std::process::id()));
++        if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
++            let _ = writeln!(file, "{}\t{}\t{}\t{count}", at.file(), at.line(), at.column());
++        }
++    }
++}
+diff --git a/compiler/rustc_mir_transform/src/pass_manager.rs b/compiler/rustc_mir_transform/src/pass_manager.rs
+index 8ecc26910aed..9a66ab8be1fc 100644
+--- a/compiler/rustc_mir_transform/src/pass_manager.rs
++++ b/compiler/rustc_mir_transform/src/pass_manager.rs
+@@ -15,6 +15,68 @@
+ use crate::lint::lint_body;
+ use crate::{diagnostics, validate};
+ 
++/// `RUSTC_PASS_EFFECT=<dir>`: which MIR passes changed a body (coverage of the passes, mirth's
++/// docs/coverage-plan.md). Each (pass, body kind, mir-opt-level, changed or not) is written once
++/// per process to `<dir>/<pid>.passes`, as it is first seen. Off without the variable.
++mod pass_effect {
++    use std::io::Write;
++    use std::sync::{Mutex, OnceLock};
++
++    use rustc_data_structures::fingerprint::Fingerprint;
++    use rustc_data_structures::fx::FxHashSet;
++    use rustc_data_structures::stable_hash::{StableHash, StableHasher};
++    use rustc_hir::def::DefKind;
++    use rustc_middle::mir::Body;
++    use rustc_middle::ty::{InstanceKind, TyCtxt};
++
++    static OUT: OnceLock<Option<std::path::PathBuf>> = OnceLock::new();
++    static SEEN: Mutex<Option<FxHashSet<(&'static str, &'static str, usize, bool)>>> = Mutex::new(None);
++
++    pub(super) fn enabled() -> bool {
++        OUT.get_or_init(|| std::env::var_os("RUSTC_PASS_EFFECT").map(Into::into)).is_some()
++    }
++
++    /// The body's blocks and locals, spans left out: what a pass changes.
++    pub(super) fn fingerprint<'tcx>(tcx: TyCtxt<'tcx>, body: &Body<'tcx>) -> Fingerprint {
++        tcx.with_stable_hashing_context(|mut hcx| {
++            let mut hasher = StableHasher::new();
++            hcx.while_hashing_spans(false, |hcx| {
++                body.basic_blocks.stable_hash(hcx, &mut hasher);
++                body.local_decls.stable_hash(hcx, &mut hasher);
++            });
++            hasher.finish()
++        })
++    }
++
++    pub(super) fn kind<'tcx>(tcx: TyCtxt<'tcx>, body: &Body<'tcx>) -> &'static str {
++        if body.source.promoted.is_some() {
++            return "promoted";
++        }
++        let InstanceKind::Item(def_id) = body.source.instance else { return "shim" };
++        match tcx.def_kind(def_id) {
++            DefKind::Fn | DefKind::AssocFn => "fn",
++            DefKind::Closure if tcx.is_coroutine(def_id) => "coroutine",
++            DefKind::Closure => "closure",
++            DefKind::Const { .. } | DefKind::AssocConst { .. } | DefKind::AnonConst => "const",
++            DefKind::Static { .. } => "static",
++            DefKind::Ctor(..) => "ctor",
++            _ => "other",
++        }
++    }
++
++    pub(super) fn record(pass: &'static str, kind: &'static str, level: usize, changed: bool) {
++        let Some(Some(dir)) = OUT.get() else { return };
++        let mut seen = SEEN.lock().unwrap_or_else(|e| e.into_inner());
++        if !seen.get_or_insert_with(Default::default).insert((pass, kind, level, changed)) {
++            return;
++        }
++        let path = dir.join(format!("{}.passes", std::process::id()));
++        if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
++            let _ = writeln!(file, "{pass}\t{kind}\t{level}\t{}", if changed { "changed" } else { "unchanged" });
++        }
++    }
++}
++
+ thread_local! {
+     /// Maps MIR pass names to a snake case form to match profiling naming style
+     static PASS_TO_PROFILER_NAMES: RefCell<FxHashMap<&'static str, &'static str>> = {
+@@ -359,6 +421,7 @@ fn run_passes_inner<'tcx>(
+                 dumper.dump_mir(body);
+             }
+ 
++            let effect_before = pass_effect::enabled().then(|| pass_effect::fingerprint(tcx, body));
+             if let Some(prof_arg) = &prof_arg {
+                 tcx.sess
+                     .prof
+@@ -367,6 +430,10 @@ fn run_passes_inner<'tcx>(
+             } else {
+                 pass.run_pass(tcx, body);
+             }
++            if let Some(before) = effect_before {
++                let changed = pass_effect::fingerprint(tcx, body) != before;
++                pass_effect::record(pass_name, pass_effect::kind(tcx, body), tcx.sess.mir_opt_level(), changed);
++            }
+ 
+             if let Some(dumper) = dumper {
+                 dumper.set_disambiguator(&"after").dump_mir(body);

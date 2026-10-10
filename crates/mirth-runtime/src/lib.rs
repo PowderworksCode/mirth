@@ -13,6 +13,8 @@
 //! L <ns> <thread> <site> <frame> <frame type> <frame arguments> <argument>…  a logged event, written at once
 //! C <site> <frame> <frame type> <frame arguments> <count> <argument>…       a counted event, written at exit
 //! V <site>                                                                     a covered site, written at exit
+//! K <site> <base site> <key>                                                   a keyed site's parts (its site is also a V line), at exit
+//! D <caller site> <callee site>                                                a call pair, written at exit
 //! X <ns>                                                                       the exit, last
 //! ```
 //!
@@ -193,5 +195,38 @@ pub fn point(site: u64) {
 pub fn cover(site: u64) {
     if log::enabled() {
         coverage::hit(site);
+    }
+}
+
+/// A block of a keyed function, under `[[coverage.keyed]]`: `site` is the block's own site,
+/// `key` tells the runs apart (a query's dep kind, a type's kind, a return value).
+#[rustc_diagnostic_item = "mirth_cover_keyed"]
+#[inline(never)]
+pub fn cover_keyed(site: u64, key: u64) {
+    if log::enabled() {
+        coverage::hit_keyed(site, key);
+    }
+}
+
+/// A function's entry, under `[coverage] pairs`: as `cover`, and records which instrumented
+/// function was running when this one was entered. Returns that function's site, which the
+/// function passes to `cover_leave` at each of its returns.
+#[rustc_diagnostic_item = "mirth_cover_enter"]
+#[inline(never)]
+pub fn cover_enter(site: u64) -> u64 {
+    if log::enabled() {
+        coverage::hit(site);
+        coverage::enter(site)
+    } else {
+        0
+    }
+}
+
+/// A function's return, under `[coverage] pairs`: the function running before it runs again.
+#[rustc_diagnostic_item = "mirth_cover_leave"]
+#[inline(never)]
+pub fn cover_leave(caller: u64) {
+    if log::enabled() {
+        coverage::leave(caller);
     }
 }

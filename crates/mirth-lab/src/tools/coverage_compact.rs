@@ -7,6 +7,12 @@
 //! process's source file argument and the sites it reached that no earlier process did;
 //! <out>/union.txt holds every site reached so far, rewritten every pass. Runs until <until>
 //! exists, then does a last pass.
+//!
+//! The dimensions beyond blocks (rustc/coverage-dims.toml, docs/coverage-plan.md) fold beside it:
+//! keyed sites (`K` lines) into keyed.txt as `<site>\t<key>`, call pairs (`D` lines) into
+//! pairs.txt as `<caller>\t<callee>`, and the files the coverage patch writes into the logs'
+//! directory (`<pid>.passes` from RUSTC_PASS_EFFECT, `<pid>.locks` from RUSTC_LOCK_CONTENTION)
+//! into passes.txt and locks.txt, once they have not changed for a minute.
 
 use std::collections::BTreeSet;
 use std::io::Write;
@@ -44,7 +50,73 @@ struct Added<'a> {
     new: &'a [&'a str],
 }
 
-fn one_pass(logs: &Path, out: &Path, union: &mut BTreeSet<String>, last: bool) -> anyhow::Result<usize> {
+/// The unions beside union.txt, each one line per distinct record.
+#[derive(Default)]
+struct Extra {
+    keyed: BTreeSet<String>,
+    pairs: BTreeSet<String>,
+    passes: BTreeSet<String>,
+    locks: BTreeSet<String>,
+}
+
+impl Extra {
+    const FILES: [&str; 4] = ["keyed.txt", "pairs.txt", "passes.txt", "locks.txt"];
+
+    fn load(out: &Path) -> Extra {
+        let read = |name: &str| -> BTreeSet<String> {
+            std::fs::read_to_string(out.join(name)).unwrap_or_default().lines().filter(|l| !l.is_empty()).map(str::to_owned).collect()
+        };
+        Extra { keyed: read(Self::FILES[0]), pairs: read(Self::FILES[1]), passes: read(Self::FILES[2]), locks: read(Self::FILES[3]) }
+    }
+
+    fn from_log(&mut self, text: &str) {
+        for line in text.lines() {
+            if let Some(rest) = line.strip_prefix("K\t") {
+                // `<combined> <site> <key>`: the combined site is a V line too.
+                if let Some((_, parts)) = rest.split_once('\t') {
+                    self.keyed.insert(parts.to_owned());
+                }
+            } else if let Some(rest) = line.strip_prefix("D\t") {
+                self.pairs.insert(rest.to_owned());
+            }
+        }
+    }
+
+    /// The coverage patch's files, folded once they have not changed for a minute (or at the
+    /// end), then deleted.
+    fn from_patch_files(&mut self, logs: &Path, last: bool) {
+        for (ext, set, fields) in [("passes", &mut self.passes, 4), ("locks", &mut self.locks, 3)] {
+            for file in files_with(logs, ext) {
+                let Ok(meta) = std::fs::metadata(&file) else { continue };
+                let age = meta.modified().ok().and_then(|m| SystemTime::now().duration_since(m).ok()).unwrap_or_default().as_secs_f64();
+                if !(age > 60.0 || (last && age > 5.0)) {
+                    continue;
+                }
+                for line in std::fs::read_to_string(&file).unwrap_or_default().lines() {
+                    let kept: Vec<&str> = line.split('\t').take(fields).collect();
+                    if kept.len() == fields {
+                        set.insert(kept.join("\t"));
+                    }
+                }
+                let _ = std::fs::remove_file(&file);
+            }
+        }
+    }
+
+    fn write(&self, out: &Path) -> anyhow::Result<()> {
+        for (name, set) in Self::FILES.iter().zip([&self.keyed, &self.pairs, &self.passes, &self.locks]) {
+            if set.is_empty() {
+                continue;
+            }
+            let mut text = set.iter().map(String::as_str).collect::<Vec<_>>().join("\n");
+            text.push('\n');
+            std::fs::write(out.join(name), text)?;
+        }
+        Ok(())
+    }
+}
+
+fn one_pass(logs: &Path, out: &Path, union: &mut BTreeSet<String>, extra: &mut Extra, last: bool) -> anyhow::Result<usize> {
     let mut done = 0;
     let mut added = std::fs::OpenOptions::new().create(true).append(true).open(out.join("added.jsonl"))?;
     for log in files_with(logs, "log") {
@@ -55,6 +127,7 @@ fn one_pass(logs: &Path, out: &Path, union: &mut BTreeSet<String>, last: bool) -
         if !(last_line.starts_with("X\t") || age > 600.0 || (last && age > 5.0)) {
             continue;
         }
+        extra.from_log(&text);
         let sites: BTreeSet<&str> = log_hits(&text).collect();
         let new: Vec<&str> = sites.into_iter().filter(|s| !union.contains(*s)).collect();
         if !new.is_empty() {
@@ -68,6 +141,8 @@ fn one_pass(logs: &Path, out: &Path, union: &mut BTreeSet<String>, last: bool) -
     let mut text = union.iter().map(String::as_str).collect::<Vec<_>>().join("\n");
     text.push('\n');
     std::fs::write(out.join("union.txt"), text)?;
+    extra.from_patch_files(logs, last);
+    extra.write(out)?;
     Ok(done)
 }
 
@@ -86,12 +161,13 @@ pub fn run(args: Args) -> anyhow::Result<ExitCode> {
     std::fs::create_dir_all(&args.out)?;
     let union_path = args.out.join("union.txt");
     let mut union: BTreeSet<String> = std::fs::read_to_string(&union_path).unwrap_or_default().split_whitespace().map(str::to_owned).collect();
+    let mut extra = Extra::load(&args.out);
     loop {
         let finishing = !args.until.is_empty() && Path::new(&args.until).exists();
-        let n = one_pass(&args.logs, &args.out, &mut union, finishing)?;
+        let n = one_pass(&args.logs, &args.out, &mut union, &mut extra, finishing)?;
         println!("{} {n} logs folded, {} sites", clock(), union.len());
         if finishing {
-            one_pass(&args.logs, &args.out, &mut union, true)?;
+            one_pass(&args.logs, &args.out, &mut union, &mut extra, true)?;
             break;
         }
         std::thread::sleep(Duration::from_secs(30));

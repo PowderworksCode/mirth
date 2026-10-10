@@ -13,6 +13,7 @@ mod tools {
     pub mod codegen_coverage;
     pub mod coverage;
     pub mod coverage_compact;
+    pub mod coverage_dims;
     pub mod coverage_flags;
     pub mod coverage_generators;
     pub mod coverage_static;
@@ -159,6 +160,9 @@ enum Check {
     CodegenCoverage(tools::codegen_coverage::Args),
     /// P6 over the UI corpus: incremental rebuilds (unchanged, spans moved, an unused fn added) equal clean builds, with the compiler checking its reuse.
     UiIncr(tools::ui_incr::Args),
+    /// Coverage beyond blocks: keyed engine paths, incremental transitions, feature gates
+    /// consulted, type kinds, call pairs, MIR pass effect, lock contention.
+    CoverageDims(tools::coverage_dims::Args),
 }
 
 fn main() -> ExitCode {
@@ -198,6 +202,7 @@ fn main() -> ExitCode {
         Check::RmetaCoverage(a) => tools::rmeta_coverage::run(a),
         Check::CodegenCoverage(a) => tools::codegen_coverage::run(a),
         Check::CoverageCompact(a) => tools::coverage_compact::run(a),
+        Check::CoverageDims(a) => tools::coverage_dims::run(a),
         Check::CoverageGenerators(a) => tools::coverage_generators::run(a),
         Check::GrammarCoverage(a) => tools::grammar_coverage::run(a),
         Check::UiCoverage(a) => tools::ui_coverage::run(a),

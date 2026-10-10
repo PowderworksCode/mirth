@@ -41,8 +41,13 @@ rm -rf "$fresh"
 if [ "${1:-}" = --again ]; then
   # Forget the fingerprints of the crates in scope, so Cargo compiles them
   # again through the wrapper.
-  for krate in $(sed -n 's/^crates *= *\[\(.*\)\]/\1/p' "$watch" | tr -d '" ' | tr ',' ' '); do
-    rm -rf "$build/$host/stage1-rustc/$host/release/build/$krate"/*/fingerprint
+  # The patterns (`rustc_*`) are globs over the build directory's crate directories, so they are
+  # expanded there, not where this script runs, and not inside quotes.
+  sed -n 's/^crates *= *\[\(.*\)\]/\1/p' "$watch" | tr -d '" ' | tr ',' '\n' | while read -r krate; do
+    [ -n "$krate" ] || continue
+    for dir in "$build/$host/stage1-rustc/$host/release/build/"$krate; do
+      rm -rf "$dir"/*/fingerprint
+    done
   done
 fi
 

@@ -301,6 +301,12 @@ useful as fuzzer feedback.
 | M6 | dispatch pairs (rank 7), type kinds (rank 11) | M4 | fuzzer feedback only | not built here: needs runtime instrumentation |
 | M7 | std (rank 12), contention (rank 13) | a std rebuild; check 7 | when check 7 or the parallel work needs them | needs a rebuild |
 
+Status (2026-10-10): M2, M4, M6, the pass-effect half of M5 and the contention half of M7 are
+built (`rustc/build-dims.sh`, `build-cov2`) and measured on four suites; numbers in
+[`coverage.md`](coverage.md#beyond-blocks). Branch arms came out at 61,020 static (not the
+350,000 estimated: only arms into blocks with several predecessors need a site), of which 2,563
+read configuration. Call pairs and type kinds are measured but not yet fed to the guided fuzzer.
+
 M1 and M3 can start now and in parallel. M2 is the one compiler rebuild that everything after
 it shares; fold ranks 1, 2, 3 and 5 into one rebuild if M4 is ready in time.
 

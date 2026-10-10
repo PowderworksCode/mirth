@@ -20,7 +20,9 @@ rm -f "$out/done"
 (cd "$here/.." && cargo build --release -q --offline -p mirth-lab) || exit 1
 "$here/../target/release/mirth-lab" coverage-compact --logs "$out/logs" --out "$out" --until "$out/done" > "$out/compact.log" 2>&1 &
 compactor=$!
-MIRTH_OUT=$out/logs "$@" > "$out/run.log" 2>&1
+# A compiler with docs/hunt/coverage-dims.patch also writes which MIR passes changed a body and
+# which locks were contended; others ignore the variables.
+MIRTH_OUT=$out/logs RUSTC_PASS_EFFECT=$out/logs RUSTC_LOCK_CONTENTION=$out/logs "$@" > "$out/run.log" 2>&1
 status=$?
 touch "$out/done"
 wait "$compactor"
