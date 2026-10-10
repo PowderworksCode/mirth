@@ -46,6 +46,7 @@ static SKIP_FLAG: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(--test|--pri
 /// Flags rustdoc does not take; left out (the outcome cannot depend on them).
 static DROP_FLAG: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(-O|-g)$").unwrap());
 static CRATE_TYPE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"crate_type|crate-type").unwrap());
+static CRATE_TYPE_ATTR: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"(?m)^\s*#!\[crate_type\s*=\s*"([a-z-]+)"\]"#).unwrap());
 static UNKNOWN_OPTION: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)unrecognized option|unknown codegen option|unknown unstable option|requires an argument").unwrap());
 
 /// Expected differences between rustdoc and rustc, by the error's code or lint, with why.
@@ -520,6 +521,20 @@ struct Probe {
     what: String,
     negative: bool,
     line: usize,
+    tname: String,
+}
+
+/// Whether an E0277 is about the auto trait itself (its name, or its `on_unimplemented` text),
+/// not about a bound the type needs to be named at all.
+fn about(message: &str, tname: &str) -> bool {
+    let phrase = match tname {
+        "Send" => "cannot be sent between threads safely",
+        "Sync" => "cannot be shared between threads safely",
+        "Unpin" => "cannot be unpinned",
+        "UnwindSafe" => "may not be safely transferred across an unwind boundary",
+        _ => "may contain interior mutability",
+    };
+    message.contains(phrase) || message.contains(&format!("{tname}`")) || message.contains(&format!("{tname}>"))
 }
 
 /// The probe module starts after the test's last line.
@@ -547,7 +562,28 @@ fn auto_trait_probes(doc: &Value, base_lines: usize) -> (String, Vec<Probe>) {
         // The canonical path can go through a private module (core::panic::unwind_safe).
         let trait_path = if tname.ends_with("UnwindSafe") { format!("::std::panic::{tname}") } else { format!("::std::marker::{tname}") };
         let for_ty = r.ty(&imp["for"]);
-        let (params, preds) = r.generics(&imp["generics"]);
+        let (params, mut preds) = r.generics(&imp["generics"]);
+        // rustdoc leaves the type's own bounds implied; the probe must state them to name it.
+        let names: HashSet<&str> = imp["generics"]["params"].as_array().into_iter().flatten().filter_map(|p| p["name"].as_str()).collect();
+        let own = id_of(&imp["for"]["resolved_path"]["id"]).and_then(|id| doc["index"].get(&id)).and_then(|t| {
+            let inner = &t["inner"];
+            inner.get("struct").or_else(|| inner.get("enum")).or_else(|| inner.get("union")).map(|k| k["generics"].clone())
+        });
+        if let Some(g) = own {
+            let ps: Vec<&Value> = g["params"].as_array().into_iter().flatten().collect();
+            if ps.iter().all(|p| p["name"].as_str().is_some_and(|n| names.contains(n))) {
+                for p in &ps {
+                    if let Some(t) = p["kind"].get("type") {
+                        let b = r.bounds(&t["bounds"]);
+                        if !b.is_empty() {
+                            preds.push(format!("{}: {b}", p["name"].as_str().unwrap_or("_")));
+                        }
+                    }
+                }
+                let (_, wh) = r.generics(&serde_json::json!({"params": [], "where_predicates": g["where_predicates"]}));
+                preds.extend(wh);
+            }
+        }
         if !r.ok || !for_ty.starts_with("crate::") {
             continue;
         }
@@ -557,8 +593,9 @@ fn auto_trait_probes(doc: &Value, base_lines: usize) -> (String, Vec<Probe>) {
         traits_needed.insert(format!("    fn {req}<X: ?Sized + {trait_path}>() {{}}\n"));
         let wh = if preds.is_empty() { String::new() } else { format!(" where {}", preds.join(", ")) };
         let what = format!("{}impl<{params}> {tname} for {for_ty}{wh}", if negative { "!" } else { "" });
+        let tname = tname.to_owned();
         code.push_str(&format!("    fn __p{n}<{params}>(){wh} {{ {req}::<{for_ty}>(); }}\n"));
-        probes.push(Probe { what, negative, line });
+        probes.push(Probe { what, negative, line, tname });
         line += 1;
     }
     if probes.is_empty() {
@@ -583,7 +620,7 @@ fn run_probes(tools: &Tools, test: &Test, dir: &Path, code: &str, probes: &[Prob
     let out = dir.join("probe-out");
     let c = Compile::new(&tools.rustc, &src, &out, &test.flags, test.edition()).emit("metadata").json().timeout(120).run();
     let diags = rustc::diagnostics(&c.stderr);
-    let mut e0277: BTreeSet<usize> = BTreeSet::new();
+    let mut e0277: Vec<(usize, String)> = Vec::new();
     let mut other: BTreeSet<usize> = BTreeSet::new();
     let mut outside = false;
     for d in diags.iter().filter(|d| d.level == "error") {
@@ -599,7 +636,11 @@ fn run_probes(tools: &Tools, test: &Test, dir: &Path, code: &str, probes: &[Prob
             outside = true;
             continue;
         }
-        if d.code() == "E0277" { e0277.insert(line) } else { other.insert(line) };
+        if d.code() == "E0277" {
+            e0277.push((line, d.message.clone()));
+        } else {
+            other.insert(line);
+        }
     }
     if outside || c.status == Status::Ice || c.status == Status::Timeout {
         let first = diags.iter().find(|d| d.level == "error").map_or(String::new(), |d| d.message.chars().take(120).collect());
@@ -608,12 +649,14 @@ fn run_probes(tools: &Tools, test: &Test, dir: &Path, code: &str, probes: &[Prob
     }
     let mut bad = false;
     for p in probes {
-        if other.contains(&p.line) {
+        let mine: Vec<&String> = e0277.iter().filter(|(l, _)| *l == p.line).map(|(_, m)| m).collect();
+        let fails = mine.iter().any(|m| about(m, &p.tname));
+        if other.contains(&p.line) || (!fails && !mine.is_empty()) {
             notes.push(format!("probe broken: {}", p.what));
-        } else if p.negative && !e0277.contains(&p.line) {
+        } else if p.negative && !fails {
             found.push(format!("auto-trait: holds although rustdoc shows {}", p.what));
             bad = true;
-        } else if !p.negative && e0277.contains(&p.line) {
+        } else if !p.negative && fails {
             found.push(format!("auto-trait: does not hold under rustdoc's bounds: {}", p.what));
             bad = true;
         }
@@ -628,9 +671,16 @@ fn check(args: &Args, tools: &Tools, test: &Test) -> Rec {
         return rec;
     }
     let mut flags: Vec<String> = test.flags.iter().filter(|f| !DROP_FLAG.is_match(f)).cloned().collect();
-    // rustc's default crate type is bin, rustdoc's lib.
-    if !CRATE_TYPE.is_match(&test.text) && !test.flags.iter().any(|f| CRATE_TYPE.is_match(f)) {
-        flags.extend(["--crate-type".into(), "bin".into()]);
+    // rustc's default crate type is bin, rustdoc's lib; and rustdoc does not read
+    // `#![crate_type]` (Cargo always passes --crate-type), so pass what rustc would use.
+    if !test.flags.iter().any(|f| CRATE_TYPE.is_match(f)) {
+        let attr: Vec<String> = CRATE_TYPE_ATTR.captures_iter(&test.text).map(|c| c[1].to_owned()).collect();
+        if attr.is_empty() && !CRATE_TYPE.is_match(&test.text) {
+            flags.extend(["--crate-type".into(), "bin".into()]);
+        }
+        for t in attr {
+            flags.extend(["--crate-type".into(), t]);
+        }
     }
     let dir = driver::scratch_dir(&args.sweep);
     let c = Compile::new(&tools.rustc, &test.path, &dir.path().join("rustc"), &test.flags, test.edition()).emit("metadata").timeout(120).run();
