@@ -26,7 +26,7 @@ use std::process::exit;
 use proc_macro2::Span;
 use quote::{ToTokens, format_ident, quote};
 use syn::visit_mut::VisitMut;
-use syn::{FnArg, GenericParam, Ident, Item, ItemFn, Pat, TypePath};
+use syn::{FnArg, GenericParam, Ident, Item, ItemFn, Pat, Type, TypePath};
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -86,7 +86,8 @@ fn wrappable(f: &ItemFn) -> bool {
         && f.attrs.iter().all(|a| a.path().is_ident("allow") || a.path().is_ident("inline"))
         && !sig.to_token_stream().to_string().contains("impl ")
         && !sig.to_token_stream().to_string().contains('\'')
-        && sig.inputs.iter().all(|arg| matches!(arg, FnArg::Typed(t) if matches!(&*t.pat, Pat::Ident(p) if p.by_ref.is_none() && p.subpat.is_none())))
+        // Parameters without attributes: a `#[cfg]`-ed out one cannot be passed on by name.
+        && sig.inputs.iter().all(|arg| matches!(arg, FnArg::Typed(t) if t.attrs.is_empty() && matches!(&*t.pat, Pat::Ident(p) if p.by_ref.is_none() && p.subpat.is_none())))
 }
 
 fn wrap(f: &mut ItemFn) {
@@ -267,6 +268,12 @@ fn alias(file: &mut syn::File) -> bool {
         // A receiver typed with the impl's own name (`self: &mut Test`) elides lifetimes like
         // `&mut self`; through an alias it does not (resolution does not see through aliases).
         fn visit_receiver_mut(&mut self, _: &mut syn::Receiver) {}
+        // The same rule compares a receiver with the impl's self type: that stays as written.
+        fn visit_item_impl_mut(&mut self, imp: &mut syn::ItemImpl) {
+            let self_ty = std::mem::replace(&mut *imp.self_ty, Type::Verbatim(Default::default()));
+            syn::visit_mut::visit_item_impl_mut(self, imp);
+            *imp.self_ty = self_ty;
+        }
     }
     let mut rename = Rename { aliases: &aliases, count: 0 };
     for item in &mut file.items {
