@@ -10,13 +10,16 @@ mod tools {
     pub mod apply_suggestions;
     pub mod audit_options;
     pub mod callgraph;
+    pub mod codegen_coverage;
     pub mod coverage;
     pub mod coverage_compact;
     pub mod coverage_flags;
     pub mod coverage_generators;
+    pub mod coverage_static;
     pub mod crash_diff;
     pub mod debug_check;
     pub mod diag_check;
+    pub mod diag_coverage;
     pub mod fuzz;
     pub mod fuzz_replay;
     pub mod flag_fuzz;
@@ -37,6 +40,7 @@ mod tools {
     pub mod replay;
     pub mod repro_diff;
     pub mod rewrite_diff;
+    pub mod rmeta_coverage;
     pub mod rustdoc_diff;
     pub mod scale_check;
     pub mod solver_diff;
@@ -141,6 +145,14 @@ enum Check {
     DebugCheck(tools::debug_check::Args),
     /// Mutants of the UI tests that use unstable features (splices, moved items, extra gates, edits): ICEs and hangs.
     GateMutate(tools::gate_mutate::Args),
+    /// Coverage denominators from the compiler's source (arms, configuration branches, gates, delayed bugs, queries, tables).
+    CoverageStatic(tools::coverage_static::Args),
+    /// Error codes, lints, diagnostic structs and suggestion applicabilities a corpus makes rustc emit.
+    DiagCoverage(tools::diag_coverage::Args),
+    /// Metadata tables encoded and decoded per crate type, from the blessed metadata records.
+    RmetaCoverage(tools::rmeta_coverage::Args),
+    /// LLVM intrinsics, Rust intrinsic lowering and calling conventions the corpus reaches.
+    CodegenCoverage(tools::codegen_coverage::Args),
 }
 
 fn main() -> ExitCode {
@@ -173,6 +185,10 @@ fn main() -> ExitCode {
         Check::FlagFuzz(a) => tools::flag_fuzz::run(a),
         Check::AuditOptions(a) => tools::audit_options::run(a),
         Check::Coverage(a) => tools::coverage::run(a),
+        Check::CoverageStatic(a) => tools::coverage_static::run(a),
+        Check::DiagCoverage(a) => tools::diag_coverage::run(a),
+        Check::RmetaCoverage(a) => tools::rmeta_coverage::run(a),
+        Check::CodegenCoverage(a) => tools::codegen_coverage::run(a),
         Check::CoverageCompact(a) => tools::coverage_compact::run(a),
         Check::CoverageGenerators(a) => tools::coverage_generators::run(a),
         Check::GrammarCoverage(a) => tools::grammar_coverage::run(a),

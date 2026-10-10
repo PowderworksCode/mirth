@@ -5,7 +5,8 @@ branch went into a block that other paths also reach, which query a generic engi
 ran for, which kind of type reached a function, which diagnostics and feature combinations were
 exercised, or what happened outside the compiler's own crates (the standard library, LLVM).
 This plan proposes those dimensions, ranks them by bugs caught per unit of effort, and gives a
-build order. Nothing here is built yet.
+build order. M1, M3 and the codegen half of M5 are built (the parts that need no rebuild of the
+instrumented compiler); their numbers are in [`coverage.md`](coverage.md#beyond-functions-and-blocks).
 
 ## Where coverage stands
 
@@ -290,15 +291,15 @@ useful as fuzzer feedback.
 
 ## Build order
 
-| milestone | what | depends on | done when |
-|---|---|---|---|
-| M1 | static counts: arms per function, keyed-site possibilities, delayed-bug sites | none | a report of denominators, before any runtime change |
-| M2 | branch arms (rank 1) and configuration tags (rank 2) | M1 | `callgraph` prints `arms:`; `--arm-gaps`; a rebuild of `build-blk` as `build-arm`; all suites rerun |
-| M3 | diagnostics (rank 4) and metadata tables (rank 8) | none (external) | `mirth-lab diag-coverage` and a metadata-table report over the existing sweeps |
-| M4 | keyed coverage (rank 3), then incremental transitions (rank 6) and feature gates (rank 5) | M2's rebuild | per-query and per-kind tables; `ui-incr` and the fuzzers run with it |
-| M5 | MIR pass effect (rank 9) and codegen/target (rank 10) | none | a patch and an external report |
-| M6 | dispatch pairs (rank 7), type kinds (rank 11) | M4 | fuzzer feedback only |
-| M7 | std (rank 12), contention (rank 13) | a std rebuild; check 7 | when check 7 or the parallel work needs them |
+| milestone | what | depends on | done when | status (2026-10-10) |
+|---|---|---|---|---|
+| M1 | static counts: arms per function, keyed-site possibilities, delayed-bug sites | none | a report of denominators, before any runtime change | done: `mirth-lab coverage-static` (source-level counts, with block-site estimates of what ran) |
+| M2 | branch arms (rank 1) and configuration tags (rank 2) | M1 | `callgraph` prints `arms:`; `--arm-gaps`; a rebuild of `build-blk` as `build-arm`; all suites rerun | not built here: needs the instrumented compiler rebuilt |
+| M3 | diagnostics (rank 4) and metadata tables (rank 8) | none (external) | `mirth-lab diag-coverage` and a metadata-table report over the existing sweeps | done: `diag-coverage` (with `--collect` over the UI corpus), `rmeta-coverage` |
+| M4 | keyed coverage (rank 3), then incremental transitions (rank 6) and feature gates (rank 5) | M2's rebuild | per-query and per-kind tables; `ui-incr` and the fuzzers run with it | not built here: needs the instrumented compiler rebuilt |
+| M5 | MIR pass effect (rank 9) and codegen/target (rank 10) | none | a patch and an external report | codegen/target done: `mirth-lab codegen-coverage` (with `--collect` to LLVM IR); pass effect not built here (a rustc patch and rebuild) |
+| M6 | dispatch pairs (rank 7), type kinds (rank 11) | M4 | fuzzer feedback only | not built here: needs runtime instrumentation |
+| M7 | std (rank 12), contention (rank 13) | a std rebuild; check 7 | when check 7 or the parallel work needs them | needs a rebuild |
 
 M1 and M3 can start now and in parallel. M2 is the one compiler rebuild that everything after
 it shares; fold ranks 1, 2, 3 and 5 into one rebuild if M4 is ready in time.
@@ -329,15 +330,15 @@ opt-diff which passes to isolate.
 
 | dimension | report | where |
 |---|---|---|
-| branch arms | `arms:` line, `gaps-arms.md` by crate and file | `mirth-lab callgraph --arm-gaps` |
+| branch arms | `arms:` line, `gaps-arms.md` by crate and file | `mirth-lab callgraph --arm-gaps` (M2); the M1 estimate: `mirth-lab coverage-static` |
 | configuration branches | per feature and option: arms consulted, directions taken | `callgraph --config` |
 | keyed engine coverage | per query: engine paths taken / allowed | `mirth-lab coverage --keyed` |
 | diagnostics | codes, lints, diagnostic structs never emitted; delayed-bug sites | `mirth-lab diag-coverage` |
 | feature gates | features consulted on/off | `coverage --keyed` (feature view) |
 | incremental transitions | dep kinds × transitions | `coverage --keyed` (dep-graph view) |
-| metadata tables | tables × crate types × encode/decode | `mirth-lab coverage --rmeta` |
+| metadata tables | tables × crate types × encode/decode | `mirth-lab rmeta-coverage` |
 | MIR pass effect | passes × body kinds × levels | `opt-diff --pass-effect` |
-| codegen and target | intrinsics, conventions, features per target | `abi-diff`/`xlink` summaries |
+| codegen and target | intrinsics, conventions, features per target | `mirth-lab codegen-coverage` |
 
 ## Log-size budgets
 
@@ -345,10 +346,12 @@ A process log today holds the hit set (8 bytes per site in memory; one line per 
 log) plus the metadata records. Measured suites fold logs as they finish (`coverage-compact`)
 and delete them, so the budget is per process and per in-flight batch.
 
-| addition | sites added (estimate, to confirm in M1) | per-process log growth | memory |
+| addition | sites added (M1 counts, 2026-10-10) | per-process log growth | memory |
 |---|---|---|---|
-| branch arms | about +350,000 static; a typical process hits tens of thousands | about +30% | fits the 4M-slot set |
-| keyed engine coverage | at most about 100,000 | a few thousand lines | fits |
+| branch arms | the estimate was about +350,000 (0.5 per block). M1 counts 115,951 source-level arms in reachable functions (0.16 per site), 41,265 of all arms implicit. MIR has more arms than source (decision trees for patterns, desugared `?` and loops), and only arms into a block with several predecessors need a site: expect +100,000 to +200,000 sites (+15% to +25%), to be confirmed by M2's static MIR pass | +15% to +25% | fits the 4M-slot set |
+| keyed engine coverage | the estimate was at most about 100,000 (700 queries × 150 blocks). M1: 330 queries × 1,018 engine sites = 307,444 possible pairs; a query takes one path per state, so realized pairs should be tens of thousands | a few thousand lines | fits |
+| feature gates (`ret` capture) | 136 features with accessor call sites × on/off = 272 sites; the 109 checked only through generic code need the generic gate (`Features::enabled(sym)`) keyed by the symbol | negligible | fits |
+| delayed-bug sites | 242 (already block sites; a list, no new instrumentation) | none | none |
 | call pairs | millions static; tens of thousands per process | the largest: a second 4M-slot table (32 MiB) | +32 MiB |
 | hit counts (fuzzing only) | none | one byte per site | +4 MiB |
 

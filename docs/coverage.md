@@ -209,3 +209,105 @@ logs the same way.
 can run (81.2%); without the 911 that only panic, 50,715 of 61,605 (82.3%).**
 `rustc/coverage-report.sh` recomputes this; `mirth-lab callgraph --gaps <file>` lists the rest
 by crate and file, largest first. What is left, and the plan for it: [coverage-handoff.md](coverage-handoff.md).
+
+## Beyond functions and blocks
+
+The no-rebuild parts of [coverage-plan.md](coverage-plan.md) (M1, M3, and the codegen half of
+M5), measured 2026-10-10 against the block build (`build-blk`), its runs (`cov-blk`) and the
+suites folded into `cov-suites` since (the third-batch checks' suites were still being folded
+in), and the block report's unreachable list (`cov-blk/gaps.json`). `rustc/coverage-report.sh` reruns all of them after the function and block
+report; each writes `coverage-<name>.txt` and its gap lists next to `gaps.md`.
+
+Where a number comes from block sites rather than its own instrumentation, it is an estimate:
+a span "ran" when a block site starting inside it was reached. Files whose source has moved
+since the coverage build are detected (the site tables' snippets no longer match the text) and
+skipped; three were, all changed after the build.
+
+### Static denominators (`mirth-lab coverage-static`, M1)
+
+Against the block corpus (`cov-blk/suites`, its sink and option-configuration logs) together with
+the suites folded into `cov-suites` since, of which the checks' block runs are the new ones:
+587,602 of the 716,826 sites in reachable functions ran.
+
+| dimension | denominator | measured today | gap list |
+|---|---|---|---|
+| branch arms (source level) | 53,721 decisions, 136,428 arms; 115,951 arms in reachable functions (41,265 of all arms are implicit: an `if` without `else`, `?`'s return, a loop's exit) | 67,444 arms have a block site in their body; 984 of those are panic-only; 57,957 taken (85.9%). Implicit arms wait for M2 | `gaps-arms.md` (9,487 arms) |
+| configuration branches | decisions in reachable functions whose condition reads a feature gate (321), an option (334), a target property (357) or the edition (102): 1,114 (decision, kind) pairs over 321 names | 1,078 consulted by a measured run; both arms seen at 168 | `gaps-config.md` (853 decisions seen one way) |
+| feature gates | 262 unstable features: 136 checked by accessor calls (356 call sites), 109 only through generic code that names them (`sym::`, `Features::`, an attribute parser's `unstable!`), 17 not named in the compiler that way | all 136 consulted at least once (on or off: M4 records which) | `gaps-features.md` |
+| delayed-bug sites | 242 `span_delayed_bug`/`delayed_bug` calls; 238 in reachable functions | 177 reached (74.4%) | `gaps-delayed.md` (61) |
+| keyed engine sites | 330 queries (38 `eval_always`, 58 cached on disk, 26 feedable) × 1,018 engine sites in reachable functions (`rustc_query_impl::execution`, `rustc_middle::dep_graph::graph`; 31 on the load-from-disk path, 66 on the feeding path) | 307,444 possible (query, site) pairs, fewer once each query's path is taken into account: M4 measures them | — |
+| metadata tables | 82 (`define_tables!`: 21 defaulted, 61 optional) | see below | `gaps-rmeta.md` |
+
+By kind, the arms with a body that were taken: `match` 79.7%, `if` 91.6%, loops 93.8%,
+`let … else` 54.4% (the `else` is usually the error path), `&&`/`||` 95.5%. The largest gap
+lists are `rustc_codegen_ssa` (956 arms), `rustc_target` (668, most of them per-target tables),
+`rustc_middle` (649), `rustc_codegen_llvm` (642) and `rustc_const_eval` (599). The delayed-bug
+sites never reached are led by `rustc_hir_analysis` (17), `rustc_trait_selection` (7) and
+`rustc_hir_typeck` (7).
+
+Configuration decisions consulted but seen only one way include `unsized_fn_params` (10
+decisions, none seen with the other arm), `specialization` (9), `min_specialization` (7),
+`coroutines`, `const_trait_impl`, `async_fn_track_caller` (6 each), `yield_expr` and
+`unboxed_closures`: places where a gate-mutate mutant with the gate on (or off) would take the
+other arm. For the edition, 102 decisions, 24 seen both ways.
+
+### Diagnostics (`mirth-lab diag-coverage`, M3)
+
+`--collect` compiled each of the 18,624 standalone UI tests with `--error-format=json`
+(`--emit=metadata`, the test's own flags, `~/mirth-work/cov-static/diags`); the report folds
+the result against what exists.
+
+| dimension | denominator | emitted |
+|---|---|---|
+| error codes | 518 documented, 131 marked no longer emitted | 365 of the 387 live ones (94.3%); four retired codes still emitted: E0477, E0516, E0518, E0718 |
+| lints | 253 in `rustc -W help` (62 allow, 140 warn, 51 deny by default) | 225 (88.9%): allow 54, warn 128, deny 43 |
+| diagnostic messages | 1,920 `#[diag("…")]` messages of `#[derive(Diagnostic)]` items and variants; 1,900 not just an argument | 1,308 (68.8%) |
+| subdiagnostic messages | 721 `#[note]`/`#[help]`/`#[label]`/`#[suggestion]` messages of `#[derive(Subdiagnostic)]` items; 705 measurable | 599 (85.0%) |
+| suggestions | per applicability | MachineApplicable 10,901, MaybeIncorrect 6,051, HasPlaceholders 1,943, Unspecified 149; 72 lints offered a machine-applicable fix |
+
+A lint whose diagnostic has an error code (E0133 for `unsafe_op_in_unsafe_fn`) names the lint
+only in its note (`` `#[warn(…)]` on by default ``); the report reads those notes too. The gaps
+(`gaps-diagnostics.md`, `gaps-diag-structs.md`) are mostly what this corpus cannot reach by
+construction: crate-loading errors (E0460–E0464, E0514, E0519) and lints that need auxiliary
+crates (`proc_macro_derive_resolution_fallback`, `legacy_derive_helpers`,
+`unused_crate_dependencies`), code generation or linking (`large_assignments`, `linker_messages`,
+`linker_info`), or another target (`uses_power_alignment`, `x86_softfloat_sse`,
+`aarch64_softfloat_neon`). The diagnostic messages never emitted are led by
+`rustc_codegen_ssa` (136), `rustc_attr_parsing` (55), `rustc_session` (47) and
+`rustc_metadata` (46).
+
+### Metadata tables (`mirth-lab rmeta-coverage`, M3)
+
+From the blessed records of `fixtures/chain` and `fixtures/wide` (`tests/rmeta/*.txt`, clean
+and touch builds): a table is encoded when a process's `encoded` section names a write to it,
+decoded when a process runs an extern query whose provider (`cstore_impl.rs`'s `provide!`,
+followed through the decoder methods it calls) reads it.
+
+| crate type | encoded | decoded |
+|---|---:|---:|
+| bin | 0 | 58 |
+| lib | 67 | 59 |
+| proc-macro | 9 | 50 |
+| any | 67 of 82 | 62 of 82 |
+
+Never encoded by these fixtures: the stability tables (`lookup_stability`,
+`lookup_const_stability`, `lookup_default_body_stability`), `intrinsic`, `const_param_default`,
+`thir_abstract_const`, `impl_parent`, `coerce_unsized_info`, `adt_destructor`,
+`adt_async_destructor`, `default_fields`, `deduced_param_attrs`,
+`rendered_precise_capturing_args`, `explicit_implied_const_bounds`,
+`live_args_for_alias_from_outlives_bounds`. No record has a dylib, staticlib or cdylib. Five
+tables are read by no extern query (the decoder reads them directly or at crate load).
+
+### Codegen and target (`mirth-lab codegen-coverage`, M5 half)
+
+`--collect` compiled the 3,493 runnable UI tests to LLVM IR at `-Copt-level=0` and 3
+(`~/mirth-work/cov-static/ir`; 56 did not build in one of the two).
+
+| dimension | denominator | reached |
+|---|---|---|
+| LLVM intrinsics | 76 `llvm.*` intrinsic names in rustc_codegen_llvm (8 more are metadata names and special globals) | 59 in the IR (77.6%); 80 distinct intrinsics in the IR overall, LLVM's own included |
+| Rust intrinsics with their own codegen arm | 195 `sym::` arms in the codegen intrinsic matches; 189 measurable | 143 lowered by a measured suite (75.7%); not: the f16 and f128 math, `round*`, `maximum*`/`minimum*`, atomic min/max, the SVE tuple intrinsics, `autodiff`, `offload`, `simd_carryless_mul` |
+| calling-convention lowering | 26 `rustc_target/src/callconv/<arch>.rs` files, 4,432 block sites | 3,705 reached (83.6%; the generators suite compiles for every target); least: `aarch64.rs` 63.5%, `mod.rs` 67.3%, `msp430.rs` 69.8%, `nvptx64.rs` 71.6% |
+| conventions and linkage in the IR | — | `fastcc` in nearly every test; `x86_64_sysvcc` 5, `win64cc` 2, `tailcc` 2, `x86_vectorcallcc` 1, `preserve_nonecc` 1; external, internal, private and weak linkage; 13 target features enabled somewhere |
+
+The gap lists are in `gaps-codegen.md`.

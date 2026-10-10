@@ -9,4 +9,5 @@ pub mod miri;
 pub mod mutations;
 pub mod normalize;
 pub mod rustc;
+pub mod sitemap;
 pub mod uitest;
