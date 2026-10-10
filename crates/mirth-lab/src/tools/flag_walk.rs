@@ -93,19 +93,20 @@ pub fn copy_fixture(from: &Path, to: &Path) -> std::io::Result<()> {
 }
 
 /// Python's slice `a:b` of 0..n.
-pub fn slice(spec: &str, n: usize) -> Vec<usize> {
+/// Rows `lo:hi` (Python slice bounds, either may be empty or negative); empty means all.
+pub fn slice(spec: &str, n: usize) -> anyhow::Result<Vec<usize>> {
     if spec.is_empty() {
-        return (0..n).collect();
+        return Ok((0..n).collect());
     }
-    let (lo, hi) = spec.split_once(':').unwrap_or((spec, ""));
-    let at = |s: &str, default: usize| -> usize {
-        match s.parse::<i64>() {
-            Ok(v) if v < 0 => (n as i64 + v).max(0) as usize,
-            Ok(v) => (v as usize).min(n),
-            Err(_) => default,
+    let Some((lo, hi)) = spec.split_once(':') else { anyhow::bail!("--rows takes lo:hi, not {spec:?}") };
+    let at = |s: &str, default: usize| -> anyhow::Result<usize> {
+        if s.is_empty() {
+            return Ok(default);
         }
+        let v: i64 = s.parse().map_err(|_| anyhow::anyhow!("--rows takes lo:hi, not {spec:?}"))?;
+        Ok(if v < 0 { (n as i64 + v).max(0) as usize } else { (v as usize).min(n) })
     };
-    (at(lo, 0)..at(hi, n)).collect()
+    Ok((at(lo, 0)?..at(hi, n)?).collect())
 }
 
 /// Python's repr of a string, as the findings have always shown texts.
@@ -495,7 +496,7 @@ pub fn run(args: Args) -> anyhow::Result<ExitCode> {
     let fixture = std::fs::canonicalize(&args.fixture)?;
     let _ = std::fs::remove_file(work.join("PAUSED"));
     let rows = flag_model::table(&args.table)?;
-    let idx = slice(&args.rows, rows.len());
+    let idx = slice(&args.rows, rows.len())?;
     // Resume: rows with a result are done, except, with --recheck, those with findings, which
     // run first.
     let done = latest(&work);

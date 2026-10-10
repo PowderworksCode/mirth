@@ -104,7 +104,7 @@ pub fn run(args: Args) -> anyhow::Result<ExitCode> {
     let out = std::fs::canonicalize(&args.out)?;
     let opts = flag_model::options(&args.flags)?;
     let rows = flag_model::table(&args.table)?;
-    let idx = slice(&args.rows, rows.len());
+    let idx = slice(&args.rows, rows.len())?;
     // Rows in order, a worker taking the next one when it is free.
     let next = AtomicUsize::new(0);
     std::thread::scope(|s| {

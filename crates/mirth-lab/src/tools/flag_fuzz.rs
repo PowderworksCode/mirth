@@ -57,7 +57,7 @@ pub fn run(args: Args) -> anyhow::Result<ExitCode> {
         .filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok()?["row"].as_u64().map(|r| r as usize))
         .collect();
     let me = std::env::current_exe()?;
-    for i in slice(&args.rows, rows.len()) {
+    for i in slice(&args.rows, rows.len())? {
         if done.contains(&i) {
             continue;
         }
