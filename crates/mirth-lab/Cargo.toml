@@ -22,4 +22,8 @@ tempfile = "3"
 walkdir = "2"
 wait-timeout = "0.2"
 libc = "0.2"
+flate2 = "1"
+rand = { version = "0.9", default-features = false, features = ["std", "std_rng"] }
+similar = "2"
+tar = "0.4"
 mirth-rewrite = { path = "../mirth-rewrite" }

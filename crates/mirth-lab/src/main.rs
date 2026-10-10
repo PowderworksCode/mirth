@@ -10,11 +10,14 @@ mod tools {
     pub mod callgraph;
     pub mod crash_diff;
     pub mod diag_check;
+    pub mod fuzz;
+    pub mod fuzz_replay;
     pub mod gate_check;
     pub mod instr_check;
     pub mod miri_diff;
     pub mod opt_diff;
     pub mod release_diff;
+    pub mod replay;
     pub mod repro_diff;
     pub mod rewrite_diff;
     pub mod scale_check;
@@ -62,6 +65,12 @@ enum Check {
     AbiDiff(tools::abi_diff::Args),
     /// Reachability over the compiler's call graph; coverage of what can run, and gap lists.
     Callgraph(tools::callgraph::Args),
+    /// Random edits to a fixture; each incremental rebuild must match a clean build (P6).
+    Fuzz(tools::fuzz::Args),
+    /// Replay a fuzz finding's edits and compare the last incremental build with a clean one.
+    FuzzReplay(tools::fuzz_replay::Args),
+    /// A crate's git history through incremental builds, each compared with a clean build.
+    Replay(tools::replay::Args),
 }
 
 fn main() -> ExitCode {
@@ -82,6 +91,9 @@ fn main() -> ExitCode {
         Check::ScaleCheck(a) => tools::scale_check::run(a),
         Check::AbiDiff(a) => tools::abi_diff::run(a),
         Check::Callgraph(a) => tools::callgraph::run(a),
+        Check::Fuzz(a) => tools::fuzz::run(a),
+        Check::FuzzReplay(a) => tools::fuzz_replay::run(a),
+        Check::Replay(a) => tools::replay::run(a),
     };
     match result {
         Ok(code) => code,
