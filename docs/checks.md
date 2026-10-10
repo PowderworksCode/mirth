@@ -370,6 +370,28 @@ Ten new findings (19–28) in [`hunt.md`](hunt.md), none from the checks mirth h
 | determinism (15) | `mirth-lab repro-diff` | 6,886 tests × repeat, other directory with `--remap-path-prefix`, `-Zthreads=8`, decoy `-L` library | nothing new: only `-Zthreads` differences, all in the known async fn (#162202) and RPIT (#163878) families |
 | feature gates (17) | `mirth-lab gate-check` | 143 unstable attributes × 14 positions; 156 unstable library items with resolvable paths × use, renamed use, glob, impl, value, type | every library spelling gated; finding 31 (an ICE after the gate error for `#[rustc_main]` on non-functions); `#[feature]` outside the crate root only warns (intended) |
 
+
+### Third batch (2026-10-10): rustdoc consistency (6)
+
+`mirth-lab rustdoc-diff` runs rustdoc (nightly-2026-10-06, the same commit as the campaign
+rustc) on every standalone UI test, in HTML, HTML with `--document-private-items`, JSON and
+JSON with private items, next to `rustc --emit=metadata`. Findings: rustdoc panics (any test);
+rustdoc rejects what rustc accepts; the JSON's reachable ids do not resolve (jsondoclint's
+rules); a root `pub use` is missing; an auto-trait impl rustdoc shows does not hold under its
+bounds, or a negative one does (a probe appended to the test, compiled by rustc, #162274).
+
+| swept | result |
+|---|---|
+| 18,624 tests: rustc accepts 7,473 (four rustdoc runs each), rejects 10,969 (one run, for panics); 207 skipped (flags rustdoc does not take, or that stop rustc early); 4,562 auto-trait probes in 577 tests | 19 tests with findings, 7 findings (33–39): two rustdoc panics on code rustc accepts (33: `use {{}}`, a regression from nightly-2026-09-26; 36: const binding through a supertrait), rustdoc rejecting accepted code (34, 35, 37), panics on rejected code (38, stable: a too-large static), dangling JSON ids (39). No re-export missing; no auto-trait impl contradicted by its probe |
+
+Expected, and labelled rather than reported: rustdoc's own lints denied by a test; a test's tiny
+`recursion_limit` (rustdoc does more trait work); dangling ids for stripped private items in the
+public JSON (open upstream: #113674, #119626, #117718, #112852); the `fn_delegation` ICE
+(#155728, 11 tests); rustdoc JSON's `unimplemented!()` for unsafe binders (a FIXME, 5 tests).
+rustdoc does not read `#![crate_type]` (only `--crate-type`, as Cargo passes it), so the check
+passes the attribute's value. 345 probes are inconclusive (a type that cannot be named from the
+crate root, an unrenderable bound).
+
 ## Running the checks
 
 The checks are subcommands of `mirth-lab` (`crates/mirth-lab`; `mirth-lab --help` lists them):
@@ -379,6 +401,7 @@ cargo build --release -p mirth-lab
 R=~/mirth-work/campaign/rustc/bin/rustc T=~/mirth-work/rust/tests/ui
 target/release/mirth-lab opt-diff --rustc $R --cranelift "$(rustup +nightly-2026-10-06 which rustc)" --tests $T --work <dir>
 target/release/mirth-lab solver-diff --rustc $R --tests $T --work <dir>
+target/release/mirth-lab rustdoc-diff --toolchain nightly-2026-10-06 --tests $T --work <dir>
 target/release/mirth-lab abi-diff --rustc $R --rust ~/mirth-work/rust --work <dir> --seed 3
 target/release/mirth-lab release-diff --corpus ~/proofhouse-repos/rust --old nightly-2026-07-18 --new nightly-2026-10-06 --work <dir>
 ```

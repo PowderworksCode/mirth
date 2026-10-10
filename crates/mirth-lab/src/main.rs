@@ -34,6 +34,7 @@ mod tools {
     pub mod replay;
     pub mod repro_diff;
     pub mod rewrite_diff;
+    pub mod rustdoc_diff;
     pub mod scale_check;
     pub mod solver_diff;
     pub mod suggest_diff;
@@ -129,6 +130,8 @@ enum Check {
     SurveyUnroll(tools::survey::UnrollArgs),
     /// Each closed-bug Ur query still finds the code its bug's fix changed.
     VerifyClosed(tools::verify_closed::Args),
+    /// rustdoc agrees with rustc: accepts what it accepts, consistent JSON, re-exports, auto-trait bounds.
+    RustdocDiff(tools::rustdoc_diff::Args),
 }
 
 fn main() -> ExitCode {
@@ -172,6 +175,7 @@ fn main() -> ExitCode {
         Check::SurveyFetch(a) => tools::survey::fetch(a),
         Check::SurveyUnroll(a) => tools::survey::unroll(a),
         Check::VerifyClosed(a) => tools::verify_closed::run(a),
+        Check::RustdocDiff(a) => tools::rustdoc_diff::run(a),
     };
     match result {
         Ok(code) => code,
