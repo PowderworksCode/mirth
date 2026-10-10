@@ -1,0 +1,67 @@
+# Coverage beyond blocks (docs/coverage-plan.md, M2, M4, M6): everything rustc/coverage.toml
+# records, plus branch arms with the configuration they read, call pairs, and keyed sites that
+# tell a generic function's runs apart (per query, per dep-node kind, per feature value, per
+# type kind). Built into its own directory (`rustc/build-dims.sh`); `mirth-lab callgraph` and
+# `mirth-lab coverage-dims` read the result.
+[scope]
+crates = ["rustc_*"]
+
+[coverage]
+functions = true
+blocks = true
+arms = true
+pairs = true
+
+# The query engine is generic over the cache type: one body for every query. Its blocks are
+# keyed by the query (the vtable's dep kind), as is everything else in rustc_query_impl that
+# takes a vtable (the per-query plumbing).
+[[coverage.keyed]]
+match = "rustc_query_impl::*"
+key = "type:QueryVTable.dep_kind"
+label = "query"
+
+# The dependency graph: keyed by the kind of node it is marking, loading or forcing.
+[[coverage.keyed]]
+match = "rustc_middle::dep_graph::*"
+key = "type:DepNode.kind"
+label = "dep-kind"
+
+# Each feature accessor (`Features::<feature>()`): keyed by what it returned, so the report can
+# say which gates were consulted while on, and which only while off.
+[[coverage.keyed]]
+match = "rustc_feature::unstable::Features::*"
+key = "ret"
+label = "feature"
+
+# Type kinds reaching layout, ABI, coercion, constant evaluation and the type utilities: keyed by
+# the `TyKind` discriminant of the first `Ty` argument, read through the interned pointer (never
+# through `Debug`, which would run queries).
+[[coverage.keyed]]
+match = "rustc_ty_utils::layout::*"
+key = "type:rustc_middle::ty::Ty.0.0.internee#"
+label = "ty-kind"
+
+[[coverage.keyed]]
+match = "rustc_ty_utils::abi::*"
+key = "type:rustc_middle::ty::Ty.0.0.internee#"
+label = "ty-kind"
+
+[[coverage.keyed]]
+match = "rustc_hir_typeck::coercion::*"
+key = "type:rustc_middle::ty::Ty.0.0.internee#"
+label = "ty-kind"
+
+[[coverage.keyed]]
+match = "rustc_const_eval::const_eval::*"
+key = "type:rustc_middle::ty::Ty.0.0.internee#"
+label = "ty-kind"
+
+[[coverage.keyed]]
+match = "rustc_middle::ty::layout::*"
+key = "type:rustc_middle::ty::Ty.0.0.internee#"
+label = "ty-kind"
+
+[[coverage.keyed]]
+match = "rustc_middle::ty::util::*"
+key = "type:rustc_middle::ty::Ty.0.0.internee#"
+label = "ty-kind"

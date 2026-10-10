@@ -55,6 +55,13 @@ pub struct Args {
     /// Write the blocks that never ran in functions that did.
     #[arg(long)]
     block_gaps: Option<PathBuf>,
+    /// Write the switch arms that never ran in functions that did (rustc/coverage-dims.toml).
+    #[arg(long)]
+    arm_gaps: Option<PathBuf>,
+    /// Write, per feature gate, option, edition and target property, the switch arms that read
+    /// it and which of them ran.
+    #[arg(long)]
+    config: Option<PathBuf>,
 }
 
 const ROOTS: &[&str] = &["rustc_main::main", "rustc_driver_impl::main", "rustdoc::main"];
@@ -153,6 +160,7 @@ struct Site {
     path: String,
 }
 
+#[derive(Clone)]
 struct Block {
     krate: String,
     path: String,
@@ -161,11 +169,18 @@ struct Block {
     snippet: String,
     panics: bool,
     logging: bool,
+    /// For an arm: the configuration its switch reads (`feature:<name>`, `option:<name>`, ...).
+    config: Option<String>,
+    /// For an arm: only it reaches its target (listed for configuration switches; its site is
+    /// the target's block site, and it is not counted among the arms into shared blocks).
+    single: bool,
 }
 
-fn load_sites(dir: &PathBuf) -> (BTreeMap<String, Site>, HashMap<String, String>, BTreeMap<String, Block>) {
-    let (mut functions, mut span_of, mut blocks) = (BTreeMap::new(), HashMap::new(), BTreeMap::new());
-    let Ok(entries) = std::fs::read_dir(dir) else { return (functions, span_of, blocks) };
+type Sites = (BTreeMap<String, Site>, HashMap<String, String>, BTreeMap<String, Block>, BTreeMap<String, Block>);
+
+fn load_sites(dir: &PathBuf) -> Sites {
+    let (mut functions, mut span_of, mut blocks, mut arms) = (BTreeMap::new(), HashMap::new(), BTreeMap::new(), BTreeMap::new());
+    let Ok(entries) = std::fs::read_dir(dir) else { return (functions, span_of, blocks, arms) };
     for e in entries.flatten() {
         if e.path().extension().is_none_or(|x| x != "sites") {
             continue;
@@ -197,6 +212,29 @@ fn load_sites(dir: &PathBuf) -> (BTreeMap<String, Site>, HashMap<String, String>
                             snippet: f.get(7).unwrap_or(&"").to_string(),
                             panics: tags.contains(&"panics"),
                             logging: tags.contains(&"log"),
+                            config: None,
+                            single: false,
+                        },
+                    );
+                }
+                "arm" => {
+                    // `<switch> <arm index> <target> [panics] [log] [config=<what>]`
+                    let parts: Vec<&str> = f[5].split(' ').collect();
+                    if parts.len() < 3 {
+                        continue;
+                    }
+                    arms.insert(
+                        f[0].to_owned(),
+                        Block {
+                            krate,
+                            path: f[4].to_owned(),
+                            name: format!("{} arm {} to {}", parts[0], parts[1], parts[2]),
+                            span: f[6].to_owned(),
+                            snippet: f.get(7).unwrap_or(&"").to_string(),
+                            panics: parts.contains(&"panics"),
+                            logging: parts.contains(&"log"),
+                            config: parts.iter().find_map(|p| p.strip_prefix("config=")).map(str::to_owned),
+                            single: parts.contains(&"single"),
                         },
                     );
                 }
@@ -204,7 +242,127 @@ fn load_sites(dir: &PathBuf) -> (BTreeMap<String, Site>, HashMap<String, String>
             }
         }
     }
-    (functions, span_of, blocks)
+    (functions, span_of, blocks, arms)
+}
+
+/// Counts over block-like sites (blocks, arms) in reachable functions: [all, ran, only panic,
+/// only panic and ran] per crate, and the logging-macro ones apart.
+fn block_rows<'a>(
+    sites: &'a BTreeMap<String, Block>,
+    hit: &HashSet<String>,
+    unreach: &HashSet<&String>,
+    paths: &HashSet<&String>,
+    ice_only: &HashSet<String>,
+) -> (BTreeMap<&'a str, [usize; 4]>, usize, usize) {
+    let mut rows: BTreeMap<&str, [usize; 4]> = BTreeMap::new();
+    let (mut logged, mut logged_ran) = (0, 0);
+    for (site, b) in sites {
+        if NOT_AT_RUN_TIME.contains(&b.krate.as_str()) || unreach.contains(&b.path) || !paths.contains(&b.path) {
+            continue;
+        }
+        if b.logging {
+            logged += 1;
+            logged_ran += hit.contains(site) as usize;
+            continue;
+        }
+        let r = rows.entry(b.krate.as_str()).or_default();
+        let (h, p) = (hit.contains(site), b.panics || ice_only.contains(&b.path));
+        r[0] += 1;
+        r[1] += h as usize;
+        r[2] += p as usize;
+        r[3] += (p && h) as usize;
+    }
+    (rows, logged, logged_ran)
+}
+
+/// A gap list of block-like sites that never ran in functions that did, by crate and file.
+fn block_gaps_text(
+    title: &str,
+    sites: &BTreeMap<String, Block>,
+    hit: &HashSet<String>,
+    hit_paths: &HashSet<&String>,
+    ice_only: &HashSet<String>,
+) -> String {
+    let mut files: BTreeMap<(&str, String), Vec<(String, String)>> = BTreeMap::new();
+    for (site, b) in sites {
+        if hit_paths.contains(&b.path) && !hit.contains(site) && !NOT_AT_RUN_TIME.contains(&b.krate.as_str()) && !b.logging {
+            let file = b.span.rsplitn(3, ':').last().unwrap_or("").to_owned();
+            let panics = b.panics || ice_only.contains(&b.path);
+            let snippet: String = b.snippet.chars().take(100).collect();
+            let config = b.config.as_deref().map(|c| format!(" [{c}]")).unwrap_or_default();
+            files.entry((b.krate.as_str(), file)).or_default().push((
+                b.span.clone(),
+                format!("`{}` {}{}{config}: `{snippet}`", b.path, b.name, if panics { " (only panics)" } else { "" }),
+            ));
+        }
+    }
+    // The lines with the most first within a file.
+    let line_no = |span: &str| -> (u64, u64) {
+        let p: Vec<&str> = span.rsplitn(3, ':').collect();
+        (p.get(1).and_then(|x| x.parse().ok()).unwrap_or(0), p.first().and_then(|x| x.parse().ok()).unwrap_or(0))
+    };
+    let mut text = format!("# {title}: {}\n\n", files.values().map(Vec::len).sum::<usize>());
+    let mut by_crate: BTreeMap<&str, usize> = BTreeMap::new();
+    for ((k, _), v) in &files {
+        *by_crate.entry(k).or_default() += v.len();
+    }
+    let mut crates: Vec<(&&str, &usize)> = by_crate.iter().collect();
+    crates.sort_by(|a, b| b.1.cmp(a.1));
+    for (krate, n) in crates {
+        let _ = writeln!(text, "## {krate} ({n})\n");
+        let mut fs: Vec<(&(&str, String), &Vec<(String, String)>)> = files.iter().filter(|((k, _), _)| k == krate).collect();
+        fs.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
+        for ((_, file), entries) in fs {
+            let _ = writeln!(text, "### {file} ({})\n", entries.len());
+            let mut es = entries.clone();
+            es.sort_by_key(|(span, _)| line_no(span));
+            for (span, desc) in es {
+                let _ = writeln!(text, "- {} {desc}", line_no(&span).0);
+            }
+            text.push('\n');
+        }
+    }
+    text
+}
+
+/// Per configuration (feature gate, option, edition, target property): the arms of switches
+/// that read it, in reachable functions, and which ran; the arms that never ran, listed.
+fn config_text(arms: &BTreeMap<String, Block>, hit: &HashSet<String>, unreach: &HashSet<&String>, hit_paths: &HashSet<&String>) -> String {
+    let mut by: BTreeMap<&str, Vec<(&String, &Block)>> = BTreeMap::new();
+    for (site, arm) in arms {
+        if let Some(config) = &arm.config
+            && !unreach.contains(&arm.path)
+            && !arm.logging
+            && !arm.panics
+        {
+            by.entry(config.as_str()).or_default().push((site, arm));
+        }
+    }
+    let kinds = ["feature", "option", "edition", "target", "session"];
+    let mut text = String::from("# Switch arms that depend on configuration\n\n");
+    let _ = writeln!(
+        text,
+        "Arms of switches that read a feature gate, an option, the edition or a target property, in reachable\nfunctions (panic-only and logging-macro arms aside). An arm in a function that ran but never taken is a\nconfiguration nothing tested that way.\n"
+    );
+    let _ = writeln!(text, "| kind | settings read | arms | ran | in functions that ran, never taken |\n|---|---:|---:|---:|---:|");
+    for kind in kinds {
+        let groups: Vec<_> = by.iter().filter(|(c, _)| c.split(':').next() == Some(kind)).collect();
+        let total: usize = groups.iter().map(|(_, v)| v.len()).sum();
+        let ran: usize = groups.iter().map(|(_, v)| v.iter().filter(|(s, _)| hit.contains(*s)).count()).sum();
+        let gap: usize = groups.iter().map(|(_, v)| v.iter().filter(|(s, a)| !hit.contains(*s) && hit_paths.contains(&a.path)).count()).sum();
+        let _ = writeln!(text, "| {kind} | {} | {total} | {ran} | {gap} |", groups.len());
+    }
+    text.push_str("\n## Each setting\n\n| setting | arms | ran | never taken (function ran) |\n|---|---:|---:|---|\n");
+    for (config, list) in &by {
+        let ran = list.iter().filter(|(s, _)| hit.contains(*s)).count();
+        let missed: Vec<String> = list
+            .iter()
+            .filter(|(s, a)| !hit.contains(*s) && hit_paths.contains(&a.path))
+            .map(|(_, a)| format!("`{}` {} ({})", a.path, a.name, a.span))
+            .collect();
+        let _ = writeln!(text, "| `{config}` | {} | {ran} | {} |", list.len(), missed.join("<br>"));
+    }
+    text
 }
 
 fn words(path: &PathBuf) -> HashSet<String> {
@@ -261,7 +419,7 @@ pub fn run(args: Args) -> anyhow::Result<ExitCode> {
             }
         }
     }
-    let (functions, span_of, blocks) = load_sites(&args.sites);
+    let (functions, span_of, blocks, arms) = load_sites(&args.sites);
     let mut external: HashSet<String> = HashSet::new();
     for u in &args.external {
         external.extend(words(u));
@@ -452,22 +610,12 @@ pub fn run(args: Args) -> anyhow::Result<ExitCode> {
                     r[3] += (i && h) as usize;
                 }
             }
-            let (mut logged, mut logged_ran) = (0, 0);
-            for (site, b) in &blocks {
-                if NOT_AT_RUN_TIME.contains(&b.krate.as_str()) || unreach.contains(&b.path) || !paths.contains(&b.path) {
-                    continue;
+            let (block_counts, logged, logged_ran) = block_rows(&blocks, &hit, &unreach, &paths, &ice_only);
+            for (k, r) in block_counts {
+                let row = rows.entry(k).or_default();
+                for i in 0..4 {
+                    row[i] += r[i];
                 }
-                if b.logging {
-                    logged += 1;
-                    logged_ran += hit.contains(site) as usize;
-                    continue;
-                }
-                let r = rows.entry(b.krate.as_str()).or_default();
-                let (h, p) = (hit.contains(site), b.panics || ice_only.contains(&b.path));
-                r[0] += 1;
-                r[1] += h as usize;
-                r[2] += p as usize;
-                r[3] += (p && h) as usize;
             }
             let s: [usize; 4] = rows.values().fold([0; 4], |a, r| [a[0] + r[0], a[1] + r[1], a[2] + r[2], a[3] + r[3]]);
             let _ = writeln!(
@@ -477,6 +625,30 @@ pub fn run(args: Args) -> anyhow::Result<ExitCode> {
                 100.0 * (s[1] - s[3]) as f64 / (s[0] - s[2]).max(1) as f64
             );
             let _ = writeln!(out, "{:40} {:>7} {:>9} {:>6}   (panic-only blocks aside)", "crate", "ran", "blocks", "%");
+            let mut sorted: Vec<(&&str, &[usize; 4])> = rows.iter().collect();
+            sorted.sort_by(|a, b| {
+                let f = |r: &[usize; 4]| (r[1] - r[3]) as f64 / (r[0] - r[2]).max(1) as f64;
+                f(a.1).partial_cmp(&f(b.1)).unwrap()
+            });
+            for (k, r) in sorted {
+                if r[0] > r[2] {
+                    let _ = writeln!(out, "{k:40} {:7} {:9} {:6.1}", r[1] - r[3], r[0] - r[2], 100.0 * (r[1] - r[3]) as f64 / (r[0] - r[2]) as f64);
+                }
+            }
+        }
+        if !arms.is_empty() {
+            // Arms: switch arms into blocks other paths reach too (rustc/coverage-dims.toml).
+            let shared: BTreeMap<String, Block> = arms.iter().filter(|(_, a)| !a.single).map(|(k, a)| (k.clone(), a.clone())).collect();
+            let (rows, logged, logged_ran) = block_rows(&shared, &hit, &unreach, &paths, &ice_only);
+            let s: [usize; 4] = rows.values().fold([0; 4], |a, r| [a[0] + r[0], a[1] + r[1], a[2] + r[2], a[3] + r[3]]);
+            let config: usize = arms.values().filter(|a| a.config.is_some() && !unreach.contains(&a.path)).count();
+            let _ = writeln!(
+                out,
+                "arms: of the {} switch arms into shared blocks in reachable functions, {} ran ({:.1}%); {} only panic ({} ran): without them, {} of {} ({:.1}%); {config} read configuration; not counted: {logged} arms into logging-macro blocks ({logged_ran} ran)",
+                s[0], s[1], 100.0 * s[1] as f64 / s[0].max(1) as f64, s[2], s[3], s[1] - s[3], s[0] - s[2],
+                100.0 * (s[1] - s[3]) as f64 / (s[0] - s[2]).max(1) as f64
+            );
+            let _ = writeln!(out, "{:40} {:>7} {:>9} {:>6}   (panic-only arms aside)", "crate", "ran", "arms", "%");
             let mut sorted: Vec<(&&str, &[usize; 4])> = rows.iter().collect();
             sorted.sort_by(|a, b| {
                 let f = |r: &[usize; 4]| (r[1] - r[3]) as f64 / (r[0] - r[2]).max(1) as f64;
@@ -538,46 +710,21 @@ pub fn run(args: Args) -> anyhow::Result<ExitCode> {
     if let Some(bp) = &args.block_gaps
         && !blocks.is_empty()
     {
-        let mut files: BTreeMap<(&str, String), Vec<(String, String)>> = BTreeMap::new();
-        for (site, b) in &blocks {
-            if hit_paths.contains(&b.path) && !hit.contains(site) && !NOT_AT_RUN_TIME.contains(&b.krate.as_str()) && !b.logging {
-                let file = b.span.rsplitn(3, ':').last().unwrap_or("").to_owned();
-                let panics = b.panics || ice_only.contains(&b.path);
-                let snippet: String = b.snippet.chars().take(100).collect();
-                files.entry((b.krate.as_str(), file)).or_default().push((
-                    b.span.clone(),
-                    format!("`{}` {}{}: `{snippet}`", b.path, b.name, if panics { " (only panics)" } else { "" }),
-                ));
-            }
-        }
-        // The lines with the most first within a file.
-        let line_no = |span: &str| -> (u64, u64) {
-            let p: Vec<&str> = span.rsplitn(3, ':').collect();
-            (p.get(1).and_then(|x| x.parse().ok()).unwrap_or(0), p.first().and_then(|x| x.parse().ok()).unwrap_or(0))
-        };
-        let mut text = format!("# Blocks that never ran in functions that did: {}\n\n", files.values().map(Vec::len).sum::<usize>());
-        let mut by_crate: BTreeMap<&str, usize> = BTreeMap::new();
-        for ((k, _), v) in &files {
-            *by_crate.entry(k).or_default() += v.len();
-        }
-        let mut crates: Vec<(&&str, &usize)> = by_crate.iter().collect();
-        crates.sort_by(|a, b| b.1.cmp(a.1));
-        for (krate, n) in crates {
-            let _ = writeln!(text, "## {krate} ({n})\n");
-            let mut fs: Vec<(&(&str, String), &Vec<(String, String)>)> = files.iter().filter(|((k, _), _)| k == krate).collect();
-            fs.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
-            for ((_, file), entries) in fs {
-                let _ = writeln!(text, "### {file} ({})\n", entries.len());
-                let mut es = entries.clone();
-                es.sort_by_key(|(span, _)| line_no(span));
-                for (span, desc) in es {
-                    let _ = writeln!(text, "- {} {desc}", line_no(&span).0);
-                }
-                text.push('\n');
-            }
-        }
-        std::fs::write(bp, text)?;
+        std::fs::write(bp, block_gaps_text("Blocks that never ran in functions that did", &blocks, &hit, &hit_paths, &ice_only))?;
         let _ = writeln!(out, "block gaps written to {}", bp.display());
+    }
+    if let Some(ap) = &args.arm_gaps
+        && !arms.is_empty()
+    {
+        let shared: BTreeMap<String, Block> = arms.iter().filter(|(_, a)| !a.single).map(|(k, a)| (k.clone(), a.clone())).collect();
+        std::fs::write(ap, block_gaps_text("Switch arms into shared blocks that never ran, in functions that did", &shared, &hit, &hit_paths, &ice_only))?;
+        let _ = writeln!(out, "arm gaps written to {}", ap.display());
+    }
+    if let Some(cp) = &args.config
+        && !arms.is_empty()
+    {
+        std::fs::write(cp, config_text(&arms, &hit, &unreach, &hit_paths))?;
+        let _ = writeln!(out, "configuration arms written to {}", cp.display());
     }
     print!("{out}");
     Ok(ExitCode::SUCCESS)

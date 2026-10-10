@@ -30,6 +30,9 @@ pub struct Hooks {
     event: DefId,
     point: DefId,
     cover: Option<DefId>,
+    cover_keyed: Option<DefId>,
+    cover_enter: Option<DefId>,
+    cover_leave: Option<DefId>,
 }
 
 impl Hooks {
@@ -44,6 +47,9 @@ impl Hooks {
             event: item("mirth_event")?,
             point: item("mirth_point")?,
             cover: item("mirth_cover"),
+            cover_keyed: item("mirth_cover_keyed"),
+            cover_enter: item("mirth_cover_enter"),
+            cover_leave: item("mirth_cover_leave"),
         })
     }
 }
@@ -781,6 +787,8 @@ struct Hook<'tcx> {
     over: Vec<Ty<'tcx>>,
     arguments: Vec<Operand<'tcx>>,
     before: Vec<Statement<'tcx>>,
+    /// Where the call's result goes, when it has one that matters (a unit local otherwise).
+    destination: Option<Local>,
 }
 
 /// The body with the runtime's calls in it, and the sites it now has; or
@@ -836,8 +844,8 @@ pub fn instrument<'tcx>(
     if config.coverage.functions && runs && hooks.cover.is_some() {
         found.push(Found { at: START_BLOCK.start_location(), what: What::Cover });
     }
+    let panics = panic_only_blocks(tcx, original);
     if config.coverage.blocks && runs && hooks.cover.is_some() {
-        let panics = panic_only_blocks(tcx, original);
         for (block, data) in original.basic_blocks.iter_enumerated() {
             // The function's own site stands for its entry block.
             let entry = block == START_BLOCK && config.coverage.functions;
@@ -851,7 +859,25 @@ pub fn instrument<'tcx>(
             found.push(Found { at: block.start_location(), what: What::Block { panics: panics[block], log } });
         }
     }
-    if found.is_empty() {
+    let keyed = if runs && hooks.cover_keyed.is_some() && config.coverage.blocks {
+        config.keyed(&caller).and_then(|keyed| {
+            let label = if keyed.label.is_empty() { &keyed.key } else { &keyed.label };
+            crate::dims::resolve_key(tcx, original, &keyed.key, label)
+        })
+    } else {
+        None
+    };
+    let arms = if config.coverage.arms && runs && hooks.cover.is_some() {
+        crate::dims::arms(tcx, original)
+    } else {
+        Vec::new()
+    };
+    let pairs = config.coverage.pairs
+        && runs
+        && config.coverage.functions
+        && hooks.cover_enter.is_some()
+        && hooks.cover_leave.is_some();
+    if found.is_empty() && arms.is_empty() && keyed.is_none() {
         return None;
     }
 
@@ -860,6 +886,21 @@ pub fn instrument<'tcx>(
     let frame_site = mirth::identity::identity(&format!("{caller}|frame"));
     let mut sites = Vec::new();
     let mut at_location: BTreeMap<Location, Vec<Hook<'tcx>>> = BTreeMap::new();
+    let returns: Vec<Location> = original
+        .basic_blocks
+        .iter_enumerated()
+        .filter(|(_, data)| !data.is_cleanup && matches!(data.terminator().kind, TerminatorKind::Return))
+        .map(|(block, data)| Location { block, statement_index: data.statements.len() })
+        .collect();
+    // A key read at entry: computed once into a local at the top of the entry block, which every
+    // block of the function then passes along with its own site.
+    let entry_key: Option<Local> = keyed.as_ref().filter(|key| !key.at_return).map(|_| new_local(&mut body, tcx.types.u64));
+    let mut key_statements = Vec::new();
+    if let (Some(key), Some(local)) = (&keyed, entry_key) {
+        key_statements = crate::dims::read_key(tcx, &build, key, local, |ty| new_local(&mut body, ty));
+    }
+    let key_label = keyed.as_ref().map(|key| key.label.clone()).unwrap_or_default();
+    let caller_local = pairs.then(|| new_local(&mut body, tcx.types.u64));
 
     for (n, Found { at, what }) in found.into_iter().enumerate() {
         let span = original.source_info(at).span;
@@ -899,6 +940,7 @@ pub fn instrument<'tcx>(
                     over: vec![Ty::new_tup(tcx, &types)],
                     arguments: vec![build.number(id)],
                     before: Vec::new(),
+                    destination: None,
                 });
             }
             What::Exit => hooks_here.push(Hook {
@@ -906,6 +948,7 @@ pub fn instrument<'tcx>(
                 over: Vec::new(),
                 arguments: vec![build.number(id)],
                 before: Vec::new(),
+                destination: None,
             }),
             What::Call {
                 target,
@@ -920,6 +963,7 @@ pub fn instrument<'tcx>(
                     over: Vec::new(),
                     arguments: vec![build.number(id), build.number(mode.code())],
                     before: Vec::new(),
+                    destination: None,
                 });
                 if point {
                     hooks_here.push(Hook {
@@ -927,6 +971,7 @@ pub fn instrument<'tcx>(
                         over: Vec::new(),
                         arguments: vec![build.number(id)],
                         before: Vec::new(),
+                        destination: None,
                     });
                 }
             }
@@ -944,16 +989,58 @@ pub fn instrument<'tcx>(
                     over: Vec::new(),
                     arguments: vec![build.number(id)],
                     before: Vec::new(),
+                    destination: None,
                 });
+                if let Some(key) = entry_key {
+                    site("keyed", Mode::Count, format!("{:?} {key_label}", at.block));
+                    hooks_here.push(Hook {
+                        callee: hooks.cover_keyed.expect("checked above"),
+                        over: Vec::new(),
+                        arguments: vec![build.number(id), build.copy(key)],
+                        before: Vec::new(),
+                        destination: None,
+                    });
+                }
             }
             What::Cover => {
                 site("cover", Mode::Count, caller.clone());
-                hooks_here.push(Hook {
-                    callee: hooks.cover.expect("checked above"),
-                    over: Vec::new(),
-                    arguments: vec![build.number(id)],
-                    before: Vec::new(),
+                hooks_here.push(match caller_local {
+                    // With pairs, the entry also says which function was running, and keeps it
+                    // for the returns to restore.
+                    Some(local) => Hook {
+                        callee: hooks.cover_enter.expect("checked above"),
+                        over: Vec::new(),
+                        arguments: vec![build.number(id)],
+                        before: Vec::new(),
+                        destination: Some(local),
+                    },
+                    None => Hook {
+                        callee: hooks.cover.expect("checked above"),
+                        over: Vec::new(),
+                        arguments: vec![build.number(id)],
+                        before: Vec::new(),
+                        destination: None,
+                    },
                 });
+                if let Some(key) = entry_key {
+                    let entry = mirth::identity::identity(&format!("{caller}|cover|{:?}", START_BLOCK)) | 1;
+                    sites.push(Site {
+                        id: entry,
+                        kind: "keyed",
+                        mode: Mode::Count,
+                        caller: caller.clone(),
+                        target: format!("{:?} {key_label}", START_BLOCK),
+                        span: describe(tcx, span),
+                        snippet: snippet(tcx, span),
+                    });
+                    hooks_here.push(Hook {
+                        callee: hooks.cover_keyed.expect("checked above"),
+                        over: Vec::new(),
+                        arguments: vec![build.number(entry), build.copy(key)],
+                        before: Vec::new(),
+                        destination: None,
+                    });
+                }
             }
             What::Touch { target, mode } => {
                 site("touch", mode, path_of(tcx, target));
@@ -962,14 +1049,118 @@ pub fn instrument<'tcx>(
                     over: Vec::new(),
                     arguments: vec![build.number(id), build.number(mode.code())],
                     before: Vec::new(),
+                    destination: None,
                 });
             }
         }
     }
 
+    // Branch arms: each becomes a block of its own on the edge, with a site, jumping on to the
+    // target. Done before the insertions below, which move each switch to a later block.
+    for arm in &arms {
+        let span = original.basic_blocks[arm.switch].terminator().source_info.span;
+        let mut name = format!("{:?} {} {:?}", arm.switch, arm.index, arm.target);
+        let id = if arm.shared {
+            let id = mirth::identity::identity(&format!("{caller}|arm|{:?}|{}", arm.switch, arm.index)) | 1;
+            let edge = body.basic_blocks_mut().push(rustc_middle::mir::BasicBlockData::new(
+                Some(build.terminator(TerminatorKind::Goto { target: arm.target })),
+                false,
+            ));
+            if let TerminatorKind::SwitchInt { targets, .. } = &mut body.basic_blocks_mut()[arm.switch].terminator_mut().kind {
+                targets.all_targets_mut()[arm.index] = edge;
+            }
+            at_location.entry(edge.start_location()).or_default().push(Hook {
+                callee: hooks.cover.expect("checked above"),
+                over: Vec::new(),
+                arguments: vec![build.number(id)],
+                before: Vec::new(),
+                destination: None,
+            });
+            id
+        } else {
+            // Only this arm reaches the target: the arm is the target's own block site (or the
+            // function's, for the entry block), with no call of its own.
+            name.push_str(" single");
+            if arm.target == START_BLOCK {
+                mirth::identity::identity(&format!("{caller}|cover")) | 1
+            } else {
+                mirth::identity::identity(&format!("{caller}|cover|{:?}", arm.target)) | 1
+            }
+        };
+        if panics[arm.target] {
+            name.push_str(" panics");
+        }
+        if log_only(tcx, &original.basic_blocks[arm.target]) {
+            name.push_str(" log");
+        }
+        if let Some(config) = &arm.config {
+            let _ = write!(name, " config={config}");
+        }
+        sites.push(Site {
+            id,
+            kind: "arm",
+            mode: Mode::Count,
+            caller: caller.clone(),
+            target: name,
+            span: describe(tcx, span),
+            snippet: snippet(tcx, span),
+        });
+    }
+    // At each return: the pair's caller runs again; a return-value key is read and recorded.
+    let return_site = mirth::identity::identity(&format!("{caller}|ret")) | 1;
+    if keyed.as_ref().is_some_and(|key| key.at_return) && !returns.is_empty() {
+        sites.push(Site {
+            id: return_site,
+            kind: "keyed",
+            mode: Mode::Count,
+            caller: caller.clone(),
+            target: format!("ret {key_label}"),
+            span: describe(tcx, original.span),
+            snippet: String::new(),
+        });
+    }
+    for &at in &returns {
+        if let Some(local) = caller_local {
+            at_location.entry(at).or_default().push(Hook {
+                callee: hooks.cover_leave.expect("checked above"),
+                over: Vec::new(),
+                arguments: vec![build.copy(local)],
+                before: Vec::new(),
+                destination: None,
+            });
+        }
+        if let Some(key) = keyed.as_ref().filter(|key| key.at_return) {
+            let value = new_local(&mut body, tcx.types.u64);
+            let before = crate::dims::read_key(tcx, &build, key, value, |ty| new_local(&mut body, ty));
+            at_location.entry(at).or_default().push(Hook {
+                callee: hooks.cover_keyed.expect("checked above"),
+                over: Vec::new(),
+                arguments: vec![build.number(return_site), build.copy(value)],
+                before,
+                destination: None,
+            });
+        }
+    }
+    // The names of an enum key's values, for the reports.
+    if let Some(adt) = keyed.as_ref().and_then(|key| key.discriminant) {
+        let names: Vec<String> = crate::dims::variants(tcx, adt).into_iter().map(|(value, name)| format!("{value}={name}")).collect();
+        sites.push(Site {
+            id: 0,
+            kind: "keyenum",
+            mode: Mode::Count,
+            caller: defining_path_of(tcx, adt.did()),
+            target: names.join(","),
+            span: String::new(),
+            snippet: String::new(),
+        });
+    }
+
     // Last location first, so a split never moves a location still to come.
     for (at, hooks_here) in at_location.into_iter().rev() {
         insert(tcx, &build, &mut body, at, hooks_here);
+    }
+    if !key_statements.is_empty() {
+        body.basic_blocks_mut()[START_BLOCK].statements.splice(0..0, key_statements);
     }
     Some((body, sites))
 }
@@ -1024,6 +1215,7 @@ fn argument_hooks<'tcx>(
                         over: Vec::new(),
                         arguments: vec![build.number(parts)],
                         before: Vec::new(),
+                        destination: None,
                     });
                 }
             }
@@ -1049,6 +1241,7 @@ fn borrow<'tcx>(
         over: vec![ty],
         arguments: vec![build.copy(reference)],
         before,
+        destination: None,
     }
 }
 
@@ -1092,7 +1285,7 @@ fn insert<'tcx>(
             body.basic_blocks_mut()
                 .push(rustc_middle::mir::BasicBlockData::new(None, is_cleanup))
         };
-        let unit = new_local(body, tcx.types.unit);
+        let unit = hook.destination.unwrap_or_else(|| new_local(body, tcx.types.unit));
         let block = &mut body.basic_blocks_mut()[current];
         block.statements.extend(hook.before);
         block.terminator =

@@ -12,6 +12,7 @@ mod tools {
     pub mod callgraph;
     pub mod coverage;
     pub mod coverage_compact;
+    pub mod coverage_dims;
     pub mod coverage_flags;
     pub mod coverage_generators;
     pub mod crash_diff;
@@ -141,6 +142,9 @@ enum Check {
     DebugCheck(tools::debug_check::Args),
     /// Mutants of the UI tests that use unstable features (splices, moved items, extra gates, edits): ICEs and hangs.
     GateMutate(tools::gate_mutate::Args),
+    /// Coverage beyond blocks: keyed engine paths, incremental transitions, feature gates
+    /// consulted, type kinds, call pairs, MIR pass effect, lock contention.
+    CoverageDims(tools::coverage_dims::Args),
 }
 
 fn main() -> ExitCode {
@@ -174,6 +178,7 @@ fn main() -> ExitCode {
         Check::AuditOptions(a) => tools::audit_options::run(a),
         Check::Coverage(a) => tools::coverage::run(a),
         Check::CoverageCompact(a) => tools::coverage_compact::run(a),
+        Check::CoverageDims(a) => tools::coverage_dims::run(a),
         Check::CoverageGenerators(a) => tools::coverage_generators::run(a),
         Check::GrammarCoverage(a) => tools::grammar_coverage::run(a),
         Check::UiCoverage(a) => tools::ui_coverage::run(a),

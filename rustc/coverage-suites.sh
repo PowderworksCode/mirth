@@ -44,6 +44,10 @@ compactor=$!
 ) &
 watchdog=$!
 
+# A compiler with docs/hunt/coverage-dims.patch also writes which MIR passes changed a body and
+# which locks were contended; others ignore the variables.
+export RUSTC_PASS_EFFECT="$out/logs" RUSTC_LOCK_CONTENTION="$out/logs"
+
 cd "$MIRTH_RUST"
 if [ -n "${WRAPPED:-}" ]; then
   # WRAPPED=1: what the run compiles goes through mirth-watch with the coverage configuration

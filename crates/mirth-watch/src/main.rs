@@ -21,6 +21,7 @@ extern crate rustc_type_ir;
 
 mod capture;
 mod config;
+mod dims;
 mod sites;
 
 use std::path::PathBuf;

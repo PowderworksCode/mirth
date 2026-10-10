@@ -21,6 +21,14 @@
 //!
 //! [coverage]                  # which functions run
 //! functions = true              # every function and closure in scope records its first call
+//! blocks = true                 # and each other basic block
+//! arms = true                   # and each arm of a switch whose target other paths also reach
+//! pairs = true                  # and which instrumented function was running when it was entered
+//!
+//! [[coverage.keyed]]            # blocks told apart by a key read at entry (or at return)
+//! match = "rustc_query_impl::execution::*"
+//! key = "type:QueryVTable.dep_kind"   # argN | type:<path suffix> | ret, then fields; `#`: discriminant
+//! label = "query"
 //!
 //! [diagnostics]
 //! paths = true                  # write every path a pattern could match
@@ -57,6 +65,32 @@ pub struct Coverage {
     pub functions: bool,
     #[serde(default)]
     pub blocks: bool,
+    /// A site on each arm of a `SwitchInt` whose target has other predecessors too (the target's
+    /// block site cannot tell which way the switch went), tagged with the configuration (feature
+    /// gate, option, edition, target property) the switch reads, when it reads one.
+    #[serde(default)]
+    pub arms: bool,
+    /// Call pairs: at each function's entry, which instrumented function was running.
+    #[serde(default)]
+    pub pairs: bool,
+    #[serde(default)]
+    pub keyed: Vec<Keyed>,
+}
+
+/// Blocks of matching functions told apart by a key: the block's site combined with a value the
+/// function reads at entry from an argument (or, for `ret`, its return value at each return).
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Keyed {
+    #[serde(rename = "match")]
+    pub pattern: String,
+    /// `argN`, `type:<suffix of the argument type's path>` or `ret`, then `.field` steps (names
+    /// or numbers; references are followed), and `#` to read an enum's discriminant (an enum at
+    /// the end is read so anyway; a one-field struct is looked through).
+    pub key: String,
+    /// What the key is, for the reports.
+    #[serde(default)]
+    pub label: String,
 }
 
 /// For writing a configuration: what could be matched.
@@ -164,6 +198,10 @@ impl Config {
         self.frames
             .iter()
             .find(|frame| matches(&frame.pattern, path))
+    }
+
+    pub fn keyed(&self, path: &str) -> Option<&Keyed> {
+        self.coverage.keyed.iter().find(|keyed| matches(&keyed.pattern, path))
     }
 
     pub fn call(&self, path: &str) -> Option<&Call> {
