@@ -74,4 +74,9 @@ impl V {
 `T0` appears in the function pointer type only as `T0::Of<'_>`. The old solver infers it (the
 caller's where-clauses name the same projection); the new solver reports ambiguity. Since
 #160895 made the new solver nightly's default, real crates hit it. The UI-test differences of the
-same kind are in [`solver.md`](../solver.md). `diskann-wide` was not found in the issue tracker.
+same kind are in [`solver.md`](../solver.md).
+
+**Known and intended:** #160895 lists `diskann-wide` under "higher-ranked associated type"
+(trait-system-refactor-initiative#168: the old solver sometimes guided inference incorrectly when
+relating higher-ranked associated types), 0.55 not yet patched. surrealdb, which depends on 0.54,
+is not in that issue's list of affected crates.
