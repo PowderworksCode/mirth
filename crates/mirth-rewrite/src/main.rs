@@ -264,6 +264,9 @@ fn alias(file: &mut syn::File) -> bool {
         // In an inline module the bare name reaches the type through a `use`, the alias would
         // need one too: modules are left as they are.
         fn visit_item_mod_mut(&mut self, _: &mut syn::ItemMod) {}
+        // A receiver typed with the impl's own name (`self: &mut Test`) elides lifetimes like
+        // `&mut self`; through an alias it does not (resolution does not see through aliases).
+        fn visit_receiver_mut(&mut self, _: &mut syn::Receiver) {}
     }
     let mut rename = Rename { aliases: &aliases, count: 0 };
     for item in &mut file.items {

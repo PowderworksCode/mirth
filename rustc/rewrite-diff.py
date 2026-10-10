@@ -39,6 +39,7 @@ STRICT = set()
 # Differences that are resource limits or legitimate requirements of a generic context.
 NOISE = {
     ("consts/chained-constants-stackoverflow.rs", "reorder"),  # 10,000 chained consts: query depth
+    ("consts/interior-mut-const-via-union.rs", "generic-wrap"),  # finding 25 (docs/hunt.md)
 }
 NOT_MOVABLE = re.compile(r"^\s*(pub(\([^)]*\))?\s+)?mod\s+\w+\s*;|include(_str|_bytes)?!|#\[path|#!\[no_core\]", re.M)
 # Item order matters to textual macro scoping: no reordering where macros are defined.

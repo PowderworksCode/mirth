@@ -48,6 +48,7 @@ with `-Zthreads=8`. `rustc/check.sh wide` runs the ordinary checks.
 | 22 | the new trait solver trips a debug assertion in region outlives (`regions.rs:37`, `!type_outlives.has_non_rigid_aliases()`) on 5 UI tests | debug-assertion builds with nightly's default solver; hidden in CI by compiletest's solver pin; a sibling of closed #160206; [facts](hunt/internal-checks.md) |
 | 23 | an `attempt to add with overflow` in `ty/instance.rs:421` compiling `recursion/issue-83150.rs` under the new solver | overflow-checked builds; hidden by the solver pin; [facts](hunt/internal-checks.md) |
 | 24 | `-Zvalidate-mir` rejects a move of a dereferenced unsized place into a call (`unsized-locals/unsized-exprs2.rs`) | incomplete `unsized_fn_params`; [facts](hunt/internal-checks.md) |
+| 25 | an invalid constant (E0080, `UnsafeCell` in read-only memory) is rejected when an unused `let _ = &C` is in a non-generic function, and accepted when it is in a generic one, unless `-Zmir-opt-level=0`: a MIR pass removes the promoted's last use and nothing validates it at monomorphization | **looks new**; stable code; found by the equivalent-rewrite differential (`generic-wrap`); since at least 1.80; pass located (`SimplifyLocals-before-const-prop` removes the last use), cause not narrowed further; [facts](hunt/promoted-validation-generic.md) |
 
 Findings 1 and 2 are single-threaded: an ordinary `cargo build`, an edit, another
 `cargo build`, and the metadata differs from a clean build of the edited source. Both come
