@@ -545,6 +545,41 @@ when the source test uses the harness) and searches rust-lang/rust's issues for 
 panic's location and the first query on the stack, or a delayed bug's message, so one bug can
 show as several signatures (finding 50 as six).
 
+#### coverage-guided feature-gate mutation
+
+`gate-mutate --guided` compiles each mutant with the coverage-instrumented compiler (build-blk,
+`MIRTH_OUT`) and reads the sites (functions and basic blocks) it reached. A mutant reaching a
+site that no coverage suite reached (a snapshot of every `cov-suites/*/union.txt`: 400,501
+sites) and no earlier input of the run reached joins a corpus with energy proportional to its
+new sites; three mutants in four are then drawn from the corpus by energy (new sites over one
+plus the times picked): spliced with another corpus entry or a UI test, moved, gated or edited.
+`--measure` counts new sites the same way with the usual draws, as the baseline. Both ran at
+the same time for 150 minutes (2 jobs each, the same seed and snapshot, on a loaded machine):
+
+| minutes | guided: mutants, new sites, corpus, new signatures | unguided: mutants, new sites, new signatures |
+|---:|---|---|
+| 10 | 3,600 · 29,213 · 643 · 6 | 3,700 · 38,357 · 4 |
+| 30 | 7,000 · 35,992 · 956 · 11 | 6,900 · 42,466 · 4 |
+| 60 | 16,000 · 45,199 · 1,403 · 12 | 14,700 · 48,588 · 7 |
+| 90 | 25,000 · 49,615 · 1,662 · 16 | 19,600 · 51,000 · 9 |
+| 120 | 29,200 · 51,651 · 1,752 · 17 | 24,400 · 52,670 · 10 |
+| 150 | 33,100 · 53,305 · 1,833 · 18 | 29,500 · 53,699 · 13 |
+
+- New sites: the same in the end (53,352 and 53,699), almost all blocks; 47,356 in both, 5,996
+  only guided, 6,343 only unguided; 59,695 together, which the coverage report counts as the
+  suites `guided-gate-mutate` and `unguided-gate-mutate`. Most are in rustc_trait_selection,
+  rustc_mir_transform, rustc_hir_analysis, rustc_middle, rustc_mir_build and the printers.
+- Guidance did not reach new code faster. The corpus put its energy where one input reaches
+  many blocks at once: tests whose own flags print internals (`-Zunpretty`, `thir-print`, the
+  proc-macro quote debug output: the top five corpus sources by new sites). Weighting energy
+  away from printers, or capping it per source test, is the next thing to try.
+- Guidance found more crashes: 766 ICE or hang mutants against 95, and 19 signatures against 14,
+  because ICE-prone corpus entries are mutated again (finding 50's assertion alone, 444 times).
+  Of the signatures new to the earlier gate-mutate run, guided found six and unguided two.
+  After triage: two are routes to finding 50, one to finding 53, two to open #162338
+  (`Field::OFFSET`, gca), and three look new (findings 56–58): one from the guided run (57) and
+  two from the unguided run (56, 58).
+
 ## Running the checks
 
 The checks are subcommands of `mirth-lab` (`crates/mirth-lab`; `mirth-lab --help` lists them):
@@ -559,6 +594,7 @@ target/release/mirth-lab abi-diff --rustc $R --rust ~/mirth-work/rust --work <di
 target/release/mirth-lab lint-check --rustc $R --tests $T --work <dir>
 target/release/mirth-lab gate-mutate --rustc $R --rust ~/mirth-work/rust --work <dir> --count 20000 --jobs 4
 target/release/mirth-lab gate-mutate --rustc $R --rust ~/mirth-work/rust --work <dir> --triage
+target/release/mirth-lab gate-mutate --rustc ~/mirth-work/build-blk/host/stage1/bin/rustc --rust ~/mirth-work/rust --work <dir> --guided --coverage-from ~/mirth-work/cov-suites --sites ~/mirth-work/build-blk/mirth-sites --minutes 150 --suite ~/mirth-work/cov-suites/guided-gate-mutate
 target/release/mirth-lab release-diff --corpus ~/proofhouse-repos/rust --old nightly-2026-07-18 --new nightly-2026-10-06 --work <dir>
 target/release/mirth-lab debug-check --toolchain nightly-2026-10-06 --work <dir> --seeds 0..4000 --jobs 4
 ```

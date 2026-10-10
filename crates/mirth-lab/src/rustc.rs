@@ -128,6 +128,8 @@ pub struct Compile<'a> {
     /// Name the output `<out_dir>/prog` with `-o` (the default); off when the extra options say
     /// where outputs go (`--out-dir`).
     pub name_output: bool,
+    /// Extra environment variables (`MIRTH_OUT` for a coverage-instrumented compiler, say).
+    pub env: Vec<(String, String)>,
 }
 
 impl<'a> Compile<'a> {
@@ -144,7 +146,13 @@ impl<'a> Compile<'a> {
             timeout: Duration::from_secs(300),
             bootstrap: true,
             name_output: true,
+            env: Vec::new(),
         }
+    }
+
+    pub fn env(mut self, key: &str, value: impl Into<String>) -> Self {
+        self.env.push((key.to_owned(), value.into()));
+        self
     }
 
     pub fn extra<I: IntoIterator<Item = S>, S: Into<String>>(mut self, extra: I) -> Self {
@@ -195,7 +203,8 @@ impl<'a> Compile<'a> {
             .args(self.flags)
             .args(&self.extra)
             .current_dir(self.out_dir)
-            .env("RUST_BACKTRACE", "0");
+            .env("RUST_BACKTRACE", "0")
+            .envs(self.env.iter().map(|(k, v)| (k, v)));
         if self.bootstrap {
             cmd.env("RUSTC_BOOTSTRAP", "1");
         } else {
