@@ -1,6 +1,6 @@
 # Lint oracles: lints whose premise does not hold, and fixes that change the program
 
-Facts for findings 33–36. Found by the lint-oracle check ([`checks.md`](../checks.md), check 16:
+Facts for findings 40–43. Found by the lint-oracle check ([`checks.md`](../checks.md), check 16:
 `mirth-lab lint-check`). It runs over the standalone UI tests with a column of
 allow-by-default lints turned on. For each lint that warns, it acts on the warning: it allows
 the lint, removes what the lint calls unused or unreachable, rewrites code to what the lint's
@@ -8,7 +8,7 @@ premise says is equivalent, or applies the lint's machine-applicable suggestion.
 that nothing else changed. Reductions are in [`tests/lint-check/`](tests/lint-check). "1.98.0"
 means stable 1.98.0; "nightly" means the pinned nightly-2026-10-06.
 
-## 33. `let_underscore_drop`: the premise and both fixes
+## 40. `let_underscore_drop`: the premise and both fixes
 
 `let_underscore_drop` (allow-by-default) warns on `let _ = <expr>;` when the value has a
 destructor. Its message: "non-binding let on a type that has a destructor". It offers two
@@ -40,7 +40,7 @@ compiles and changes the output: the drop-order tests (`destructuring-assignment
 Related, about the language and not the lint: #97305 (`let _ = var` does not move `var`, closed
 as intended).
 
-## 34. Lifetime lints: fixes that change meaning
+## 41. Lifetime lints: fixes that change meaning
 
 | reduction | lint | what happens | 1.98.0 | nightly |
 |---|---|---|---|---|
@@ -53,7 +53,7 @@ attribute lands on a parameter that rejects it (E0199). Both lints are allow-by-
 Earlier fixes in the same area, all closed: #117965 and #120148 (`single_use_lifetimes` fixes
 that do not compile), #141758 (`unused_lifetimes` and unsafe binders).
 
-## 35. `dead_code`: items reported unused that the program needs
+## 42. `dead_code`: items reported unused that the program needs
 
 `dead_code` is warn-by-default. "X is never used" invites deleting X; in these cases deleting it
 (with everything else the lint reports in the same crate) breaks the program.
@@ -74,7 +74,7 @@ incomplete `gca` feature); they are listed in the sweep's results, not counted h
 but different: #47569 (a struct used only through an associated constant, open), #110332
 (below).
 
-## 36. `trivial_numeric_casts` on an unsuffixed literal
+## 43. `trivial_numeric_casts` on an unsuffixed literal
 
 [`trivial-numeric-cast-literal.rs`](tests/lint-check/trivial-numeric-cast-literal.rs):
 `let x = 5 as i16;` warns "trivial numeric cast: `i16` as `i16`". The literal is `i16` only

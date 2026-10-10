@@ -374,7 +374,7 @@ Ten new findings (19–28) in [`hunt.md`](hunt.md), none from the checks mirth h
 
 | check | script | swept | result |
 |---|---|---|---|
-| lint oracles (16) | `mirth-lab lint-check` | 18,624 tests; the 8,055 that compile without errors (lints capped to warnings where a test denies them), with 16 allow-by-default lints turned on; 4,244 have a lint warning, 211 lints in all; 30,100 compilations | findings 33–36 (`let_underscore_drop`; lifetime-lint fixes; `dead_code` on needed traits and opaque-type definitions; `trivial_numeric_casts` on literals); known #110332 and #163369 reproduced; `unreachable_pub` and `missing_copy_implementations` edge cases noted in [`hunt/lint-check.md`](hunt/lint-check.md) |
+| lint oracles (16) | `mirth-lab lint-check` | 18,624 tests; the 8,055 that compile without errors (lints capped to warnings where a test denies them), with 16 allow-by-default lints turned on; 4,244 have a lint warning, 211 lints in all; 30,100 compilations | findings 40–43 (`let_underscore_drop`; lifetime-lint fixes; `dead_code` on needed traits and opaque-type definitions; `trivial_numeric_casts` on literals); known #110332 and #163369 reproduced; `unreachable_pub` and `missing_copy_implementations` edge cases noted in [`hunt/lint-check.md`](hunt/lint-check.md) |
 
 `lint-check` acts on each warning four ways, and reports when anything else changes:
 - `#![allow(lint)]`;
