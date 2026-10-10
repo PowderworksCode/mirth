@@ -7,7 +7,8 @@ Runs `cargo check --locked` on each repository of a corpus of real crates with t
 own target directory, deleted afterwards. Compared:
 
   regression  the older toolchain checks the repository, the newer one does not (the new
-              error codes and the first error are recorded)
+              error codes and the first error are recorded); noted instead when the failing crate
+              enables unstable features (`#![feature]`, often only when it detects a nightly)
   fixed       the other way round (reported, not a finding)
   slower      the newer toolchain takes more than --slower times as long (both succeed)
   ice         the newer toolchain crashes
@@ -68,6 +69,19 @@ def check(repo, toolchain):
             "tail": err[-3000:] if code != 0 else ""}
 
 
+def uses_unstable(first_error):
+    """The crate a first error points into, if its source enables `#![feature(...)]`."""
+    m = re.search(r"(/\S*?/registry/src/[^/]+/[^/]+|/\S+?)/src/", first_error)
+    if not m:
+        return None
+    root = Path(m.group(1))
+    for f in list((root / "src").glob("lib.rs")) + list((root / "src").glob("main.rs")):
+        text = f.read_text(errors="replace")
+        if re.search(r"#!\[(cfg_attr\([^]]*)?feature\(", text):
+            return root.name
+    return None
+
+
 def one(repo):
     fetch = subprocess.run(["cargo", f"+{args.new}", "fetch", "--locked"], cwd=repo, capture_output=True,
                            text=True, timeout=1800)
@@ -77,7 +91,13 @@ def one(repo):
     new = check(repo, args.new)
     rec = {"repo": repo.name, "old": old, "new": new, "found": []}
     if old["code"] == 0 and new["code"] != 0:
-        rec["found"].append("ice" if new["ice"] else "regression")
+        unstable = uses_unstable(new["first"])
+        if unstable and not new["ice"]:
+            # A crate that turns on unstable features when it detects a nightly compiler breaks
+            # when they change: expected between nightlies, noted rather than reported.
+            rec["notes"] = [f"regression in a crate using unstable features ({unstable})"]
+        else:
+            rec["found"].append("ice" if new["ice"] else "regression")
     elif old["code"] != 0 and new["code"] == 0:
         rec["notes"] = ["fixed"]
     elif old["code"] == 0 and new["code"] == 0 and old["seconds"] > 5 and new["seconds"] > args.slower * old["seconds"]:
