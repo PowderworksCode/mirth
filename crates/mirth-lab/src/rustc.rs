@@ -128,6 +128,8 @@ pub struct Compile<'a> {
     /// Name the output `<out_dir>/prog` with `-o` (the default); off when the extra options say
     /// where outputs go (`--out-dir`).
     pub name_output: bool,
+    /// More environment for rustc (the patched compiler's checks).
+    pub env: Vec<(String, String)>,
 }
 
 impl<'a> Compile<'a> {
@@ -144,7 +146,23 @@ impl<'a> Compile<'a> {
             timeout: Duration::from_secs(300),
             bootstrap: true,
             name_output: true,
+            env: Vec::new(),
         }
+    }
+
+    pub fn env<K: Into<String>, V: Into<String>>(mut self, k: K, v: V) -> Self {
+        self.env.push((k.into(), v.into()));
+        self
+    }
+
+    /// Turn the patched compiler's checks on (docs/shadow-mode.md), in an incremental session
+    /// under `incr`: `all` recomputes every cached value, not only reused ones.
+    pub fn compiler_checks(mut self, incr: &Path, all: bool) -> Self {
+        self.extra.push(format!("-Cincremental={}", incr.display()));
+        for (k, v) in crate::compiler_checks::env(all) {
+            self = self.env(k, v);
+        }
+        self
     }
 
     pub fn extra<I: IntoIterator<Item = S>, S: Into<String>>(mut self, extra: I) -> Self {
@@ -195,7 +213,8 @@ impl<'a> Compile<'a> {
             .args(self.flags)
             .args(&self.extra)
             .current_dir(self.out_dir)
-            .env("RUST_BACKTRACE", "0");
+            .env("RUST_BACKTRACE", "0")
+            .envs(self.env.iter().map(|(k, v)| (k.as_str(), v.as_str())));
         if self.bootstrap {
             cmd.env("RUSTC_BOOTSTRAP", "1");
         } else {

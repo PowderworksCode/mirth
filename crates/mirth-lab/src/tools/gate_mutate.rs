@@ -31,6 +31,7 @@ use std::process::{Command, ExitCode};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{LazyLock, Mutex};
 
+use mirth_lab::compiler_checks::{self, Known};
 use mirth_lab::mutations;
 use mirth_lab::rustc::{Compile, Status};
 use mirth_lab::uitest::{self, Test};
@@ -71,6 +72,11 @@ pub struct Args {
     /// Stop at the first new signature (exit 3).
     #[arg(long)]
     pause_on_finding: bool,
+    /// Compile each mutant in an incremental session with the patched compiler's own checks on
+    /// (RUSTC_VERIFY_REUSE=all, RUSTC_REPORT_UNTRACKED); what they report goes to
+    /// <work>/compiler-checks.jsonl, with the mutant under <work>/compiler-checks/.
+    #[arg(long)]
+    compiler_checks: bool,
     /// Only features whose name contains this.
     #[arg(long)]
     only: Option<String>,
@@ -82,6 +88,7 @@ pub struct Args {
     rereduce: bool,
 }
 
+static KNOWN: LazyLock<Known> = LazyLock::new(Known::load);
 static FEATURE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"#!\[feature\(([^)\]]*)\)\]").unwrap());
 static INCOMPLETE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?m)^\s*\(incomplete, (\w+),").unwrap());
 /// Tests that are meant to crash, or whose output is already an ICE.
@@ -390,11 +397,25 @@ struct Env<'a> {
 /// Status and signature (for an ICE, or "hang" for a confirmed timeout), and whether the
 /// compiler complained of a missing feature gate.
 fn compile(env: &Env, text: &str, flags: &[String], edition: &str) -> (Status, Option<Signature>, bool) {
+    let (status, sig, ungated, _) = compile_checked(env, text, flags, edition, false);
+    (status, sig, ungated)
+}
+
+/// `compile`, and with `checks` what the patched compiler's own checks reported.
+fn compile_checked(env: &Env, text: &str, flags: &[String], edition: &str, checks: bool) -> (Status, Option<Signature>, bool, Vec<String>) {
     let d = tempfile::tempdir_in(&env.scratch).expect("scratch");
     let src = d.path().join("m.rs");
     let _ = std::fs::write(&src, text);
-    let run = |secs| Compile::new(&env.args.rustc, &src, d.path(), flags, edition).emit("link").timeout(secs).run();
-    let c = run(env.args.timeout);
+    let first = Compile::new(&env.args.rustc, &src, d.path(), flags, edition).emit("link").timeout(env.args.timeout);
+    let first = if checks { first.compiler_checks(&d.path().join("incr"), true) } else { first };
+    let c = first.run();
+    let reported = if checks { compiler_checks::read(&c.stderr, &KNOWN).findings() } else { Vec::new() };
+    let (status, sig, ungated) = classify(env, &src, d.path(), flags, edition, c);
+    (status, sig, ungated, reported)
+}
+
+fn classify(env: &Env, src: &Path, dir: &Path, flags: &[String], edition: &str, c: mirth_lab::rustc::Compiled) -> (Status, Option<Signature>, bool) {
+    let run = |secs| Compile::new(&env.args.rustc, src, dir, flags, edition).emit("link").timeout(secs).run();
     let ungated = c.stderr.contains("E0658");
     match c.status {
         Status::Ice => (Status::Ice, Some(signature(&c.stderr)), ungated),
@@ -630,7 +651,16 @@ pub fn run(args: Args) -> anyhow::Result<ExitCode> {
                 let _ = writeln!(l, "{}", serde_json::json!({"i": i, "strategy": "none"}));
                 return;
             };
-            let (status, sig, _) = compile(&env, &text, &flags, &edition);
+            let (status, sig, _, reported) = compile_checked(&env, &text, &flags, &edition, args.compiler_checks);
+            if !reported.is_empty() {
+                let dir = args.work.join("compiler-checks");
+                let _ = std::fs::create_dir_all(&dir);
+                let _ = std::fs::write(dir.join(format!("{i}.rs")), &text);
+                let line = serde_json::json!({ "i": i, "strategy": mutant.strategy, "sources": mutant.sources, "config": mutant.config, "flags": flags, "edition": edition, "found": reported });
+                if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(args.work.join("compiler-checks.jsonl")) {
+                    let _ = writeln!(f, "{line}");
+                }
+            }
             let mut key = None;
             if let Some(sig) = sig {
                 // Not a finding when the unmutated test already gives it.

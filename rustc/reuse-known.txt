@@ -1,0 +1,7 @@
+# Reuse-check reports already triaged (docs/checks.md, fourth batch): exact `reuse_checks` names.
+# Const-eval results that share an allocation in a clean session (the PostAnalysis and Codegen
+# typing modes of one constant or promoted) get two after the round trip through the cache;
+# finding 8's mechanism. No output bytes or behaviour differed in any test that showed it.
+allocation sharing eval_to_const_value_raw / eval_to_const_value_raw / Codegen / PostAnalysis
+allocation sharing eval_to_const_value_raw / eval_to_allocation_raw / Codegen / PostAnalysis
+allocation sharing eval_to_const_value_raw / eval_to_allocation_raw / Codegen

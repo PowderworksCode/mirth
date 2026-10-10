@@ -44,6 +44,7 @@ mod tools {
     pub mod survey;
     pub mod ui_coverage;
     pub mod ui_fuzz;
+    pub mod ui_incr;
     pub mod verify_closed;
     pub mod xlink;
 }
@@ -141,6 +142,8 @@ enum Check {
     DebugCheck(tools::debug_check::Args),
     /// Mutants of the UI tests that use unstable features (splices, moved items, extra gates, edits): ICEs and hangs.
     GateMutate(tools::gate_mutate::Args),
+    /// P6 over the UI corpus: incremental rebuilds (unchanged, spans moved, an unused fn added) equal clean builds, with the compiler checking its reuse.
+    UiIncr(tools::ui_incr::Args),
 }
 
 fn main() -> ExitCode {
@@ -164,6 +167,7 @@ fn main() -> ExitCode {
         Check::ScaleCheck(a) => tools::scale_check::run(a),
         Check::AbiDiff(a) => tools::abi_diff::run(a),
         Check::UiFuzz(a) => tools::ui_fuzz::run(a),
+        Check::UiIncr(a) => tools::ui_incr::run(a),
         Check::Callgraph(a) => tools::callgraph::run(a),
         Check::FlagUniverse(a) => tools::flag_universe::run(a),
         Check::FlagModel(a) => tools::flag_model::run(a),

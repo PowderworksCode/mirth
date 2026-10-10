@@ -44,6 +44,8 @@ run() { # name args...
 
 sweep=(--tests "$tests" --jobs "$jobs")
 run diag-check diag-check --rustc "$rustc" "${sweep[@]}" --work "$dir/diag-check"
+run diag-check-cc diag-check --rustc "$rustc" "${sweep[@]}" --compiler-checks --work "$dir/diag-check-cc"
+run ui-incr ui-incr --rustc "$rustc" "${sweep[@]}" --work "$dir/ui-incr"
 run gate-check gate-check --rustc "$rustc" --rust "$rust" --jobs "$jobs" --work "$dir/gate-check"
 run solver-diff solver-diff --rustc "$rustc" "${sweep[@]}" --work "$dir/solver-diff"
 run crash-diff crash-diff --rustc "$rustc" --checked "$checked" --known "$here/crash-known.txt" "${sweep[@]}" --work "$dir/crash-diff"
