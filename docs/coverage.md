@@ -123,7 +123,7 @@ of rustc-hash share a name):
   `T: From<U>`, a derive's `T: Encodable<E>` for every field) and of the trait's associated
   types (`type Domain: JoinSemiLattice`), recursively.
 
-`rustc/callgraph.py` computes reachability from the compiler's `main`s, every function with a
+`mirth-lab callgraph` computes reachability from the compiler's `main`s, every function with a
 foreign ABI (callbacks from C, C++ and LLVM), every implementation of a trait from outside the
 compiler (which `std` may call), and every initializer. A call to a trait item reaches its
 implementations (class hierarchy analysis), but an implementation for one of the compiler's
@@ -207,5 +207,5 @@ logs the same way.
 
 **All together, with sink and its option configurations: 50,762 of the 62,516 functions that
 can run (81.2%); without the 911 that only panic, 50,715 of 61,605 (82.3%).**
-`rustc/coverage-report.sh` recomputes this; `rustc/callgraph.py --gaps <file>` lists the rest
+`rustc/coverage-report.sh` recomputes this; `mirth-lab callgraph --gaps <file>` lists the rest
 by crate and file, largest first. What is left, and the plan for it: [coverage-handoff.md](coverage-handoff.md).

@@ -158,7 +158,7 @@ MIRTH_RUNTIME=$WORK/build-cg/mirth-runtime/libmirth_runtime.rlib MIRTH_WATCH=cg.
    Measure each with `coverage-report.sh` and keep the ones that add.
 2. **Tighten the denominator** where the graph says reachable but nothing can run it. For each
    suspicious class, `--why` a sample: if the chain has a spurious step (a demand nothing really
-   makes), fix the analysis in `sites.rs` (`graph`) or `callgraph.py`, rebuild the graph, and
+   makes), fix the analysis in `sites.rs` (`graph`) or `mirth-lab callgraph`, rebuild the graph, and
    check 0 misses. Classes to look at first: the AST's encode/decode, `handle_cycle_error` per
    query, `format_value` (only on a verification failure or `RUSTC_VERIFY_REUSE`), derived
    impls of types only built in tests. A function that only runs on a compiler bug is already

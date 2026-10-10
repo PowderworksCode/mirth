@@ -3,7 +3,7 @@
 # and option-configuration logs, against the call graph's denominator. Writes
 # $WORK/coverage-report.txt, $WORK/gaps.md (what can run and did not, by crate and file) and
 # $WORK/gaps.json; with a compiler built with `[coverage] blocks`, also $WORK/gaps-blocks.md (the
-# blocks that never ran in functions that did). Extra arguments go to callgraph.py (`--why <function>`, `--unreachable <crate>`).
+# blocks that never ran in functions that did). Extra arguments go to `mirth-lab callgraph` (`--why <function>`, `--unreachable <crate>`).
 #
 #   WORK=~/mirth-work rustc/coverage-report.sh [--why <function> ...]
 #
@@ -34,7 +34,7 @@ dirs=${COV_LOGS-$work/cov-sink $work/cov-flags}
 for d in $dirs; do
   [ -d "$d" ] && logs+=(--logs "$d")
 done
-python3 "$here/callgraph.py" --graph "$work/build-cg/mirth-sites" --sites "$build/mirth-sites" \
+"$here/../target/release/mirth-lab" callgraph --graph "$work/build-cg/mirth-sites" --sites "$build/mirth-sites" \
   "${runs[@]}" "${logs[@]}" --gaps "$report/gaps.md" --block-gaps "$report/gaps-blocks.md" --json "$report/gaps.json" "$@" \
   > "$report/coverage-report.txt"
 sed -n '1,5p;/^blocks:/p' "$report/coverage-report.txt"

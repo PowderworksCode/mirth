@@ -7,6 +7,7 @@ use clap::{Parser, Subcommand};
 
 mod tools {
     pub mod abi_diff;
+    pub mod callgraph;
     pub mod crash_diff;
     pub mod diag_check;
     pub mod gate_check;
@@ -59,6 +60,8 @@ enum Check {
     ScaleCheck(tools::scale_check::Args),
     /// rustc's extern "C" lowering matches clang's for random C signatures, per target.
     AbiDiff(tools::abi_diff::Args),
+    /// Reachability over the compiler's call graph; coverage of what can run, and gap lists.
+    Callgraph(tools::callgraph::Args),
 }
 
 fn main() -> ExitCode {
@@ -78,6 +81,7 @@ fn main() -> ExitCode {
         Check::Xlink(a) => tools::xlink::run(a),
         Check::ScaleCheck(a) => tools::scale_check::run(a),
         Check::AbiDiff(a) => tools::abi_diff::run(a),
+        Check::Callgraph(a) => tools::callgraph::run(a),
     };
     match result {
         Ok(code) => code,
