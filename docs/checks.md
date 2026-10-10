@@ -272,6 +272,60 @@ the C side with clang and the Rust side with rustc for each target, and compare 
 bits. **The ABI generator already compiles signatures for every target; this adds clang and the
 comparison.**
 
+#### Assembly-level triage (`abi-diff --asm`, 2026-10-10)
+
+The IR comparison flags representation differences that the backend may lower identically, and
+on the non-main targets it reported thousands of them. `--asm` settles each one by where the
+arguments and the return value actually go. Each generated function stores every parameter to
+an extern volatile global and returns a volatile load. Each side is compiled to MIR after
+instruction selection by its own backend: rustc with `-Cllvm-args=-stop-after=finalize-isel`,
+clang with `-mllvm -stop-after=finalize-isel`. clang is given rustc's FPU, soft-float ABI and
+relocation model. The comparison covers the incoming physical registers in argument order (one
+name per register-file location), the incoming stack slots read (outside the register home
+area), and the registers the return reads.
+
+Validated on the 21 main targets first:
+- finding 20 shows a placement difference;
+- finding 19 and #163911 keep the same placement (they are extension contracts, which placement
+  cannot show, so they stay findings);
+- nothing else differs;
+- the PowerPC64 `inreg` float (labelled "needs a run") has the same placement in all 40 cases,
+  so it is equivalent.
+
+Run with `--all`, seeds 1–3, 300 functions each, 312 targets.
+- **Equivalent (same placement):** about 4,100–5,000 parameter-attribute and parameter-type
+  differences per seed, 560 calling-convention differences and 120–220 return differences. These
+  are the IR noise.
+- **Harness artifacts, fixed in the harness:**
+  - clang's default armv7r CPU (cortex-r4) has no FPU, so clang disabled the FP registers. It is
+    now given `-mfpu` from rustc's features.
+  - rustc's soft-float AArch64 targets need clang's `-mabi=aapcs-soft`.
+  - clang built non-PIC code where rustc builds PIC. MIPS PIC code receives its address in `$t9`,
+    so clang now gets `-fPIC`/`-fno-pic` matching rustc.
+- **What remains**, every placement difference classified:
+
+| class | targets (tier) | functions, seeds 1–3 | verdict | evidence |
+|---|---|---:|---|---|
+| narrow integer arguments lose `signext`/`zeroext` (same placement, extension contract) | mips64, mips64el, mipsisa64r6(el) `-linux-gnuabi64`/`-muslabi64`, mips64-openwrt (3) | 749 attribute differences | **finding 40**, a regression from #163653 | rustc's caller no longer extends (`sll`/`seb` gone, nightly-2026-07-18 vs 2026-10-06) |
+| small aggregate (≤ 8 bytes) returned through sret; clang returns it in r3/r4 | powerpc-unknown-{freebsd,netbsd,openbsd,helenos} (3) | 300 | **finding 42** | clang returns in registers for non-Linux ELF PowerPC32 and agrees with rustc on Linux; FreeBSD's system compiler on powerpc is clang |
+| homogeneous float aggregate (incl. a union of one float type) not in VFP registers | thumbv7a-{pc,uwp}-windows-msvc (3) | 74 | **finding 41** | rustc's VFP aggregate rules depend on `cfg_abi == EabiHf`; this target has `llvm-floatabi: hard` but no `eabihf` |
+| over-aligned aggregate: natural vs declared alignment | thumbv7a-{pc,uwp}-windows-msvc (3) | 38 | part of finding 41 (undecided which is MSVC's) | rustc's ARM code uses `unadjusted_abi_align`; clang uses the declared alignment on Windows, the natural one on Linux |
+| `repr(C)` layout: `i64`/`f64` alignment | m68k-unknown-linux-gnu, m68k-unknown-none-elf (3) | 480 | **finding 43** | rustc 4/8, clang 8/8, GCC's documented default 2/2 |
+| scalar `__int128` padded to an even slot by rustc, not by clang | the seven mips64 targets (3) | 728 | **clang differs, rustc matches GCC** | the padding is #163653, fixing #161679 to match GCC; clang 21 does not align `__int128` arguments at all |
+| union holding a float/double passed in integer registers by rustc, FP registers by clang | sparc64-*, sparcv9-sun-solaris (2/3) | 185 | clang differs (GCC passes unions in integer registers) | GCC `function_arg_union_value`, from source, not run here |
+| 16-byte-aligned aggregate: even-slot alignment | sparc64-*, sparcv9-sun-solaris (2/3) | 30 | clang inconsistent (sometimes no alignment, sometimes an extra slot); rustc aligns to an even slot like GCC | GCC `function_arg_slotno`, from source, not run here |
+| 16-byte-aligned small aggregate: declared vs natural alignment | aarch64-unknown-none-softfloat, aarch64_be-, aarch64v8r-, aarch64-unknown-linux-pauthtest (2/3) | 26 | clang inconsistent: on aarch64-linux it uses the natural alignment like rustc; under `aapcs-soft` and `pauthtest` the declared one | the same signature on aarch64-unknown-linux-gnu agrees |
+| over-aligned aggregate passed by reference (MSVC rule) | i686-unknown-uefi (2) | 293 | expected: rustc applies MSVC's x86 rules on this target (`is_like_msvc`) while its LLVM triple is `windows-gnu` | rustc's lowering equals clang `--target=i686-pc-windows-msvc` in all 300 functions of a seed |
+| register-size aggregate with a non-register-size member (e.g. an 8-byte union with a `short[3]`) returned in edx:eax by rustc, sret by clang | 12 i386 targets with register struct return (Windows, Darwin, BSDs) | 12 | undecided: needs GCC or MSVC (the main-target label "i686 msvc small-struct return") | clang's rule recurses into fields; rustc uses the size |
+| float or double arguments without SSE | x86_64-unknown-none (2) | 14 | no reference ABI (soft-float x86-64 has no psABI) | clang classifies float pairs as SSE and its backend then splits them over GPRs |
+| packed aggregate | hexagon-* (3) | 3 | undecided | one signature shape |
+| 16-byte-aligned aggregate in the parameter save area | powerpc64-ibm-aix (3) | 1 | undecided | one signature |
+| BPF | bpfel, bpfeb (3) | not compared | no reference: clang's BPF backend rejects stack arguments and large returns | |
+
+Also: finding 20's float-and-pointer struct appears on the 32-bit RISC-V and LoongArch targets
+(50 functions), and finding 19's missing extension on stack arguments on loongarch32. Both
+labels now include those targets.
+
 ### 15. Determinism (15)
 
 Mostly parallel-frontend reproducibility (#163878, #162202, #162203; mirth found #162202), plus
@@ -355,7 +409,7 @@ over the standalone UI tests at the pin (and real crates for release-to-release)
 | solver differential | `mirth-lab solver-diff` | 17,634 tests × old/new solver × NLL/Polonius | the 26 rejections and 3 crashes of [`solver.md`](solver.md); Polonius agrees with NLL everywhere |
 | Miri differential | `mirth-lab miri-diff` | 3,094 runnable tests at MIR opt levels 0, 2, 4 and natively | nothing; tests asserting unspecified behavior (function pointer equality, ZST addresses) listed |
 | equivalent rewrites | `mirth-rewrite` + `mirth-lab rewrite-diff` | 18,624 tests × generic-wrap, alias, reorder, unused | findings 25 (generic-wrap) and 28 (reorder) |
-| ABI vs clang | `mirth-lab abi-diff` | 21 main targets × 10 seeds × 300 random signatures | findings 19 and 20; #163911 reproduced; i686 MSVC small-struct returns and a PowerPC64 `inreg` float undecided |
+| ABI vs clang | `mirth-lab abi-diff` | 21 main targets × 10 seeds × 300 random signatures; `--asm --all`: 312 targets × 3 seeds | findings 19 and 20; #163911 reproduced; i686 MSVC small-struct returns undecided; the PowerPC64 `inreg` float equivalent (same placement); findings 40–43 on non-main targets (assembly-level triage under check 14) |
 | internal checks on | `mirth-lab crash-diff` + a debug-assertions compiler | 18,624 tests with `-Zvalidate-mir` | findings 21–24 (17 tests) |
 | release-to-release | `mirth-lab release-diff` | 87 real repositories, nightly-2026-07-18 → 10-06 | findings 26 and 27; `allocative` (unstable features) noted |
 
