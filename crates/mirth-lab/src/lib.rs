@@ -4,6 +4,7 @@
 pub mod artifacts;
 pub mod driver;
 pub mod miri;
+pub mod mutations;
 pub mod normalize;
 pub mod rustc;
 pub mod uitest;
