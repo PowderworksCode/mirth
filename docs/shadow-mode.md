@@ -108,6 +108,11 @@ finding 6's checksum left out of incremental sessions by
 [`hunt/debuginfo-checksum-stopgap.patch`](hunt/debuginfo-checksum-stopgap.patch), a testing aid,
 not a fix). It costs more than the rest: about 40% on that rebuild.
 
+Recomputing a green value runs its provider, and a provider that emits a lint emits it again,
+after the session's own diagnostics and printed without trimmed paths (the check runs under
+`with_no_trimmed_paths`); `ui-incr` tells these re-emissions from real duplicates by their
+wording ([`checks.md`](checks.md), fourth batch).
+
 Replayed diagnostics are not checked yet, and diagnostics LLVM emits while compiling a unit
 are not replayed at all ([finding 7](hunt.md)).
 

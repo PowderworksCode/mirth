@@ -11,6 +11,12 @@ use sha2::{Digest, Sha256};
 /// `.<7 chars>.rcgu.o`: the per-session suffix of codegen-unit objects.
 static SESSION: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\.[0-9a-z]{7}(\.rcgu\.(?:o|dwo))").unwrap());
 
+/// `data` with the per-session suffixes of codegen-unit object names removed: an incremental
+/// session names its objects afresh, so two clean incremental builds differ there only.
+pub fn without_session_suffixes(data: &[u8]) -> Vec<u8> {
+    SESSION.replace_all(data, &b"$1"[..]).into_owned()
+}
+
 pub fn sha256(data: &[u8]) -> String {
     let mut h = Sha256::new();
     h.update(data);

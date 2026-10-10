@@ -545,6 +545,57 @@ when the source test uses the harness) and searches rust-lang/rust's issues for 
 panic's location and the first query on the stack, or a delayed bug's message, so one bug can
 show as several signatures (finding 50 as six).
 
+### Fourth batch (2026-10-10): mirth's own checks over the corpus
+
+The patched compiler (`rustc-verify12`: [`hunt/verify-reuse.patch`](hunt/verify-reuse.patch) and
+[`hunt/report-untracked.patch`](hunt/report-untracked.patch)) had only run its own checks in the
+fuzzer, the replays and the flag walks. Both hook the dependency graph, so they act only in an
+incremental session.
+
+- `--compiler-checks` (diag-check, gate-mutate): each compile is an incremental session with
+  `RUSTC_VERIFY_REUSE=all` (every cached query value recomputed at the end of the session and
+  compared) and `RUSTC_REPORT_UNTRACKED`. An untracked read is new unless its (what, file) pair
+  or its option is in `rustc/untracked-known.tsv` (every pair the fuzzer, replays and flag walks
+  reported, and the options whose verdict in [`untracked-reads.md`](untracked-reads.md) holds
+  anywhere); a new site of "source text" is a note. Triaged reuse reports are in
+  `rustc/reuse-known.txt`.
+- `mirth-lab ui-incr`: P6 over the UI corpus. Per test, a clean incremental session, then three
+  rebuilds in it (unchanged; a blank line first, which moves every span; an unused fn appended),
+  each compared with a clean build of the same source: diagnostics, output bytes (metadata for
+  check tests, the program otherwise, with the per-session suffix of object names removed), and
+  the program's output when the bytes differ; with the reuse check and the untracked-read report
+  on in every session.
+
+| sweep | swept | result |
+|---|---|---|
+| `ui-incr` | 18,502 tests (7,249 compile, 11,236 fail as expected; 17 ICE or time out in the clean session) × 3 rebuilds, each against a clean build | finding 56; otherwise no incremental session differs from a clean one: no output byte, program output or diagnostic difference |
+| `diag-check --compiler-checks` | 18,374 tests, each a clean incremental session recomputing every cached value | no recomputed value differs; no new untracked read |
+| `gate-mutate --compiler-checks` | 3,000 mutants | nothing reported by the checks |
+
+What the checks report, all triaged:
+
+- **Allocation identity in const-eval results** (`rustc/reuse-known.txt`, 222 tests): the
+  `PostAnalysis` and `Codegen` evaluations of one constant or promoted share an allocation in a
+  clean session and get two after the round trip through the cache. Finding 8's mechanism
+  (decoding reserves a fresh `AllocId`; `alloc-dedup-on-decode.patch` covers only allocations
+  deduplicated when created). No output byte or program output differed in any of these tests;
+  not recorded as a finding.
+- **The reuse check's own re-emissions** (4 tests): recomputing a green value runs its provider,
+  and a provider that emits a lint emits it again, printed without trimmed paths (the check runs
+  under `with_no_trimmed_paths`). `ui-incr` counts an extra diagnostic at a clean one's location
+  but worded differently as such a re-emission (a note) and an identical extra one as a
+  duplicate (a finding). The patch could silence diagnostics while it recomputes.
+- **New sites of known untracked reads**: 46 places read source text (75 site and query pairs,
+  in 15 queries: `typeck_root`, `dyn_compatibility_violations`, lint passes, `mir_borrowck`,
+  `check_match`, `fn_sig`, `type_of`, `impl_trait_header` and others), each a position or a
+  wording computed from raw text, the class [`untracked-reads.md`](untracked-reads.md) describes;
+  and the options `future_incompat_test` and `ui_testing` at new lint sites.
+- **Harness artifacts fixed on the way**: `-Cincremental` passed after a test's flags became the
+  value of a trailing `--cap-lints`; two clean incremental builds differ in the per-session
+  suffix of object names (78 tests skipped as nondeterministic until it was removed).
+
+release-diff is not included: it builds with official toolchains, which do not have the patches.
+
 ## Running the checks
 
 The checks are subcommands of `mirth-lab` (`crates/mirth-lab`; `mirth-lab --help` lists them):
@@ -557,6 +608,8 @@ target/release/mirth-lab solver-diff --rustc $R --tests $T --work <dir>
 target/release/mirth-lab rustdoc-diff --toolchain nightly-2026-10-06 --tests $T --work <dir>
 target/release/mirth-lab abi-diff --rustc $R --rust ~/mirth-work/rust --work <dir> --seed 3
 target/release/mirth-lab lint-check --rustc $R --tests $T --work <dir>
+target/release/mirth-lab ui-incr --rustc $R --tests $T --work <dir>              # P6 over the UI corpus
+target/release/mirth-lab diag-check --rustc $R --tests $T --compiler-checks --work <dir>
 target/release/mirth-lab gate-mutate --rustc $R --rust ~/mirth-work/rust --work <dir> --count 20000 --jobs 4
 target/release/mirth-lab gate-mutate --rustc $R --rust ~/mirth-work/rust --work <dir> --triage
 target/release/mirth-lab release-diff --corpus ~/proofhouse-repos/rust --old nightly-2026-07-18 --new nightly-2026-10-06 --work <dir>

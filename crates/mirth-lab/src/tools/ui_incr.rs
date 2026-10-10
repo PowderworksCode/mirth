@@ -12,8 +12,9 @@
 //! Each rebuild is compared with a clean build of the same source in a fresh incremental
 //! directory, at the same paths: the diagnostics (as a multiset; a different order is a note),
 //! the output bytes (metadata for check tests, the program otherwise), and for run tests the
-//! program's output when the bytes differ. A byte difference between two clean builds makes the
-//! test nondeterministic, and it is skipped. Stale reuse and new untracked reads the compiler
+//! program's output when the bytes differ, with the per-session suffixes of object names removed
+//! (`.<7 chars>.rcgu.o`). A byte difference between two clean builds makes the test
+//! nondeterministic, and it is skipped. Stale reuse and new untracked reads the compiler
 //! reports in any session are findings too.
 //!
 //! The reuse check recomputes green values with their providers, and a provider that emits a
@@ -26,6 +27,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::LazyLock;
 
+use mirth_lab::artifacts;
 use mirth_lab::compiler_checks::{self, Known};
 use mirth_lab::driver::{self, Record, Sweep};
 use mirth_lab::normalize;
@@ -141,7 +143,8 @@ fn build(args: &Args, test: &Test, src: &Path, out: &Path, incr: &Path, all: boo
     let stderr = compiler_checks::strip(&c.stderr);
     let mut diags: Vec<String> = stderr.lines().filter(|l| !l.trim().is_empty() && !SUMMARY.is_match(l)).map(str::to_owned).collect();
     diags.sort();
-    Build { status: c.status, diags, bytes: std::fs::read(out.join("prog")).ok(), stderr: c.stderr }
+    let bytes = std::fs::read(out.join("prog")).ok().map(|b| artifacts::without_session_suffixes(&b));
+    Build { status: c.status, diags, bytes, stderr: c.stderr }
 }
 
 fn check(args: &Args, test: &Test) -> Rec {

@@ -5,3 +5,5 @@
 allocation sharing eval_to_const_value_raw / eval_to_const_value_raw / Codegen / PostAnalysis
 allocation sharing eval_to_const_value_raw / eval_to_allocation_raw / Codegen / PostAnalysis
 allocation sharing eval_to_const_value_raw / eval_to_allocation_raw / Codegen
+allocation sharing eval_to_allocation_raw / eval_to_allocation_raw / Codegen / PostAnalysis
+allocation sharing eval_to_const_value_raw / eval_to_allocation_raw / PostAnalysis

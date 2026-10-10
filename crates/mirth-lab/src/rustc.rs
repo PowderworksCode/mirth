@@ -130,6 +130,9 @@ pub struct Compile<'a> {
     pub name_output: bool,
     /// More environment for rustc (the patched compiler's checks).
     pub env: Vec<(String, String)>,
+    /// `-Cincremental=<dir>`, passed before the test's flags (which may end with an option that
+    /// takes a value, such as `--cap-lints`).
+    pub incremental: Option<PathBuf>,
 }
 
 impl<'a> Compile<'a> {
@@ -147,6 +150,7 @@ impl<'a> Compile<'a> {
             bootstrap: true,
             name_output: true,
             env: Vec::new(),
+            incremental: None,
         }
     }
 
@@ -158,7 +162,7 @@ impl<'a> Compile<'a> {
     /// Turn the patched compiler's checks on (docs/shadow-mode.md), in an incremental session
     /// under `incr`: `all` recomputes every cached value, not only reused ones.
     pub fn compiler_checks(mut self, incr: &Path, all: bool) -> Self {
-        self.extra.push(format!("-Cincremental={}", incr.display()));
+        self.incremental = Some(incr.to_path_buf());
         for (k, v) in crate::compiler_checks::env(all) {
             self = self.env(k, v);
         }
@@ -207,6 +211,9 @@ impl<'a> Compile<'a> {
         }
         if self.bootstrap {
             cmd.args(["-Zunstable-options", "-Ainternal_features", "-Aincomplete_features"]);
+        }
+        if let Some(incr) = &self.incremental {
+            cmd.arg(format!("-Cincremental={}", incr.display()));
         }
         cmd
             .arg(if self.json { "--error-format=json" } else { "--error-format=short" })
