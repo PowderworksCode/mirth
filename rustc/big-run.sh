@@ -43,6 +43,7 @@ run() { # name args...
 }
 
 sweep=(--tests "$tests" --jobs "$jobs")
+run invariant-sweep invariant-sweep --rustc "$work/rustc-verify13/bin/rustc" "${sweep[@]}" --work "$dir/invariant-sweep"
 run diag-check diag-check --rustc "$rustc" "${sweep[@]}" --work "$dir/diag-check"
 run gate-check gate-check --rustc "$rustc" --rust "$rust" --jobs "$jobs" --work "$dir/gate-check"
 run solver-diff solver-diff --rustc "$rustc" "${sweep[@]}" --work "$dir/solver-diff"
