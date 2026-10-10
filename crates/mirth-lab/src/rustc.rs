@@ -7,7 +7,6 @@ use std::process::{Command, Stdio};
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
-use wait_timeout::ChildExt;
 
 /// How a command ended.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -24,6 +23,9 @@ pub struct Finished {
     pub exit: Exit,
     pub stdout: Vec<u8>,
     pub stderr: Vec<u8>,
+    /// User plus system CPU seconds of the command and every descendant it waited for (none on
+    /// a timeout). Unlike wall time, it does not grow with the machine's load.
+    pub cpu: Option<f64>,
 }
 
 impl Finished {
@@ -66,24 +68,42 @@ pub fn run_command(mut cmd: Command, timeout: Duration) -> std::io::Result<Finis
         let _ = err.read_to_end(&mut v);
         v
     });
-    let exit = match child.wait_timeout(timeout)? {
-        Some(status) => match status.code() {
-            Some(code) => Exit::Code(code),
-            None => {
-                use std::os::unix::process::ExitStatusExt;
-                Exit::Signal(status.signal().unwrap_or(0))
-            }
-        },
-        None => {
-            let _ = child.kill();
-            let _ = child.wait();
-            Exit::Timeout
+    // Reap with wait4 rather than waitpid, for the child's resource usage.
+    let pid = child.id() as libc::pid_t;
+    let deadline = std::time::Instant::now() + timeout;
+    let mut status: libc::c_int = 0;
+    // SAFETY: rusage is plain data.
+    let mut usage: libc::rusage = unsafe { std::mem::zeroed() };
+    let mut nap = Duration::from_millis(1);
+    let (exit, cpu) = loop {
+        // SAFETY: waiting on our own child; status and usage outlive the call.
+        let r = unsafe { libc::wait4(pid, &mut status, libc::WNOHANG, &mut usage) };
+        if r == pid {
+            let secs = |t: libc::timeval| t.tv_sec as f64 + t.tv_usec as f64 / 1e6;
+            let cpu = secs(usage.ru_utime) + secs(usage.ru_stime);
+            break if libc::WIFEXITED(status) {
+                (Exit::Code(libc::WEXITSTATUS(status)), Some(cpu))
+            } else {
+                (Exit::Signal(libc::WTERMSIG(status)), Some(cpu))
+            };
         }
+        if r < 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        if std::time::Instant::now() > deadline {
+            let _ = child.kill();
+            // SAFETY: reap the killed child.
+            unsafe { libc::wait4(pid, &mut status, 0, &mut usage) };
+            break (Exit::Timeout, None);
+        }
+        std::thread::sleep(nap);
+        nap = (nap * 2).min(Duration::from_millis(50));
     };
     Ok(Finished {
         exit,
         stdout: out_thread.join().unwrap_or_default(),
         stderr: err_thread.join().unwrap_or_default(),
+        cpu,
     })
 }
 
