@@ -577,7 +577,7 @@ the same time for 150 minutes (2 jobs each, the same seed and snapshot, on a loa
   because ICE-prone corpus entries are mutated again (finding 50's assertion alone, 444 times).
   Of the signatures new to the earlier gate-mutate run, guided found six and unguided two.
   After triage: two are routes to finding 50, one to finding 53, two to open #162338
-  (`Field::OFFSET`, gca), and three look new (findings 56–58): one from the guided run (57) and
+  (`Field::OFFSET`, gca), and three look new (findings 60–62): one from the guided run (57) and
   two from the unguided run (56, 58).
 
 ## Running the checks
