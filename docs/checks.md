@@ -370,6 +370,19 @@ Ten new findings (19–28) in [`hunt.md`](hunt.md), none from the checks mirth h
 | determinism (15) | `mirth-lab repro-diff` | 6,886 tests × repeat, other directory with `--remap-path-prefix`, `-Zthreads=8`, decoy `-L` library | nothing new: only `-Zthreads` differences, all in the known async fn (#162202) and RPIT (#163878) families |
 | feature gates (17) | `mirth-lab gate-check` | 143 unstable attributes × 14 positions; 156 unstable library items with resolvable paths × use, renamed use, glob, impl, value, type | every library spelling gated; finding 31 (an ICE after the gate error for `#[rustc_main]` on non-functions); `#[feature]` outside the crate root only warns (intended) |
 
+### Third batch (2026-10-10)
+
+| check | subcommand | swept | result |
+|---|---|---|---|
+| feature-gate mutation (Part 1, item 1) | `mirth-lab gate-mutate` | 88,174 mutants of the 4,419 standalone UI tests that enable a feature (348 features; the 37 incomplete ones drawn three times as often): 35% splices of two tests with different features, 30% items moved into a generic fn, async fn, closure, anonymous const, module, trait default or inherent impl, 15% an extra incomplete gate, 20% fuzzer edits; each compiled once, under the test's flags (half), `-Znext-solver=globally` (30%) or `-Zassumptions-on-binders` (20%); about 23,000 mutants an hour on 4 cores | 482 ICEs and 16 timeouts; 197 mutants gave a signature their unmutated test does not give, in 19 signatures and 12 families. Known: #153733 (pin_ergonomics, explicit deref), #156099 (transmutability `Assume`), #151310 (blanket `CoerceUnsized`, fixed after the pin), #156410 (`#[const_continue]` to an associated const), #153735 (gca + `generic_const_exprs` "can't type-check body"), and the async-drop "insta-stable" assertion of closed #162756, still reached through `staged_api` (internal) by two other routes. Looks new: findings 40–45 (one stable-reachable, 44; one hang in the default configuration, 45) |
+
+`gate-mutate` keeps each signature's smallest mutant, reduces it (top-level items, brace blocks,
+runs of lines; a step may not introduce E0658), checks the reduced file alone (with `--test`
+when the source test uses the harness) and searches rust-lang/rust's issues for the message
+(`--triage`); the search only proposes candidates, which were read by hand. Signatures are the
+panic's location and the first query on the stack, or a delayed bug's message, so one bug can
+show as several signatures (finding 40 as six).
+
 ## Running the checks
 
 The checks are subcommands of `mirth-lab` (`crates/mirth-lab`; `mirth-lab --help` lists them):
@@ -380,6 +393,8 @@ R=~/mirth-work/campaign/rustc/bin/rustc T=~/mirth-work/rust/tests/ui
 target/release/mirth-lab opt-diff --rustc $R --cranelift "$(rustup +nightly-2026-10-06 which rustc)" --tests $T --work <dir>
 target/release/mirth-lab solver-diff --rustc $R --tests $T --work <dir>
 target/release/mirth-lab abi-diff --rustc $R --rust ~/mirth-work/rust --work <dir> --seed 3
+target/release/mirth-lab gate-mutate --rustc $R --rust ~/mirth-work/rust --work <dir> --count 20000 --jobs 4
+target/release/mirth-lab gate-mutate --rustc $R --rust ~/mirth-work/rust --work <dir> --triage
 target/release/mirth-lab release-diff --corpus ~/proofhouse-repos/rust --old nightly-2026-07-18 --new nightly-2026-10-06 --work <dir>
 ```
 

@@ -358,7 +358,12 @@ fn signature(stderr: &str) -> Signature {
         return Signature { key: format!("stack overflow{query}"), message: "rustc has overflowed its stack".into() };
     }
     if let Some(c) = PANIC_AT.captures(stderr) {
-        return Signature { key: format!("{}:{}{query}", short(&c[1]), &c[2]), message: c[3].trim().chars().take(300).collect() };
+        // `bug!` panics with a non-string payload; its text is on the ICE line.
+        let message = match ICE_AT.captures(stderr) {
+            Some(i) if c[3].trim() == "Box<dyn Any>" => i[3].trim().to_owned(),
+            _ => c[3].trim().to_owned(),
+        };
+        return Signature { key: format!("{}:{}{query}", short(&c[1]), &c[2]), message: message.chars().take(300).collect() };
     }
     if let Some(c) = ICE_AT.captures(stderr) {
         let loc = match (c.get(1), DELAYED_AT.captures(stderr)) {
@@ -525,6 +530,9 @@ struct Group {
     dir: String,
     #[serde(default)]
     label: String,
+    /// The command that reproduces the reduced file alone (`--triage`), or why none does.
+    #[serde(default)]
+    repro: String,
 }
 
 #[derive(Serialize)]
@@ -541,6 +549,13 @@ fn short_hash(s: &str) -> String {
 }
 
 pub fn run(args: Args) -> anyhow::Result<ExitCode> {
+    // prettyplease's panics on syntax it cannot print are caught (see `print`): keep them quiet.
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        if !info.location().is_some_and(|l| l.file().contains("prettyplease")) {
+            default_hook(info);
+        }
+    }));
     std::fs::create_dir_all(args.work.join("findings"))?;
     let groups_path = args.work.join("signatures.json");
     let groups: BTreeMap<String, Group> =
@@ -579,13 +594,6 @@ pub fn run(args: Args) -> anyhow::Result<ExitCode> {
             (k.trim().to_owned(), label.trim().to_owned())
         })
         .collect();
-    // prettyplease's panics on syntax it cannot print are caught (see `print`): keep them quiet.
-    let default_hook = std::panic::take_hook();
-    std::panic::set_hook(Box::new(move |info| {
-        if !info.location().is_some_and(|l| l.file().contains("prettyplease")) {
-            default_hook(info);
-        }
-    }));
     let corpus = Corpus::load(&args)?;
     let log_path = args.work.join("results.jsonl");
     let done: BTreeSet<usize> = std::fs::read_to_string(&log_path)
@@ -687,6 +695,7 @@ fn record(
             smallest: usize::MAX,
             dir: dir.file_name().unwrap().to_string_lossy().into_owned(),
             label: known.get(&sig.key).cloned().unwrap_or_default(),
+            repro: String::new(),
         });
         entry.count += 1;
         let smaller = text.len() < entry.smallest;
@@ -747,9 +756,39 @@ fn search_words(message: &str) -> String {
     words.join(" ")
 }
 
+static TEST_ATTR: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"#\[(test|bench)\b").unwrap());
+
+/// The flags with which the reduced file gives the signature on its own: the mutant's flags,
+/// else with `--test` added when the file or its source test uses the test harness.
+fn reproduce(args: &Args, g: &mut Group) -> String {
+    let dir = args.work.join("findings").join(&g.dir);
+    let (Ok(text), Ok(detail)) = (std::fs::read_to_string(dir.join("reduced.rs")), std::fs::read_to_string(dir.join("finding.json"))) else {
+        return "no reduced file".into();
+    };
+    let detail: serde_json::Value = serde_json::from_str(&detail).unwrap_or_default();
+    let flags: Vec<String> = detail["flags"].as_array().into_iter().flatten().filter_map(|f| f.as_str().map(str::to_owned)).collect();
+    let edition = detail["edition"].as_str().unwrap_or("2015").to_owned();
+    let source = g.first.sources.first().map(|s| std::fs::read_to_string(args.rust.join("tests/ui").join(s)).unwrap_or_default()).unwrap_or_default();
+    let mut tries = vec![flags.clone()];
+    if !flags.iter().any(|f| f == "--test") && (TEST_ATTR.is_match(&text) || TEST_ATTR.is_match(&source) || source.contains("--test")) {
+        tries.push([flags.clone(), vec!["--test".to_owned()]].concat());
+    }
+    let scratch = args.work.join("scratch");
+    let _ = std::fs::create_dir_all(&scratch);
+    let env = Env { args, scratch };
+    for f in tries {
+        if let Some(sig) = compile(&env, &text, &f, &edition).1.filter(|s| s.key == g.key) {
+            g.message = sig.message;
+            return format!("RUSTC_BOOTSTRAP=1 rustc reduced.rs --edition {edition} {}", f.join(" ")).trim().to_owned();
+        }
+    }
+    "does not reproduce alone (the mutant does)".into()
+}
+
 fn triage(args: &Args, mut groups: BTreeMap<String, Group>) -> anyhow::Result<ExitCode> {
     let mut out = String::new();
     for g in groups.values_mut() {
+        g.repro = reproduce(args, g);
         let loc_file = g.key.split(':').next().unwrap_or("").rsplit('/').next().unwrap_or("").to_owned();
         let mut hits: Vec<Hit> = Vec::new();
         for q in [search_words(&g.message), format!("{} {}", loc_file.trim_end_matches(".rs"), search_words(&g.message).split(' ').take(3).collect::<Vec<_>>().join(" "))] {
@@ -770,7 +809,7 @@ fn triage(args: &Args, mut groups: BTreeMap<String, Group>) -> anyhow::Result<Ex
             Some(h) => format!("candidates: {}", hits.iter().map(|h| format!("#{} ({}) {}", h.number, h.state, h.title.chars().take(70).collect::<String>())).collect::<Vec<_>>().join("; ")).chars().take(600).collect::<String>() + &format!(" [best #{}]", h.number),
             None => "looks-new (no issue matched the message)".into(),
         };
-        let _ = writeln!(out, "{:60} {:5} {}\n    {}", g.key, g.count, g.message.chars().take(100).collect::<String>(), g.label);
+        let _ = writeln!(out, "{:60} {:5} {}\n    {}\n    repro: {}", g.key, g.count, g.message.chars().take(100).collect::<String>(), g.label, g.repro);
         std::thread::sleep(std::time::Duration::from_secs(3));
     }
     std::fs::write(args.work.join("signatures.json"), serde_json::to_string_pretty(&groups)?)?;
