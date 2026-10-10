@@ -39,6 +39,10 @@ pub struct Sweep {
     /// Run only the tests that have findings under <work>/findings.
     #[arg(long)]
     pub recheck: bool,
+    /// Compile with the patched compiler's own checks on (RUSTC_VERIFY_REUSE=all,
+    /// RUSTC_REPORT_UNTRACKED; an incremental session), where the check supports it.
+    #[arg(long)]
+    pub compiler_checks: bool,
 }
 
 impl Sweep {

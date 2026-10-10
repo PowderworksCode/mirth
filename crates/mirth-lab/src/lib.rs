@@ -3,6 +3,7 @@
 
 pub mod artifacts;
 pub mod cargo;
+pub mod compiler_checks;
 pub mod coverage;
 pub mod driver;
 pub mod miri;

@@ -1,0 +1,95 @@
+# Untracked reads already reported and triaged (docs/untracked-reads.md): what<TAB>file.
+# From every untracked.txt of the fuzzer, replays and flag walks (~/mirth-work), 2026-10-10.
+proc macro quoted spans	compiler/rustc_metadata/src/rmeta/encoder.rs
+source file contents	compiler/rustc_codegen_llvm/src/debuginfo/metadata.rs
+source text	compiler/rustc_const_eval/src/const_eval/error.rs
+source text	compiler/rustc_hir_analysis/src/check/mod.rs
+source text	compiler/rustc_hir_typeck/src/cast.rs
+source text	compiler/rustc_hir_typeck/src/expr.rs
+source text	compiler/rustc_hir_typeck/src/fn_ctxt/suggestions.rs
+source text	compiler/rustc_hir_typeck/src/loops.rs
+source text	compiler/rustc_hir_typeck/src/op.rs
+source text	compiler/rustc_lint/src/builtin.rs
+source text	compiler/rustc_lint/src/types/literal.rs
+source text	compiler/rustc_lint/src/unused/must_use.rs
+source text	compiler/rustc_span/src/source_map.rs
+source text	compiler/rustc_trait_selection/src/error_reporting/traits/suggestions.rs
+the untracked option build_sdylib_interface	compiler/rustc_middle/src/ty/context.rs
+the untracked option check_cfg_all_expected	compiler/rustc_attr_parsing/src/check_cfg.rs
+the untracked option cli_forced_codegen_units	compiler/rustc_session/src/session.rs
+the untracked option cli_forced_local_thinlto_off	compiler/rustc_session/src/session.rs
+the untracked option codegen_source_order	compiler/rustc_middle/src/mono.rs
+the untracked option diagnostic_width	compiler/rustc_session/src/session.rs
+the untracked option emit_stack_sizes	compiler/rustc_codegen_llvm/src/back/write.rs
+the untracked option externs	compiler/rustc_lint/src/internal.rs
+the untracked option extra_filename	compiler/rustc_metadata/src/rmeta/encoder.rs
+the untracked option future_incompat_test	compiler/rustc_borrowck/src/lib.rs
+the untracked option future_incompat_test	compiler/rustc_hir_analysis/src/check_unused.rs
+the untracked option future_incompat_test	compiler/rustc_hir_analysis/src/hir_ty_lowering/dyn_trait.rs
+the untracked option future_incompat_test	compiler/rustc_hir_typeck/src/cast.rs
+the untracked option future_incompat_test	compiler/rustc_hir_typeck/src/fn_ctxt/_impl.rs
+the untracked option future_incompat_test	compiler/rustc_hir_typeck/src/method/probe.rs
+the untracked option future_incompat_test	compiler/rustc_lint/src/async_fn_in_trait.rs
+the untracked option future_incompat_test	compiler/rustc_lint/src/builtin.rs
+the untracked option future_incompat_test	compiler/rustc_lint/src/early.rs
+the untracked option future_incompat_test	compiler/rustc_lint/src/implicit_provenance_casts.rs
+the untracked option future_incompat_test	compiler/rustc_lint/src/impl_trait_overcaptures.rs
+the untracked option future_incompat_test	compiler/rustc_lint/src/internal.rs
+the untracked option future_incompat_test	compiler/rustc_lint/src/let_underscore.rs
+the untracked option future_incompat_test	compiler/rustc_lint/src/lifetime_syntax.rs
+the untracked option future_incompat_test	compiler/rustc_lint/src/macro_expr_fragment_specifier_2024_migration.rs
+the untracked option future_incompat_test	compiler/rustc_lint/src/multiple_supertrait_upcastable.rs
+the untracked option future_incompat_test	compiler/rustc_lint/src/nonstandard_style.rs
+the untracked option future_incompat_test	compiler/rustc_lint/src/redundant_semicolon.rs
+the untracked option future_incompat_test	compiler/rustc_lint/src/types/literal.rs
+the untracked option future_incompat_test	compiler/rustc_lint/src/types.rs
+the untracked option future_incompat_test	compiler/rustc_lint/src/unit_bindings.rs
+the untracked option future_incompat_test	compiler/rustc_lint/src/unqualified_local_imports.rs
+the untracked option future_incompat_test	compiler/rustc_lint/src/unused/must_use.rs
+the untracked option future_incompat_test	compiler/rustc_middle/src/middle/stability.rs
+the untracked option future_incompat_test	compiler/rustc_mir_build/src/thir/pattern/check_match.rs
+the untracked option future_incompat_test	compiler/rustc_mir_build/src/thir/pattern/migration.rs
+the untracked option future_incompat_test	compiler/rustc_mir_transform/src/known_panics_lint.rs
+the untracked option future_incompat_test	compiler/rustc_monomorphize/src/mono_checks/move_check.rs
+the untracked option future_incompat_test	compiler/rustc_passes/src/dead.rs
+the untracked option future_incompat_test	compiler/rustc_pattern_analysis/src/rustc.rs
+the untracked option future_incompat_test	compiler/rustc_privacy/src/lib.rs
+the untracked option identify_regions	compiler/rustc_middle/src/ty/print/pretty.rs
+the untracked option incremental	compiler/rustc_metadata/src/rmeta/encoder.rs
+the untracked option incremental	compiler/rustc_middle/src/mono.rs
+the untracked option incremental	compiler/rustc_middle/src/ty/mod.rs
+the untracked option incremental	compiler/rustc_mir_transform/src/cross_crate_inline.rs
+the untracked option incremental	compiler/rustc_mir_transform/src/inline.rs
+the untracked option incremental	compiler/rustc_session/src/session.rs
+the untracked option incremental_verify_ich	compiler/rustc_query_impl/src/incremental.rs
+the untracked option jobs	compiler/rustc_query_impl/src/execution.rs
+the untracked option nll_facts_dir	compiler/rustc_borrowck/src/nll.rs
+the untracked option no_leak_check	compiler/rustc_infer/src/infer/relate/higher_ranked.rs
+the untracked option query_dep_graph	compiler/rustc_query_impl/src/execution.rs
+the untracked option query_dep_graph	compiler/rustc_session/src/session.rs
+the untracked option span_free_formats	compiler/rustc_middle/src/ty/print/pretty.rs
+the untracked option trim_diagnostic_paths	compiler/rustc_middle/src/ty/print/pretty.rs
+the untracked option ui_testing	compiler/rustc_session/src/session.rs
+the untracked option unpretty	compiler/rustc_session/src/session.rs
+the untracked option unstable_options	compiler/rustc_session/src/session.rs
+the untracked option write_long_types_to_disk	compiler/rustc_middle/src/ty/error.rs
+the untracked option write_long_types_to_disk	compiler/rustc_trait_selection/src/error_reporting/infer/mod.rs
+printing mode `with_no_trimmed_paths`	-
+# Known anywhere: options whose verdict in docs/untracked-reads.md does not depend on where they are read.
+# Wording or marking of a replayed warning (minor): future_incompat_test, trim_diagnostic_paths,
+# ui_testing, identify_regions, check_cfg_all_expected, write_long_types_to_disk, unstable_options.
+the untracked option future_incompat_test	*
+the untracked option trim_diagnostic_paths	*
+the untracked option ui_testing	*
+the untracked option identify_regions	*
+the untracked option check_cfg_all_expected	*
+the untracked option write_long_types_to_disk	*
+the untracked option unstable_options	*
+# Benign: decide whether to check, record or partition, not what to compute.
+the untracked option jobs	*
+the untracked option incremental	*
+the untracked option incremental_verify_ich	*
+the untracked option query_dep_graph	*
+the untracked option unpretty	*
+the untracked option cli_forced_codegen_units	*
+the untracked option cli_forced_local_thinlto_off	*

@@ -131,6 +131,10 @@ tracked changing only when the change keeps every token and position, such as a 
 rewritten to the same length inside the span, so these can go stale but hardly will. Not
 reported upstream.
 
+Over the UI suite (`diag-check --compiler-checks` and `ui-incr`, [`checks.md`](checks.md), fourth
+batch), 46 more places read source text, in 15 queries, nearly all to word or place an error or
+a lint; none is a new kind of read.
+
 ## Printing modes inherited from the caller
 
 Printing has thread-local modes (`with_no_trimmed_paths!`, `with_reduced_queries!` and

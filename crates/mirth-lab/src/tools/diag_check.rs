@@ -10,12 +10,16 @@
 //!
 //! Errors without any span and exact duplicates are notes. Tests that ask for compiler internals
 //! on purpose (verbose printing, dump attributes) are left out.
+//!
+//! With --compiler-checks the compile is an incremental session with the patched compiler's
+//! checks on: stale or order-dependent query values and new untracked reads are findings too.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::LazyLock;
 
+use mirth_lab::compiler_checks::{self, Known};
 use mirth_lab::driver::{self, Record, Sweep};
 use mirth_lab::rustc::{self, Compile, Status};
 use mirth_lab::uitest::{self, Test};
@@ -39,6 +43,7 @@ static DEBUG_TEST: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"#!?\[rustc_(dump|effective_visibility|regions|variance|outlives|layout|abi|def_path|symbol_name|object_lifetime_default|evaluate_where_clauses|then_this_would_need|if_this_changed|clean|partition)").unwrap()
 });
 static DEBUG_FLAG: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"verbose|-Zdump|unpretty|print-").unwrap());
+static KNOWN: LazyLock<Known> = LazyLock::new(Known::load);
 static SUMMARY: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^(aborting due to|could not compile|\d+ (previous )?errors?)").unwrap());
 
@@ -77,11 +82,11 @@ fn file_info(cache: &mut BTreeMap<String, Option<(usize, usize)>>, test_dir: &Pa
 
 fn check(args: &Args, test: &Test) -> Rec {
     let dir = driver::scratch_dir(&args.sweep);
-    let c = Compile::new(&args.rustc, &test.path, dir.path(), &test.flags, test.edition())
-        .emit("metadata")
-        .json()
-        .timeout(120)
-        .run();
+    let mut compile = Compile::new(&args.rustc, &test.path, dir.path(), &test.flags, test.edition()).emit("metadata").json().timeout(120);
+    if args.sweep.compiler_checks {
+        compile = compile.compiler_checks(&dir.path().join("incr"), true);
+    }
+    let c = compile.run();
     let mut rec = Rec { test: test.rel.clone(), skip: None, found: Vec::new(), notes: Vec::new() };
     if matches!(c.status, Status::Ice | Status::Timeout) {
         rec.skip = Some(format!("{:?}", c.status).to_lowercase());
@@ -127,7 +132,15 @@ fn check(args: &Args, test: &Test) -> Rec {
             rec.notes.push(format!("duplicate x{n}: {}", message.chars().take(100).collect::<String>()));
         }
     }
-    rec.found = found.iter().map(|f| format!("{}: {}", f.what, f.detail.chars().take(120).collect::<String>())).collect();
+    if args.sweep.compiler_checks {
+        let report = compiler_checks::read(&c.stderr, &KNOWN);
+        rec.notes.extend(report.notes.iter().map(|n| if n.starts_with("known reuse") { n.clone() } else { format!("untracked site: {n}") }));
+        for f in report.findings() {
+            let (what, detail) = f.split_once(": ").unwrap_or(("compiler-check", &f));
+            found.insert(Finding { what: what.into(), detail: detail.into(), code: String::new() });
+        }
+    }
+    rec.found = found.iter().map(|f| format!("{}: {}", f.what, f.detail.chars().take(200).collect::<String>())).collect();
     if !found.is_empty() {
         driver::write_finding(&args.sweep.work, test, &[], &serde_json::json!({ "found": found, "notes": rec.notes }));
     }
