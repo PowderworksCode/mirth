@@ -68,12 +68,12 @@ $WORK` runs the ui-fulldeps tests compiletest skips at stage 1.
 rustc/coverage-run.sh ui-fuzz target/release/mirth-lab ui-fuzz --rustc $COV_RUSTC \
   --tests $MIRTH_RUST/tests/ui --list $WORK/ui-cov/all-runnable.json --work $WORK/ui-fuzz-cov \
   --edits 3 --jobs 6                           # about 45 minutes
-rustc/coverage-run.sh generators python3 rustc/coverage-generators.py --rustc $COV_RUSTC \
+rustc/coverage-run.sh generators target/release/mirth-lab coverage-generators --rustc $COV_RUSTC \
   --rust $MIRTH_RUST --list $WORK/ui-cov/picked.json --work $WORK/gen-work --jobs 6 \
   --only prints,targets,dumps,links            # prints and targets: minutes; dumps: 30 minutes
 ```
 
-A new generator is a function in `coverage-generators.py` named in `--only`. A run's directory
+A new generator is a function in `crates/mirth-lab/src/tools/coverage_generators.rs` named in `--only`. A run's directory
 under `cov-suites` is picked up by the report automatically; name it with `fulldeps` or
 `compiler-unit` if the programs are outside the compiler (their entry points become roots).
 

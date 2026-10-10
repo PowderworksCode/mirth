@@ -34,6 +34,7 @@ dirs=${COV_LOGS-$work/cov-sink $work/cov-flags}
 for d in $dirs; do
   [ -d "$d" ] && logs+=(--logs "$d")
 done
+(cd "$here/.." && cargo build --release -q --offline -p mirth-lab) || exit 1
 "$here/../target/release/mirth-lab" callgraph --graph "$work/build-cg/mirth-sites" --sites "$build/mirth-sites" \
   "${runs[@]}" "${logs[@]}" --gaps "$report/gaps.md" --block-gaps "$report/gaps-blocks.md" --json "$report/gaps.json" "$@" \
   > "$report/coverage-report.txt"

@@ -11,7 +11,9 @@ host=x86_64-unknown-linux-gnu
 out=$1/ui-fulldeps-stage1
 mkdir -p "$out/logs" "$out/bin"
 rm -f "$out/done"
-python3 "$here/coverage-compact.py" --logs "$out/logs" --out "$out" --until "$out/done" > "$out/compact.log" 2>&1 &
+# The compactor is a mirth-lab subcommand: build it first (a no-op when up to date).
+(cd "$here/.." && cargo build --release -q --offline -p mirth-lab) || exit 1
+"$here/../target/release/mirth-lab" coverage-compact --logs "$out/logs" --out "$out" --until "$out/done" > "$out/compact.log" 2>&1 &
 compactor=$!
 pass=0; fail=0
 for t in $(grep -l '^//@ ignore-stage1' -r "$MIRTH_RUST/tests/ui-fulldeps" --include=*.rs | grep -v /auxiliary/ | sort); do
