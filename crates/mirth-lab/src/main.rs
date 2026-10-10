@@ -13,12 +13,15 @@ mod tools {
     pub mod coverage_generators;
     pub mod crash_diff;
     pub mod diag_check;
+    pub mod fuzz;
+    pub mod fuzz_replay;
     pub mod gate_check;
     pub mod grammar_coverage;
     pub mod instr_check;
     pub mod miri_diff;
     pub mod opt_diff;
     pub mod release_diff;
+    pub mod replay;
     pub mod repro_diff;
     pub mod rewrite_diff;
     pub mod scale_check;
@@ -80,6 +83,12 @@ enum Check {
     GrammarCoverage(tools::grammar_coverage::Args),
     /// The functions each UI test reaches beyond a baseline; a small set reaching the most.
     UiCoverage(tools::ui_coverage::Args),
+    /// Random edits to a fixture; each incremental rebuild must match a clean build (P6).
+    Fuzz(tools::fuzz::Args),
+    /// Replay a fuzz finding's edits and compare the last incremental build with a clean one.
+    FuzzReplay(tools::fuzz_replay::Args),
+    /// A crate's git history through incremental builds, each compared with a clean build.
+    Replay(tools::replay::Args),
 }
 
 fn main() -> ExitCode {
@@ -106,6 +115,9 @@ fn main() -> ExitCode {
         Check::CoverageGenerators(a) => tools::coverage_generators::run(a),
         Check::GrammarCoverage(a) => tools::grammar_coverage::run(a),
         Check::UiCoverage(a) => tools::ui_coverage::run(a),
+        Check::Fuzz(a) => tools::fuzz::run(a),
+        Check::FuzzReplay(a) => tools::fuzz_replay::run(a),
+        Check::Replay(a) => tools::replay::run(a),
     };
     match result {
         Ok(code) => code,
