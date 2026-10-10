@@ -26,6 +26,7 @@ mod tools {
     pub mod flag_universe;
     pub mod flag_walk;
     pub mod gate_check;
+    pub mod gate_mutate;
     pub mod grammar_coverage;
     pub mod instr_check;
     pub mod lint_check;
@@ -138,6 +139,8 @@ enum Check {
     LintCheck(tools::lint_check::Args),
     /// gdb with the Rust pretty-printers shows the values a program defines, and terminates.
     DebugCheck(tools::debug_check::Args),
+    /// Mutants of the UI tests that use unstable features (splices, moved items, extra gates, edits): ICEs and hangs.
+    GateMutate(tools::gate_mutate::Args),
 }
 
 fn main() -> ExitCode {
@@ -153,6 +156,7 @@ fn main() -> ExitCode {
         Check::SuggestDiff(a) => tools::suggest_diff::run(a),
         Check::ReproDiff(a) => tools::repro_diff::run(a),
         Check::GateCheck(a) => tools::gate_check::run(a),
+        Check::GateMutate(a) => tools::gate_mutate::run(a),
         Check::InstrCheck(a) => tools::instr_check::run(a),
         Check::LintCheck(a) => tools::lint_check::run(a),
         Check::ReleaseDiff(a) => tools::release_diff::run(a),

@@ -27,6 +27,7 @@ libc = "0.2"
 flate2 = "1"
 tar = "0.4"
 mirth-rewrite = { path = "../mirth-rewrite" }
-syn = { version = "2.0.119", features = ["full", "visit"] }
+syn = { version = "2.0.119", features = ["full", "visit", "extra-traits"] }
 proc-macro2 = { version = "1", features = ["span-locations"] }
 quote = "1"
+prettyplease = "0.2"
