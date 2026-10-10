@@ -247,28 +247,6 @@ impl<V: Serialize> Serialize for OrderedMap<'_, V> {
     }
 }
 
-/// JSON as Python's `json.dumps(x, indent=1)` writes it, so files stay byte-comparable.
-pub fn to_json_indent1<T: Serialize>(value: &T) -> String {
-    let mut buf = Vec::new();
-    let fmt = serde_json::ser::PrettyFormatter::with_indent(b" ");
-    let mut ser = serde_json::Serializer::with_formatter(&mut buf, fmt);
-    value.serialize(&mut ser).expect("serializable");
-    let text = String::from_utf8(buf).expect("utf-8");
-    // Python escapes non-ASCII.
-    let mut out = String::with_capacity(text.len());
-    for c in text.chars() {
-        if c.is_ascii() {
-            out.push(c);
-        } else {
-            let mut units = [0u16; 2];
-            for u in c.encode_utf16(&mut units) {
-                out.push_str(&format!("\\u{u:04x}"));
-            }
-        }
-    }
-    out
-}
-
 pub fn run(args: Args) -> anyhow::Result<ExitCode> {
     let known = !args.allow_known;
     let opts: BTreeMap<String, Opt> = {

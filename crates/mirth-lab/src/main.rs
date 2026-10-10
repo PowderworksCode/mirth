@@ -9,6 +9,10 @@ mod tools {
     pub mod abi_diff;
     pub mod audit_options;
     pub mod callgraph;
+    pub mod coverage;
+    pub mod coverage_compact;
+    pub mod coverage_flags;
+    pub mod coverage_generators;
     pub mod crash_diff;
     pub mod diag_check;
     pub mod flag_fuzz;
@@ -18,6 +22,7 @@ mod tools {
     pub mod flag_universe;
     pub mod flag_walk;
     pub mod gate_check;
+    pub mod grammar_coverage;
     pub mod instr_check;
     pub mod miri_diff;
     pub mod opt_diff;
@@ -27,6 +32,7 @@ mod tools {
     pub mod scale_check;
     pub mod solver_diff;
     pub mod suggest_diff;
+    pub mod ui_coverage;
     pub mod ui_fuzz;
     pub mod xlink;
 }
@@ -86,6 +92,18 @@ enum Check {
     FlagFuzz(tools::flag_fuzz::Args),
     /// [UNTRACKED] options must not change what incremental compilation reuses.
     AuditOptions(tools::audit_options::Args),
+    /// Which of the compiler's functions ran, per crate and file, from coverage logs.
+    Coverage(tools::coverage::Args),
+    /// Fold coverage logs into a running union as they finish, and delete them.
+    CoverageCompact(tools::coverage_compact::Args),
+    /// Compiler runs the test suites hardly make (prints, every target, links, dumps), for coverage.
+    CoverageGenerators(tools::coverage_generators::Args),
+    /// Which alternatives and tokens of Ur's Rust grammar a fixture's sources use.
+    GrammarCoverage(tools::grammar_coverage::Args),
+    /// The functions each UI test reaches beyond a baseline; a small set reaching the most.
+    UiCoverage(tools::ui_coverage::Args),
+    /// Coverage of the compiler across option configurations (a fixture per PICT transitions row).
+    CoverageFlags(tools::coverage_flags::Args),
 }
 
 fn main() -> ExitCode {
@@ -114,6 +132,12 @@ fn main() -> ExitCode {
         Check::FlagMin(a) => tools::flag_min::run(a),
         Check::FlagFuzz(a) => tools::flag_fuzz::run(a),
         Check::AuditOptions(a) => tools::audit_options::run(a),
+        Check::Coverage(a) => tools::coverage::run(a),
+        Check::CoverageCompact(a) => tools::coverage_compact::run(a),
+        Check::CoverageGenerators(a) => tools::coverage_generators::run(a),
+        Check::GrammarCoverage(a) => tools::grammar_coverage::run(a),
+        Check::UiCoverage(a) => tools::ui_coverage::run(a),
+        Check::CoverageFlags(a) => tools::coverage_flags::run(a),
     };
     match result {
         Ok(code) => code,

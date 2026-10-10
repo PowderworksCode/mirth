@@ -191,7 +191,10 @@ pub fn run(args: Args) -> anyhow::Result<ExitCode> {
     let tc = Toolchain { rustc: root.join("bin/rustc"), tools: root.join("lib/rustlib/x86_64-unknown-linux-gnu/bin") };
     // Threaded tests' output order depends on scheduling, which instrumentation changes.
     // Output that depends on a random hash seed.
-    const NOISE: &[&str] = &["collections/hashmap/hashmap-debug-format.rs"];
+    // hashmap-debug-format: hash order. executable-no-mangle-strip: expects an unreferenced
+    // `#[no_mangle]` function (naming an undefined symbol) to be collected; IR PGO's profile data
+    // keeps every instrumented function, as clang -fprofile-generate does with --gc-sections.
+    const NOISE: &[&str] = &["collections/hashmap/hashmap-debug-format.rs", "linking/executable-no-mangle-strip.rs"];
     let tests = uitest::tests(&args.sweep.tests, &[Some(Kind::RunPass)], |t| {
         uitest::flag_matches(t, &OWN) || THREADS.is_match(&t.text) || NOISE.contains(&t.rel.as_str())
     });

@@ -34,14 +34,14 @@ this is LLVM's. The outliner is not on by default for x86-64, which may make it 
 low-priority report there.
 
 **The outliner fails in other combinations too** (minimized from walk rows with
-`rustc/flag-min.py`, on sink):
+`mirth-lab flag-min`, on sink):
 
 - `-Cllvm-args=-enable-machine-outliner -Copt-level=3 -Zcf-protection=full
   -Zpatchable-function-entry=4,2 -Cdebuginfo=none`: SIGSEGV.
 - `-Cllvm-args=-enable-machine-outliner -Copt-level=2 -Ccode-model=large` (with a few more
   options): `error: symbol '.L6$pb' can not be undefined in a subtraction expression`.
 
-The models now leave the outliner out entirely (`DROP` in `rustc/flag-model.py`).
+The models now leave the outliner out entirely (`DROP` in `mirth-lab flag-model`).
 
 ## 14: LLVM 23 emits APX `jmpabs` for retpoline tail calls under the large code model
 
@@ -85,4 +85,4 @@ nightly-2026-10-06 (LLVM 23.1.3). A regression in LLVM 23: the large-code-model 
 the retpoline thunk is lowered to `jmpabs` without checking that APX is available.
 
 **How mirth found them.** The pairwise walk over all options with the sample values
-(`docs/flags.md`), then `rustc/flag-min.py` on the rows that failed.
+(`docs/flags.md`), then `mirth-lab flag-min` on the rows that failed.

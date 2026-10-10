@@ -23,7 +23,8 @@ use rayon::prelude::*;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
-use super::flag_model::{to_json_indent1, Opt, OrderedMap, Single};
+use mirth_lab::coverage::to_json_indent;
+use super::flag_model::{Opt, OrderedMap, Single};
 use mirth_lab::rustc::{run_command, Exit};
 
 #[derive(clap::Args, Debug)]
@@ -238,7 +239,7 @@ pub fn run(args: Args) -> anyhow::Result<ExitCode> {
     std::fs::create_dir_all(&args.work)?;
     let src = std::fs::read_to_string(args.source.join("compiler/rustc_session/src/options.rs"))?;
     let options = parse_options(&src)?;
-    std::fs::write(args.work.join("options.json"), to_json_indent1(&options))?;
+    std::fs::write(args.work.join("options.json"), to_json_indent(&options, 1))?;
     let walkable: Vec<&Opt> = options.iter().filter(|o| !o.free).collect();
     println!("{} options: {} with enumerable values, {} free-form", options.len(), walkable.len(), options.len() - walkable.len());
     let pool = rayon::ThreadPoolBuilder::new().num_threads(args.jobs).build()?;
@@ -255,7 +256,7 @@ pub fn run(args: Args) -> anyhow::Result<ExitCode> {
         for ((o, v), r) in jobs.iter().zip(results) {
             singles.push(Single { arg: arg(o, v), option: o.full(), value: (*v).clone(), ok: r.ok, warn: r.warn, msg: r.msg });
         }
-        std::fs::write(&singles_path, to_json_indent1(&singles))?;
+        std::fs::write(&singles_path, to_json_indent(&singles, 1))?;
     }
     let mut accepted: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for s in singles.iter().filter(|s| s.ok) {
@@ -298,7 +299,7 @@ pub fn run(args: Args) -> anyhow::Result<ExitCode> {
             let results: Vec<Tried> = pool.install(|| jobs.par_iter().map(|(a, b)| try_args(&args.rustc, &args.work, &[a, b])).collect());
             let pairs: Vec<Pair> =
                 jobs.into_iter().zip(results).map(|((a, b), r)| Pair { a, b, ok: r.ok, warn: r.warn, msg: r.msg }).collect();
-            std::fs::write(&pairs_path, to_json_indent1(&pairs))?;
+            std::fs::write(&pairs_path, to_json_indent(&pairs, 1))?;
             pairs
         };
         let alone: HashSet<&String> = singles.iter().filter(|s| s.ok).map(|s| &s.arg).collect();
@@ -318,7 +319,7 @@ pub fn run(args: Args) -> anyhow::Result<ExitCode> {
             rejected_pairs.len(),
             requires.len()
         );
-        std::fs::write(args.work.join("requires.json"), to_json_indent1(&OrderedMap(&requires)))?;
+        std::fs::write(args.work.join("requires.json"), to_json_indent(&OrderedMap(&requires), 1))?;
     }
 
     let forbidden: HashSet<(Option<String>, Option<String>)> = rejected_pairs

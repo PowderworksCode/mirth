@@ -68,12 +68,12 @@ $WORK` runs the ui-fulldeps tests compiletest skips at stage 1.
 rustc/coverage-run.sh ui-fuzz target/release/mirth-lab ui-fuzz --rustc $COV_RUSTC \
   --tests $MIRTH_RUST/tests/ui --list $WORK/ui-cov/all-runnable.json --work $WORK/ui-fuzz-cov \
   --edits 3 --jobs 6                           # about 45 minutes
-rustc/coverage-run.sh generators python3 rustc/coverage-generators.py --rustc $COV_RUSTC \
+rustc/coverage-run.sh generators target/release/mirth-lab coverage-generators --rustc $COV_RUSTC \
   --rust $MIRTH_RUST --list $WORK/ui-cov/picked.json --work $WORK/gen-work --jobs 6 \
   --only prints,targets,dumps,links            # prints and targets: minutes; dumps: 30 minutes
 ```
 
-A new generator is a function in `coverage-generators.py` named in `--only`. A run's directory
+A new generator is a function in `crates/mirth-lab/src/tools/coverage_generators.rs` named in `--only`. A run's directory
 under `cov-suites` is picked up by the report automatically; name it with `fulldeps` or
 `compiler-unit` if the programs are outside the compiler (their entry points become roots).
 
@@ -154,7 +154,7 @@ MIRTH_RUNTIME=$WORK/build-cg/mirth-runtime/libmirth_runtime.rlib MIRTH_WATCH=cg.
 1. **Saturate with generators** (cheap, broad). Next: the dumps over all 18,553 runnable UI
    tests instead of 300; ui-fuzz and `tests/incremental` under `RUSTC_VERIFY_REUSE`; every
    `rustc --explain` example compiled; rustdoc over the UI tests (`rustdoc --document-private-items`,
-   `--output-format json`, `--test`); target × option combinations (PICT, as `flag-model.py`).
+   `--output-format json`, `--test`); target × option combinations (PICT, as `mirth-lab flag-model`).
    Measure each with `coverage-report.sh` and keep the ones that add.
 2. **Tighten the denominator** where the graph says reachable but nothing can run it. For each
    suspicious class, `--why` a sample: if the chain has a spurious step (a demand nothing really

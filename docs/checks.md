@@ -153,7 +153,7 @@ DeadStoreElimination creating overlapping call arguments (#162997), parameter de
 default impl (#163856), and an optimization introducing a dereference on an unreachable path
 (#159591). The check: build every runnable program at `-Copt-level` 0, 1, 2, 3, s and z, with
 `-Zmir-opt-level` 0 to 4, each MIR pass toggled singly, and fat or thin LTO; compare output.
-**It is cheap, because mirth already has the option matrix (`flag-model.py`) and edit
+**It is cheap, because mirth already has the option matrix (`mirth-lab flag-model`) and edit
 transitions; what is missing is running the program and comparing its output.** Plain
 compiler-fuzzer programs (Csmith-style, rustlantis) feed it well.
 

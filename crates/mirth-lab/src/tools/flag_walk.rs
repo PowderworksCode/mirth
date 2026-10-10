@@ -31,7 +31,8 @@ use rand::rngs::StdRng;
 use rand::{Rng as _, SeedableRng};
 use serde_json::Value;
 
-use super::flag_model::{self, to_json_indent1, Opt};
+use mirth_lab::coverage::to_json_indent;
+use super::flag_model::{self, Opt};
 use mirth_lab::artifacts::{self, Collected};
 use mirth_lab::mutations;
 use mirth_lab::rustc::{run_command, Exit};
@@ -333,7 +334,7 @@ impl Walk<'_> {
         let _ = std::fs::create_dir_all(&d);
         let mut r = res.clone();
         r.findings = findings.to_vec();
-        let _ = std::fs::write(d.join("row.json"), to_json_indent1(&r));
+        let _ = std::fs::write(d.join("row.json"), to_json_indent(&r, 1));
         if let Some(diff) = res.diff.as_ref().filter(|d| !d.is_empty()) {
             let _ = std::fs::write(d.join("edit.diff"), diff);
         }
@@ -454,7 +455,7 @@ impl Walk<'_> {
                 row: usize,
                 findings: Vec<&'a String>,
             }
-            let _ = std::fs::write(self.work.join("PAUSED"), to_json_indent1(&Paused { row: i, findings: new }));
+            let _ = std::fs::write(self.work.join("PAUSED"), to_json_indent(&Paused { row: i, findings: new }, 1));
         }
         let _ = std::fs::remove_dir_all(&home);
         {

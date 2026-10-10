@@ -1,5 +1,5 @@
 //! Nightly-only syntax: the parts of Ur's Rust grammar no stable construct reaches
-//! (`rustc/grammar-coverage.py`). One module per feature, each with a function `main` checks.
+//! (`mirth-lab grammar-coverage`). One module per feature, each with a function `main` checks.
 #![feature(
     auto_traits,
     builtin_syntax,

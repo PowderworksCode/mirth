@@ -12,7 +12,8 @@ use rayon::prelude::*;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
-use super::flag_model::{to_json_indent1, FLAG_BASE};
+use mirth_lab::coverage::to_json_indent;
+use super::flag_model::{FLAG_BASE};
 use super::flag_walk::copy_fixture;
 
 #[derive(clap::Args, Debug)]
@@ -151,7 +152,7 @@ pub fn run(args: Args) -> anyhow::Result<ExitCode> {
     let out: Vec<Minimized> = pool.install(|| {
         jobs.par_iter().map(|(sig, fl)| Minimized { error: (*sig).clone(), minimal: minimize(&args, (*fl).clone(), sig) }).collect()
     });
-    std::fs::write(args.walk.join("minimized.json"), to_json_indent1(&out))?;
+    std::fs::write(args.walk.join("minimized.json"), to_json_indent(&out, 1))?;
     for o in &out {
         let m = match &o.minimal {
             Some(v) => format!("[{}]", v.iter().map(|s| format!("'{s}'")).collect::<Vec<_>>().join(", ")),

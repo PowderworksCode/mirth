@@ -23,7 +23,7 @@ too. With `-Clto=thin` it links. Not specific to incremental compilation.
 binary and a cdylib fail as well (a dylib links): `rustc --crate-type bin
 -Ccodegen-units=16 -Clink-dead-code=yes -Cno-prepopulate-passes -Zthinlto=yes` on a `main`
 calling `core::mem::swap`. Found by minimizing the link failures of the pairwise walk
-(`rustc/flag-min.py`).
+(`mirth-lab flag-min`).
 
 **Versions.** Stable releases with `RUSTC_BOOTSTRAP=1`: links on 1.53.0 through 1.77.0,
 fails on 1.78.0 through 1.98.1 and nightly-2026-10-06. 1.78 is when these `ub_checks`

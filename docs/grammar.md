@@ -1,11 +1,11 @@
 # Covering the grammar
 
 `fixtures/sink` is the code the fuzzer, the flag walks and the history of findings run on, so
-what it does not contain is never tested. `rustc/grammar-coverage.py` measures it against
+what it does not contain is never tested. `mirth-lab grammar-coverage` measures it against
 [Ur](https://github.com/PowderworksCode/codebase/tree/main/projects/ur)'s Rust grammar
 (`ecosystems/rust/language/*.rsc`):
 
-    rustc/grammar-coverage.py --ur <ur> --grammar <ur>/ecosystems/rust/language fixtures/sink
+    target/release/mirth-lab grammar-coverage --ur <ur> --grammar <ur>/ecosystems/rust/language fixtures/sink
 
 It parses every `.rs` file with `ur parse --tree` and counts two things:
 
