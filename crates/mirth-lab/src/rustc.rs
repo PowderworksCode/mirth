@@ -41,7 +41,18 @@ impl Finished {
 /// Run `cmd` with stdin closed, its output captured, killed after `timeout`.
 pub fn run_command(mut cmd: Command, timeout: Duration) -> std::io::Result<Finished> {
     cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
-    let mut child = cmd.spawn()?;
+    // A binary just written can be "busy" when another thread forked while it was open for
+    // writing (the child holds the descriptor until it execs): retry for a while.
+    let mut tries = 0;
+    let mut child = loop {
+        match cmd.spawn() {
+            Err(e) if e.raw_os_error() == Some(26) && tries < 100 => {
+                tries += 1;
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            other => break other?,
+        }
+    };
     // Read both pipes on threads, so a chatty child cannot block on a full pipe.
     let mut out = child.stdout.take().expect("piped");
     let mut err = child.stderr.take().expect("piped");
@@ -114,6 +125,9 @@ pub struct Compile<'a> {
     pub timeout: Duration,
     /// Run with `RUSTC_BOOTSTRAP=1` (the default; a stable user's view needs it off).
     pub bootstrap: bool,
+    /// Name the output `<out_dir>/prog` with `-o` (the default); off when the extra options say
+    /// where outputs go (`--out-dir`).
+    pub name_output: bool,
 }
 
 impl<'a> Compile<'a> {
@@ -129,6 +143,7 @@ impl<'a> Compile<'a> {
             json: false,
             timeout: Duration::from_secs(300),
             bootstrap: true,
+            name_output: true,
         }
     }
 
@@ -147,6 +162,16 @@ impl<'a> Compile<'a> {
         self
     }
 
+    pub fn unnamed_output(mut self) -> Self {
+        self.name_output = false;
+        self
+    }
+
+    pub fn stable(mut self) -> Self {
+        self.bootstrap = false;
+        self
+    }
+
     pub fn timeout(mut self, secs: u64) -> Self {
         self.timeout = Duration::from_secs(secs);
         self
@@ -158,10 +183,14 @@ impl<'a> Compile<'a> {
         let mut cmd = Command::new(self.rustc);
         cmd.arg(self.source)
             .args(["--edition", self.edition])
-            .arg(format!("--emit={}", self.emit))
-            .arg("-o")
-            .arg(&binary)
-            .args(["-Zunstable-options", "-Ainternal_features", "-Aincomplete_features"])
+            .arg(format!("--emit={}", self.emit));
+        if self.name_output {
+            cmd.arg("-o").arg(&binary);
+        }
+        if self.bootstrap {
+            cmd.args(["-Zunstable-options", "-Ainternal_features", "-Aincomplete_features"]);
+        }
+        cmd
             .arg(if self.json { "--error-format=json" } else { "--error-format=short" })
             .args(self.flags)
             .args(&self.extra)

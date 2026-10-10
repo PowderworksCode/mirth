@@ -8,8 +8,11 @@ use clap::{Parser, Subcommand};
 mod tools {
     pub mod crash_diff;
     pub mod diag_check;
+    pub mod gate_check;
+    pub mod instr_check;
     pub mod miri_diff;
     pub mod opt_diff;
+    pub mod repro_diff;
     pub mod rewrite_diff;
     pub mod solver_diff;
     pub mod suggest_diff;
@@ -38,6 +41,12 @@ enum Check {
     RewriteDiff(tools::rewrite_diff::Args),
     /// Machine-applicable suggestions, applied one at a time, keep the program compiling.
     SuggestDiff(tools::suggest_diff::Args),
+    /// Outputs depend only on inputs: repeat, other directory, threads, decoy libraries.
+    ReproDiff(tools::repro_diff::Args),
+    /// Nothing unstable is usable from stable code (attributes, library items).
+    GateCheck(tools::gate_check::Args),
+    /// PGO and coverage instrumentation round trips.
+    InstrCheck(tools::instr_check::Args),
 }
 
 fn main() -> ExitCode {
@@ -50,6 +59,9 @@ fn main() -> ExitCode {
         Check::MiriDiff(a) => tools::miri_diff::run(a),
         Check::RewriteDiff(a) => tools::rewrite_diff::run(a),
         Check::SuggestDiff(a) => tools::suggest_diff::run(a),
+        Check::ReproDiff(a) => tools::repro_diff::run(a),
+        Check::GateCheck(a) => tools::gate_check::run(a),
+        Check::InstrCheck(a) => tools::instr_check::run(a),
     };
     match result {
         Ok(code) => code,
