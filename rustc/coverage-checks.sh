@@ -5,14 +5,14 @@
 # other suites. Checks that need a whole toolchain (rustdoc-diff, instr-check, debug-check,
 # xlink, release-diff) are not here: the instrumented build has no rustdoc or profiler.
 #
-#   rustc/coverage-checks.sh            JOBS=8; ONLY="lint-check abi-diff" for a subset
+#   rustc/coverage-checks.sh            JOBS=3; ONLY="lint-check abi-diff" for a subset
 set -u
 here=$(cd "$(dirname "$0")" && pwd)
 work=${WORK:-$HOME/mirth-work}
 R=${COV_RUSTC:-$work/build-blk/host/stage1/bin/rustc}
 rust=$work/rust
 T=$rust/tests/ui
-jobs=${JOBS:-8}
+jobs=${JOBS:-3}
 scratch=$work/cov-checks
 
 suite() { # name args...
