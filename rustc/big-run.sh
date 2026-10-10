@@ -59,6 +59,7 @@ for s in 1 2 3 4 5 6 7 8 9 10; do
 done
 run scale-check scale-check --rustc "$rustc" --jobs 4 --work "$dir/scale-check"
 run release-diff release-diff --corpus "$HOME/proofhouse-repos/rust" --old nightly-2026-07-18 --new "$pin" --jobs 4 --work "$dir/release-diff"
+run debug-check debug-check --toolchain "$pin" --seeds 0..2000 --jobs 4 --work "$dir/debug-check"
 run xlink xlink --toolchain "$pin" --jobs 8 --work "$dir/xlink"
 
 {
