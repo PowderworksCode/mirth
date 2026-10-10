@@ -8,8 +8,18 @@
 //! compares the two LLVM IR signatures parameter by parameter after first-class aggregates are
 //! flattened. A difference in register class, extension, inreg/byval/sret, byval alignment,
 //! parameter count or calling convention is a finding; representation-only differences are
-//! notes. Verified equivalences per architecture, known bugs (#163911, findings 19 and 20) and
-//! two differences this host cannot decide are labelled.
+//! notes. Verified equivalences per architecture, known bugs (#163911, findings 19, 20 and 40)
+//! and two differences this host cannot decide are labelled.
+//!
+//! `--asm` also compares where each argument and the return value end up. Each function then
+//! stores every parameter to an extern volatile global and returns a volatile load, both sides
+//! are compiled to MIR after instruction selection by their own backend setup (`rustc
+//! -Cllvm-args=-stop-after=finalize-isel`, `clang -mllvm -stop-after=finalize-isel`, with clang
+//! given rustc's FPU, soft-float ABI and relocation model), and the incoming physical registers
+//! in argument order, the incoming stack slots read and the return registers are compared. An
+//! IR difference with the same placement is equivalent; an extension attribute on an integer
+//! narrower than a register still counts, since placement cannot show it. docs/checks.md has
+//! the per-target triage of what remains.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -43,6 +53,10 @@ pub struct Args {
     jobs: usize,
     #[arg(long, default_value = "clang")]
     clang: String,
+    /// Also compare where each argument and the return value end up after instruction selection
+    /// (each side's own backend): an IR difference with the same placement is equivalent.
+    #[arg(long)]
+    asm: bool,
 }
 
 const MAIN: &[&str] = &[
@@ -147,7 +161,7 @@ impl Gen {
     }
 }
 
-fn program(wide: bool, seed: u64, count: usize) -> (String, String, Vec<String>) {
+fn program(wide: bool, seed: u64, count: usize, asm: bool) -> (String, String, Vec<String>) {
     let mut g = Gen { rng: Rng(seed), wide, aggregates: Vec::new(), names: 0 };
     let mut fns = Vec::new();
     for k in 0..count {
@@ -183,13 +197,41 @@ fn program(wide: bool, seed: u64, count: usize) -> (String, String, Vec<String>)
         // Union fields must be Copy; minicore has no derive.
         rs.push(format!("impl Copy for {} {{}}", a.name));
     }
+    if asm {
+        // Each parameter is stored to an extern volatile global and the return value loaded from
+        // one, so the lowering of every argument and of the return value is observable.
+        rs[0] = "#![feature(no_core, intrinsics, rustc_attrs)]".into();
+        rs[3] = "#![allow(improper_ctypes_definitions, improper_ctypes, internal_features, unused, non_snake_case, non_upper_case_globals)]".into();
+        rs.push("#[rustc_intrinsic] unsafe fn volatile_store<T>(dst: *mut T, val: T);".into());
+        rs.push("#[rustc_intrinsic] unsafe fn volatile_load<T>(src: *const T) -> T;".into());
+    }
     let mut names = Vec::new();
     for (name, params, ret) in &fns {
         let cp = if params.is_empty() { "void".into() } else { params.iter().enumerate().map(|(i, t)| format!("{} a{i}", t.0)).collect::<Vec<_>>().join(", ") };
-        c.push(format!("{} {name}({cp}) {{ for (;;); }}", ret.as_ref().map_or("void", |r| r.0.as_str())));
         let rp = params.iter().enumerate().map(|(i, t)| format!("a{i}: {}", t.1)).collect::<Vec<_>>().join(", ");
         let rr = ret.as_ref().map(|r| format!(" -> {}", r.1)).unwrap_or_default();
-        rs.push(format!("#[no_mangle] pub extern \"C\" fn {name}({rp}){rr} {{ loop {{}} }}"));
+        let cret = ret.as_ref().map_or("void", |r| r.0.as_str());
+        if asm {
+            let mut decls: Vec<String> = params.iter().enumerate().map(|(i, t)| format!("{} volatile g_{name}_{i};", t.0)).collect();
+            let mut rdecls: Vec<String> = params.iter().enumerate().map(|(i, t)| format!("static mut g_{name}_{i}: {};", t.1)).collect();
+            if let Some(r) = ret {
+                decls.push(format!("{} volatile r_{name};", r.0));
+                rdecls.push(format!("static mut r_{name}: {};", r.1));
+            }
+            for d in decls {
+                c.push(format!("extern {d}"));
+            }
+            let stores: String = (0..params.len()).map(|i| format!("g_{name}_{i} = a{i}; ")).collect();
+            let cbody = if ret.is_some() { format!("{stores}return r_{name};") } else { stores };
+            c.push(format!("{cret} {name}({cp}) {{ {cbody} }}"));
+            rs.push(format!("unsafe extern \"C\" {{ {} }}", rdecls.join(" ")));
+            let stores: String = (0..params.len()).map(|i| format!("volatile_store(&raw mut g_{name}_{i}, a{i}); ")).collect();
+            let load = if ret.is_some() { format!("volatile_load(&raw const r_{name})") } else { String::new() };
+            rs.push(format!("#[no_mangle] pub extern \"C\" fn {name}({rp}){rr} {{ unsafe {{ {stores}{load} }} }}"));
+        } else {
+            c.push(format!("{cret} {name}({cp}) {{ for (;;); }}"));
+            rs.push(format!("#[no_mangle] pub extern \"C\" fn {name}({rp}){rr} {{ loop {{}} }}"));
+        }
         names.push(name.clone());
     }
     (c.join("\n") + "\n", rs.join("\n") + "\n", names)
@@ -462,11 +504,19 @@ fn label(arch: &str, target: &str, d: &Diff) -> Option<&'static str> {
     match d {
         Diff::ReturnAttributes { clang, .. } if arch == "x86_64" && clang == &["zeroext"] => Some("rust-lang/rust#163911"),
         Diff::ParameterAttributes { clang, rustc, .. }
-            if matches!(arch, "riscv64" | "riscv32" | "loongarch64") && rustc.is_empty() && (clang == &["signext"] || clang == &["zeroext"]) =>
+            if matches!(arch, "riscv64" | "riscv32" | "loongarch64" | "loongarch32") && rustc.is_empty() && (clang == &["signext"] || clang == &["zeroext"]) =>
         {
             Some("finding 19 (docs/hunt.md)")
         }
-        Diff::Parameters { clang, rustc } | Diff::Return { clang, rustc } if matches!(arch, "riscv64" | "riscv32" | "loongarch64") && fp(rustc) > fp(clang) => {
+        // Every narrow integer argument, in registers too (since #163653).
+        Diff::ParameterAttributes { clang, rustc, .. }
+            if matches!(arch, "mips64" | "mips64r6") && rustc.is_empty() && (clang == &["signext"] || clang == &["zeroext"]) =>
+        {
+            Some("finding 40 (docs/hunt.md)")
+        }
+        Diff::Parameters { clang, rustc } | Diff::Return { clang, rustc }
+            if matches!(arch, "riscv64" | "riscv32" | "loongarch64" | "loongarch32") && fp(rustc) > fp(clang) =>
+        {
             Some("finding 20 (docs/hunt.md)")
         }
         // clang returns an 8-byte struct with a 3-byte array field indirectly; rustc and MSVC's
@@ -483,6 +533,198 @@ fn label(arch: &str, target: &str, d: &Diff) -> Option<&'static str> {
         }
         _ => None,
     }
+}
+
+// ---- placement after instruction selection ----
+
+/// Where a function's arguments and return value are after instruction selection: the physical
+/// registers it receives (in argument order), the incoming stack slots it reads, and the
+/// registers its return reads (WebAssembly: the parameter and result types).
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+struct Placement {
+    ins: Vec<String>,
+    stack: Vec<u64>,
+    ret: Vec<String>,
+}
+
+static MIR_LIVEIN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s+- \{ reg: '\$(\w+)'").unwrap());
+static MIR_FIXED: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"- \{ id: \d+, type: [\w-]+, offset: (-?\d+), size: (\d+)").unwrap());
+static MIR_PHYS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\$(\w+)").unwrap());
+static MIR_WASM: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s+(params|results):\s*\[(.*)\]").unwrap());
+static REG_NUM: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^([a-z]+)(\d+)(.*)$").unwrap());
+
+/// One name per register-file location: the 32-bit, 16-bit and 8-bit names of a register, and a
+/// floating-point register's single and double names, are the same place.
+fn normalize(arch: &str, reg: &str) -> String {
+    let r = reg.to_lowercase();
+    let x86 = |r: &str| -> String {
+        let base = match r {
+            "eax" | "ax" | "al" | "ah" => "rax",
+            "ebx" | "bx" | "bl" | "bh" => "rbx",
+            "ecx" | "cx" | "cl" | "ch" => "rcx",
+            "edx" | "dx" | "dl" | "dh" => "rdx",
+            "esi" | "si" | "sil" => "rsi",
+            "edi" | "di" | "dil" => "rdi",
+            "ebp" | "bp" | "bpl" => "rbp",
+            _ => "",
+        };
+        if !base.is_empty() {
+            return base.into();
+        }
+        match REG_NUM.captures(r) {
+            Some(c) if &c[1] == "r" && matches!(&c[3], "d" | "w" | "b") => format!("r{}", &c[2]),
+            _ => r.into(),
+        }
+    };
+    let Some(c) = REG_NUM.captures(&r) else { return if arch.starts_with("x86") { x86(&r) } else { r } };
+    let (class, n, rest) = (&c[1], &c[2], &c[3]);
+    match arch {
+        "x86_64" | "x86" => x86(&r),
+        "aarch64" | "arm64ec" => match class {
+            "w" => format!("x{n}"),
+            "b" | "h" | "s" | "d" | "q" => format!("v{n}"),
+            _ => r,
+        },
+        "riscv32" | "riscv64" => format!("{class}{n}"),
+        "loongarch32" | "loongarch64" => format!("{class}{n}"),
+        "mips" | "mips32r6" | "mips64" | "mips64r6" => {
+            let n: u32 = n.parse().unwrap_or(0);
+            match (class, rest) {
+                ("d", "_64") => format!("f{n}"),
+                // O32 (32-bit FPU registers): $dN is the pair $f2N:$f2N+1.
+                ("d", "") => format!("f{}", 2 * n),
+                _ => format!("{class}{n}"),
+            }
+        }
+        "powerpc" | "powerpc64" => match class {
+            "x" => format!("r{n}"),
+            _ => r,
+        },
+        "s390x" => match class {
+            "r" | "f" => format!("{class}{n}"),
+            _ => r,
+        },
+        "bpf" => match class {
+            "w" => format!("r{n}"),
+            _ => r,
+        },
+        _ => r,
+    }
+}
+
+/// Bytes at the bottom of the incoming argument area that mirror argument registers (PowerPC64
+/// ELF's parameter save area, MIPS O32's home slots): a byval aggregate passed partly in
+/// registers covers them, an aggregate passed as an array does not, and both receive the
+/// registers' part in registers.
+fn home_area(arch: &str, llvm_target: &str) -> u64 {
+    match arch {
+        "powerpc64" if llvm_target.starts_with("powerpc64le") => 96,
+        "powerpc64" => 112,
+        "mips" | "mips32r6" => 16,
+        _ => 0,
+    }
+}
+
+fn placements(mir: &str, arch: &str, slot: u64, home: u64) -> BTreeMap<String, Placement> {
+    let mut out = BTreeMap::new();
+    for doc in mir.split("\n---").skip(1) {
+        let Some(name) = doc.lines().find_map(|l| l.strip_prefix("name:")).map(|n| n.trim().to_owned()) else { continue };
+        let mut p = Placement::default();
+        let mut section = "";
+        let mut slots = std::collections::BTreeSet::new();
+        for line in doc.lines() {
+            if !line.starts_with(' ') && line.contains(':') {
+                section = line.split(':').next().unwrap_or("");
+            }
+            match section {
+                "liveins" => {
+                    if let Some(c) = MIR_LIVEIN.captures(line) {
+                        p.ins.push(normalize(arch, &c[1]));
+                    }
+                }
+                "fixedStack" => {
+                    if let Some(c) = MIR_FIXED.captures(line) {
+                        // Clipped to the incoming argument area: ARM keeps the register part of a
+                        // split byval aggregate below it (negative offsets).
+                        let (off, size): (i64, i64) = (c[1].parse().unwrap_or(0), c[2].parse().unwrap_or(0));
+                        let (start, end) = (off.max(home as i64), off + size);
+                        if end > start {
+                            slots.extend(start as u64 / slot..=(end as u64 - 1) / slot);
+                        }
+                    }
+                }
+                "machineFunctionInfo" => {
+                    if let Some(c) = MIR_WASM.captures(line) {
+                        let v: Vec<String> = c[2].split(',').map(|t| t.trim().to_owned()).filter(|t| !t.is_empty()).collect();
+                        if &c[1] == "params" { p.ins = v } else { p.ret = v }
+                    }
+                }
+                "body" => {
+                    let insn = line.trim();
+                    let op = insn.split_whitespace().next().unwrap_or("");
+                    let up = op.to_uppercase();
+                    let is_ret = !insn.contains(" = ")
+                        && (up.contains("RET") || up.starts_with("BLR") || up.starts_with("RTS") || up.starts_with("RETURN"))
+                        && !arch.starts_with("wasm");
+                    if is_ret && p.ret.is_empty() {
+                        // Return registers are explicit operands on some targets (x86 `RET 0, $al`),
+                        // implicit uses on others (`PseudoRET implicit $x10`).
+                        p.ret = MIR_PHYS.captures_iter(insn).map(|c| c[1].to_owned()).filter(|r| r != "noreg").map(|r| normalize(arch, &r)).collect();
+                    }
+                }
+                _ => {}
+            }
+        }
+        p.stack = slots.into_iter().collect();
+        out.insert(name, p);
+    }
+    out
+}
+
+/// The integer width of an IR type (`i8` → 8), for deciding whether an extension can matter.
+fn int_width(ty: &str) -> Option<usize> {
+    ty.strip_prefix('i').and_then(|n| n.parse().ok())
+}
+
+/// After placement agrees, whether an IR difference can still matter: a zero or sign extension
+/// of an integer narrower than a register is a contract between caller and callee that
+/// placement does not show.
+fn extension_matters(d: &Diff, width: usize) -> bool {
+    let ext = |a: &[String], b: &[String]| {
+        let e = |v: &[String]| v.iter().filter(|x| *x == "zeroext" || *x == "signext").cloned().collect::<Vec<_>>();
+        e(a) != e(b)
+    };
+    match d {
+        Diff::ParameterAttributes { clang, rustc, ty, .. } => ext(clang, rustc) && int_width(ty).is_some_and(|w| w < width),
+        Diff::ReturnAttributes { clang, rustc, ret } => {
+            ext(clang, rustc) && ret.first().and_then(|t| int_width(t)).is_some_and(|w| w < width)
+        }
+        _ => false,
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct PlacementDiff {
+    clang: Placement,
+    rustc: Placement,
+}
+
+/// The `-mfpu` that gives clang the FPU rustc's ARM features name, strongest first.
+fn arm_fpu(features: &str) -> Option<&'static str> {
+    let has = |f: &str| features.split(',').any(|x| x == f);
+    [
+        ("+fp-armv8", "fp-armv8"),
+        ("+neon", "neon"),
+        ("+vfp4", "vfpv4"),
+        ("+vfp4d16", "vfpv4-d16"),
+        ("+vfp3", "vfpv3"),
+        ("+vfp3d16", "vfpv3-d16"),
+        ("+vfp2", "vfpv2"),
+    ]
+    .into_iter()
+    .find(|(f, _)| has(f))
+    .map(|(_, fpu)| fpu)
 }
 
 // ---- running ----
@@ -506,6 +748,8 @@ struct Spec {
     llvm_abiname: String,
     #[serde(default)]
     llvm_floatabi: String,
+    #[serde(default)]
+    rustc_abi: String,
 }
 
 fn num(v: &serde_json::Value, default: usize) -> usize {
@@ -520,6 +764,14 @@ struct TargetResult {
     findings: BTreeMap<String, Vec<Diff>>,
     labelled: BTreeMap<String, usize>,
     notes: usize,
+    /// --asm: functions whose arguments or return value end up in different places.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    placement: BTreeMap<String, PlacementDiff>,
+    /// --asm: IR differences whose placement is the same, by kind.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    equivalent: BTreeMap<String, usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    asm_skip: Option<String>,
 }
 
 fn run_cmd(cmd: &mut Command) -> Result<(), String> {
@@ -541,7 +793,7 @@ fn one_target(args: &Args, target: &str) -> TargetResult {
     }
     let d = args.work.join(target);
     let _ = std::fs::create_dir_all(&d);
-    let (csrc, rsrc, fns) = program(width == 64 && spec.arch != "sparc64", args.seed, args.count);
+    let (csrc, rsrc, fns) = program(width == 64 && spec.arch != "sparc64", args.seed, args.count, args.asm);
     let _ = std::fs::write(d.join("a.c"), &csrc);
     let _ = std::fs::write(d.join("a.rs"), &rsrc);
     let base = |c: &mut Command| {
@@ -555,40 +807,98 @@ fn one_target(args: &Args, target: &str) -> TargetResult {
     }
     let mut rc = Command::new(&args.rustc);
     base(&mut rc);
-    rc.args(["--emit=llvm-ir", "-Copt-level=0", "--extern"]).arg(format!("minicore={}", d.join("libminicore.rlib").display())).arg("-o").arg(d.join("r.ll")).arg(d.join("a.rs"));
+    rc.args(["-Copt-level=0", "--extern"]).arg(format!("minicore={}", d.join("libminicore.rlib").display()));
+    if args.asm {
+        // The asm output after instruction selection is MIR, from rustc's own backend setup.
+        rc.arg(format!("--emit=llvm-ir={},asm={}", d.join("r.ll").display(), d.join("r.mir").display()));
+        rc.arg("-Cllvm-args=-stop-after=finalize-isel");
+    } else {
+        rc.arg("--emit=llvm-ir").arg("-o").arg(d.join("r.ll"));
+    }
+    rc.arg(d.join("a.rs"));
     if let Err(e) = run_cmd(&mut rc) {
         return skip(format!("rust side does not build: {e}"));
     }
-    let mut cc = Command::new(&args.clang);
-    cc.arg(format!("--target={}", spec.llvm_target)).args(["-ffreestanding", "-S", "-emit-llvm", "-O0", "-Wno-everything"]);
-    // The target's CPU and features decide parts of the ABI in clang too (soft-float, SSE).
-    if !spec.cpu.is_empty() && spec.cpu != "generic" {
-        cc.args(["-Xclang", "-target-cpu", "-Xclang", &spec.cpu]);
-    }
-    for f in spec.features.split(',').filter(|f| !f.is_empty()) {
-        cc.args(["-Xclang", "-target-feature", "-Xclang", f]);
-    }
-    if !spec.llvm_abiname.is_empty() {
-        cc.arg(format!("-mabi={}", spec.llvm_abiname));
-    }
-    if spec.llvm_floatabi == "hard" {
-        cc.arg("-mfloat-abi=hard");
-    }
-    cc.arg("-o").arg(d.join("c.ll")).arg(d.join("a.c"));
-    if let Err(e) = run_cmd(&mut cc) {
+    let pic = std::fs::read_to_string(d.join("r.ll")).unwrap_or_default().contains("\"PIC Level\"");
+    let clang = |emit: &[&str], out: &str| {
+        let mut cc = Command::new(&args.clang);
+        cc.arg(format!("--target={}", spec.llvm_target)).args(["-ffreestanding", "-S", "-O0", "-Wno-everything"]).args(emit);
+        // The target's CPU and features decide parts of the ABI in clang too (soft-float, SSE).
+        if !spec.cpu.is_empty() && spec.cpu != "generic" {
+            cc.args(["-Xclang", "-target-cpu", "-Xclang", &spec.cpu]);
+        }
+        for f in spec.features.split(',').filter(|f| !f.is_empty()) {
+            cc.args(["-Xclang", "-target-feature", "-Xclang", f]);
+        }
+        if !spec.llvm_abiname.is_empty() {
+            cc.arg(format!("-mabi={}", spec.llvm_abiname));
+        }
+        if spec.llvm_floatabi == "hard" {
+            cc.arg("-mfloat-abi=hard");
+        }
+        // clang's default CPU for a triple can lack the FPU rustc's features name (armv7r:
+        // cortex-r4), and clang then disables the FP registers whatever -target-feature says.
+        if spec.arch == "arm"
+            && let Some(fpu) = arm_fpu(&spec.features)
+        {
+            cc.arg(format!("-mfpu={fpu}"));
+        }
+        // rustc's soft-float AArch64 targets pass floats in integer registers: clang's aapcs-soft
+        // (which requires the FPU off; the FPU changes code, not the calling convention).
+        if spec.arch == "aarch64" && spec.rustc_abi == "softfloat" {
+            cc.args(["-mabi=aapcs-soft", "-Xclang", "-target-feature", "-Xclang", "-fp-armv8"]);
+        }
+        // The same relocation model as rustc (MIPS PIC code receives its address in $t9); clang
+        // refuses the option for COFF targets, where it does not apply.
+        if !spec.llvm_target.contains("windows") && !spec.llvm_target.contains("uefi") {
+            cc.arg(if pic { "-fPIC" } else { "-fno-pic" });
+        }
+        cc.arg("-o").arg(d.join(out)).arg(d.join("a.c"));
+        run_cmd(&mut cc)
+    };
+    if let Err(e) = clang(&["-emit-llvm"], "c.ll") {
         return skip(format!("clang does not build: {e}"));
+    }
+    let mut asm_skip = None;
+    let (mut cplace, mut rplace) = (BTreeMap::new(), BTreeMap::new());
+    if args.asm {
+        match clang(&["-mllvm", "-stop-after=finalize-isel"], "c.mir") {
+            Ok(()) => {
+                let slot = (width / 8) as u64;
+                let home = home_area(&spec.arch, &spec.llvm_target);
+                cplace = placements(&std::fs::read_to_string(d.join("c.mir")).unwrap_or_default(), &spec.arch, slot, home);
+                rplace = placements(&std::fs::read_to_string(d.join("r.mir")).unwrap_or_default(), &spec.arch, slot, home);
+            }
+            Err(e) => asm_skip = Some(format!("clang backend: {}", e.lines().find(|l| l.contains("error")).unwrap_or(&e))),
+        }
     }
     let cs = signatures(&std::fs::read_to_string(d.join("c.ll")).unwrap_or_default());
     let rsig = signatures(&std::fs::read_to_string(d.join("r.ll")).unwrap_or_default());
-    let mut res = TargetResult { compared: fns.len(), ..Default::default() };
+    let mut res = TargetResult { compared: fns.len(), asm_skip, ..Default::default() };
     for name in &fns {
         let (Some(c), Some(r)) = (cs.get(name), rsig.get(name)) else { continue };
         let (f, n) = compare(c, r, &spec.arch, width / 8);
         res.notes += n.len();
+        // With placements: None when they could not be compared, else whether they agree.
+        let same = match (cplace.get(name), rplace.get(name)) {
+            (Some(a), Some(b)) => Some(a == b),
+            _ => None,
+        };
+        if same == Some(false) {
+            res.placement.insert(name.clone(), PlacementDiff { clang: cplace[name].clone(), rustc: rplace[name].clone() });
+        }
         let mut unlabelled = Vec::new();
         for diff in f {
+            let verdict = match same {
+                Some(true) => " [same placement]",
+                Some(false) => " [placement differs]",
+                None => "",
+            };
             match label(&spec.arch, target, &diff) {
-                Some(l) => *res.labelled.entry(l.to_owned()).or_default() += 1,
+                Some(l) => *res.labelled.entry(format!("{l}{verdict}")).or_default() += 1,
+                None if same == Some(true) && !extension_matters(&diff, width) => {
+                    *res.equivalent.entry(diff.label().to_owned()).or_default() += 1;
+                }
                 None => unlabelled.push(diff),
             }
         }
@@ -631,6 +941,27 @@ pub fn run(args: Args) -> anyhow::Result<ExitCode> {
         }
     }
     println!("{compared} targets compared; skipped: {skipped:?}");
+    if args.asm {
+        let mut per: Vec<(&String, usize)> = results.iter().filter(|(_, r)| !r.placement.is_empty()).map(|(t, r)| (t, r.placement.len())).collect();
+        per.sort_by(|a, b| b.1.cmp(&a.1));
+        println!(
+            "placement differs: {} functions in {} targets: {}",
+            per.iter().map(|x| x.1).sum::<usize>(),
+            per.len(),
+            per.iter().take(12).map(|(t, n)| format!("{t} {n}")).collect::<Vec<_>>().join(", ")
+        );
+        let mut eq: BTreeMap<&str, usize> = BTreeMap::new();
+        for r in results.values() {
+            for (k, n) in &r.equivalent {
+                *eq.entry(k.as_str()).or_default() += n;
+            }
+        }
+        println!("IR differences with the same placement (equivalent): {eq:?}");
+        let asm_skipped: Vec<&String> = results.iter().filter(|(_, r)| r.asm_skip.is_some()).map(|(t, _)| t).collect();
+        if !asm_skipped.is_empty() {
+            println!("placement not compared ({}): {}", asm_skipped.len(), asm_skipped.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", "));
+        }
+    }
     if !labelled.is_empty() {
         println!("known: {labelled:?}");
     }
@@ -641,4 +972,36 @@ pub fn run(args: Args) -> anyhow::Result<ExitCode> {
         println!("{kind}: {total} in {} targets: {}", per.len(), top.iter().take(8).map(|(t, n)| format!("{t} {n}")).collect::<Vec<_>>().join(", "));
     }
     Ok(ExitCode::SUCCESS)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn register_names_are_normalized() {
+        assert_eq!(normalize("aarch64", "w3"), "x3");
+        assert_eq!(normalize("aarch64", "s0"), "v0");
+        assert_eq!(normalize("x86_64", "edi"), "rdi");
+        assert_eq!(normalize("x86_64", "r8d"), "r8");
+        assert_eq!(normalize("x86", "al"), "rax");
+        assert_eq!(normalize("riscv64", "f10_d"), "f10");
+        assert_eq!(normalize("mips", "d6"), "f12");
+        assert_eq!(normalize("mips64", "d12_64"), "f12");
+        assert_eq!(normalize("mips64", "a0_64"), "a0");
+        assert_eq!(normalize("powerpc64", "x3"), "r3");
+        assert_eq!(normalize("s390x", "r2d"), "r2");
+    }
+
+    #[test]
+    fn placement_from_mir() {
+        let mir = "--- |\n  ; ModuleID = 'x'\n...\n---\nname:            f0\nliveins:\n  - { reg: '$r0', virtual-reg: '%0' }\n  - { reg: '$r1', virtual-reg: '%1' }\nfixedStack:\n  - { id: 0, type: default, offset: -8, size: 16, alignment: 8, stack-id: default,\n      isImmutable: false }\nstack:           []\nbody:             |\n  bb.0:\n    liveins: $r0, $r1\n    BX_RET 14 /* CC::al */, $noreg, implicit $r0\n...\n";
+        let p = &placements(mir, "arm", 4, 0)["f0"];
+        assert_eq!(p.ins, ["r0", "r1"]);
+        // Clipped to the incoming area: bytes 0..8 are slots 0 and 1.
+        assert_eq!(p.stack, [0, 1]);
+        assert_eq!(p.ret, ["r0"]);
+        let x86 = "--- |\n...\n---\nname:            g\nliveins:         []\nbody:             |\n  bb.0:\n    RET 0, $al\n...\n";
+        assert_eq!(placements(x86, "x86_64", 8, 0)["g"].ret, ["rax"]);
+    }
 }
