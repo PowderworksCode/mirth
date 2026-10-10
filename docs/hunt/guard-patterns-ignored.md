@@ -29,4 +29,4 @@ the same name (`Some(x if x > 3) | Some(x if x == 0) => x`) gives the same error
 **Versions.** nightly-2026-07-18 and nightly-2026-10-06 (and the local compiler).
 
 **How mirth found it.** Writing nightly syntax into `fixtures/sink` to cover every
-alternative of Ur's Rust grammar (`rustc/grammar-coverage.py`); the fixture's runtime check.
+alternative of Ur's Rust grammar (`mirth-lab grammar-coverage`); the fixture's runtime check.

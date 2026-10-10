@@ -1,5 +1,5 @@
 //! Stable syntax the rest of the sink does not use, found by measuring it against Ur's Rust
-//! grammar (`rustc/grammar-coverage.py`): one function per construct or small group.
+//! grammar (`mirth-lab grammar-coverage`): one function per construct or small group.
 
 use core::cmp::Ordering;
 use core::fmt::Debug;

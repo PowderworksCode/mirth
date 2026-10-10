@@ -2,7 +2,7 @@
 """Coverage of the compiler across option configurations: build a fixture with a
 coverage-instrumented rustc (rustc/coverage.toml) once per row of a PICT transitions table,
 clean with the A options, then rebuilt after one random edit with the B options, each row's
-rustc processes logging to <out>/row<i>/. Read the result with rustc/coverage.py.
+rustc processes logging to <out>/row<i>/. Read the result with `mirth-lab coverage`.
 
     rustc/coverage-flags.py --rustc <instrumented rustc> --fixture fixtures/sink
         --flags <flag-universe work> --table rows.tsv --out <dir> [--rows 0:40] [--workers 6]
