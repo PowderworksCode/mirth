@@ -22,13 +22,25 @@
 //! for each signature's message.
 //!
 //! Mutant i is a function of `--seed` and i, so a run resumes where it stopped.
+//!
+//! `--guided` uses the coverage-instrumented compiler (rustc/coverage.toml, `MIRTH_OUT`) as
+//! feedback: each mutant's compile logs the sites (functions and basic blocks) it reached; one
+//! that reaches a site no earlier input reached (the coverage suites given by
+//! `--coverage-from`, and this run's finds) joins a corpus with energy proportional to its new
+//! sites, and three mutants in four are then drawn from the corpus, AFL-style, by energy
+//! (new sites divided by one plus the times picked): spliced with another corpus entry or a UI
+//! test, moved, gated or edited. `--measure` counts new sites the same way but draws mutants as
+//! usual: the unguided baseline. A guided run is not a function of the seed (the corpus grows
+//! in the order compiles finish); resuming reloads the corpus and the sites found.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt::Write as _;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
+use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::time::Instant;
 use std::sync::{LazyLock, Mutex};
 
 use mirth_lab::compiler_checks::{self, Known};
@@ -86,6 +98,26 @@ pub struct Args {
     /// Reduce each signature's smallest mutant again (after the reducer changed), and stop.
     #[arg(long)]
     rereduce: bool,
+    /// Coverage-guided (needs a coverage-instrumented `--rustc`): keep mutants that reach sites
+    /// nothing reached before, and mutate those further.
+    #[arg(long)]
+    guided: bool,
+    /// Count new sites as `--guided` does, but draw mutants as usual (the unguided baseline).
+    #[arg(long)]
+    measure: bool,
+    /// What is already covered: a file of site ids, or a directory of coverage suites (each
+    /// `*/union.txt`; suites named `guided*` or `unguided*` left out).
+    #[arg(long)]
+    coverage_from: Option<PathBuf>,
+    /// The instrumented build's site tables, for the report of where the new sites are.
+    #[arg(long)]
+    sites: Option<PathBuf>,
+    /// Stop making mutants after this many minutes.
+    #[arg(long)]
+    minutes: Option<u64>,
+    /// Also write the sites found as a coverage suite (`<dir>/union.txt`).
+    #[arg(long)]
+    suite: Option<PathBuf>,
 }
 
 static KNOWN: LazyLock<Known> = LazyLock::new(Known::load);
@@ -331,13 +363,209 @@ fn make_one(corpus: &Corpus, seed: u64, i: usize, attempt: u64) -> Option<(Mutan
     } else {
         edit(&mut rng, &a.text, i)?
     };
-    use rand::distr::Distribution;
-    static CW: LazyLock<rand::distr::weighted::WeightedIndex<u32>> =
-        LazyLock::new(|| rand::distr::weighted::WeightedIndex::new(CONFIGS.iter().map(|c| c.2)).unwrap());
-    let (config, extra, _) = CONFIGS[CW.sample(&mut rng)];
+    let (config, extra) = pick_config(&mut rng);
     let mut flags = a.flags.clone();
     flags.extend(extra.iter().map(|s| s.to_string()));
     Some((Mutant { i, strategy, sources, config: config.into() }, text, flags, a.edition().to_owned()))
+}
+
+fn pick_config(rng: &mut StdRng) -> (&'static str, &'static [&'static str]) {
+    use rand::distr::Distribution;
+    static CW: LazyLock<rand::distr::weighted::WeightedIndex<u32>> =
+        LazyLock::new(|| rand::distr::weighted::WeightedIndex::new(CONFIGS.iter().map(|c| c.2)).unwrap());
+    let (config, extra, _) = CONFIGS[CW.sample(rng)];
+    (config, extra)
+}
+
+/// The flags without a configuration column's.
+fn base_flags(flags: &[String]) -> Vec<String> {
+    flags.iter().filter(|f| !CONFIGS.iter().any(|c| c.1.contains(&f.as_str()))).cloned().collect()
+}
+
+// ---- coverage guidance ----
+
+#[derive(Serialize, Deserialize, Clone)]
+struct Entry {
+    id: String,
+    flags: Vec<String>,
+    edition: String,
+    sources: Vec<String>,
+    new: usize,
+    #[serde(skip)]
+    text: String,
+    #[serde(skip)]
+    picks: u32,
+}
+
+/// The sites seen so far, the corpus of inputs that reached new ones, and the record of both.
+struct Guide {
+    guided: bool,
+    work: PathBuf,
+    seen: Mutex<HashSet<u64>>,
+    seeded: usize,
+    found: Mutex<Vec<u64>>,
+    entries: Mutex<Vec<Entry>>,
+}
+
+fn read_sites(path: &Path, into: &mut HashSet<u64>) {
+    for l in String::from_utf8_lossy(&std::fs::read(path).unwrap_or_default()).lines() {
+        if let Some(id) = l.split('\t').next().and_then(|x| x.trim().parse().ok()) {
+            into.insert(id);
+        }
+    }
+}
+
+impl Guide {
+    fn load(args: &Args) -> anyhow::Result<Guide> {
+        let mut seen = HashSet::new();
+        if let Some(from) = &args.coverage_from {
+            if from.is_dir() {
+                for e in std::fs::read_dir(from)?.flatten() {
+                    let name = e.file_name().to_string_lossy().into_owned();
+                    if !name.starts_with("guided") && !name.starts_with("unguided") {
+                        read_sites(&e.path().join("union.txt"), &mut seen);
+                    }
+                }
+            } else {
+                read_sites(from, &mut seen);
+            }
+        }
+        let seeded = seen.len();
+        let mut found_set = HashSet::new();
+        read_sites(&args.work.join("new-sites.txt"), &mut found_set);
+        let found: Vec<u64> = found_set.iter().copied().filter(|s| !seen.contains(s)).collect();
+        seen.extend(&found);
+        let corpus_dir = args.work.join("corpus");
+        std::fs::create_dir_all(&corpus_dir)?;
+        let entries: Vec<Entry> = std::fs::read_to_string(args.work.join("corpus.jsonl"))
+            .unwrap_or_default()
+            .lines()
+            .filter_map(|l| serde_json::from_str::<Entry>(l).ok())
+            .filter_map(|mut e| {
+                e.text = std::fs::read_to_string(corpus_dir.join(format!("{}.rs", e.id))).ok()?;
+                Some(e)
+            })
+            .collect();
+        Ok(Guide { guided: args.guided, work: args.work.clone(), seen: Mutex::new(seen), seeded, found: Mutex::new(found), entries: Mutex::new(entries) })
+    }
+
+    /// A corpus entry by energy: its new sites over one plus the times it was picked.
+    fn pick(&self, rng: &mut StdRng) -> Option<Entry> {
+        let mut entries = self.entries.lock().unwrap();
+        let weights: Vec<f64> = entries.iter().map(|e| e.new as f64 / (1.0 + e.picks as f64)).collect();
+        let total: f64 = weights.iter().sum();
+        if total <= 0.0 {
+            return None;
+        }
+        let mut x = rng.random_range(0.0..total);
+        let k = weights.iter().position(|w| {
+            x -= w;
+            x < 0.0
+        })?;
+        entries[k].picks += 1;
+        Some(entries[k].clone())
+    }
+
+    /// Record what a mutant reached; the number of sites nobody reached before.
+    fn observe(&self, i: usize, mutant: &Mutant, text: &str, flags: &[String], edition: &str, reached: &HashSet<u64>) -> usize {
+        let new: Vec<u64> = {
+            let mut seen = self.seen.lock().unwrap();
+            reached.iter().copied().filter(|s| seen.insert(*s)).collect()
+        };
+        if new.is_empty() {
+            return 0;
+        }
+        let mut lines = String::new();
+        for s in &new {
+            let _ = writeln!(lines, "{s}\t{i}");
+        }
+        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(self.work.join("new-sites.txt")) {
+            let _ = f.write_all(lines.as_bytes());
+        }
+        self.found.lock().unwrap().extend(&new);
+        if self.guided {
+            let entry = Entry {
+                id: format!("{i}-{}", short_hash(text)),
+                flags: base_flags(flags),
+                edition: edition.to_owned(),
+                sources: mutant.sources.clone(),
+                new: new.len(),
+                text: text.to_owned(),
+                picks: 0,
+            };
+            let _ = std::fs::write(self.work.join("corpus").join(format!("{}.rs", entry.id)), text);
+            if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(self.work.join("corpus.jsonl")) {
+                let _ = writeln!(f, "{}", serde_json::to_string(&entry).unwrap());
+            }
+            self.entries.lock().unwrap().push(entry);
+        }
+        new.len()
+    }
+}
+
+/// Mutant i of a guided run: three in four from a corpus entry, the rest as usual.
+fn make_guided(corpus: &Corpus, guide: &Guide, seed: u64, i: usize) -> Option<(Mutant, String, Vec<String>, String)> {
+    (0..8u64).find_map(|attempt| {
+        let mut rng = StdRng::seed_from_u64(seed.wrapping_mul(0x9e37_79b9_7f4a_7c15) ^ ((i as u64) << 3 | attempt) ^ 0x6775_6964);
+        let parent = if rng.random_ratio(3, 4) { guide.pick(&mut rng) } else { None };
+        let Some(p) = parent else { return make_one(corpus, seed, i, attempt) };
+        let mut sources = p.sources.clone();
+        let r = rng.random_range(0..100);
+        let (text, strategy) = if r < 40 {
+            // Half the splices combine two corpus entries.
+            let other = if rng.random_bool(0.5) { guide.pick(&mut rng).map(|e| (e.text, e.sources[0].clone())) } else { None };
+            let (b, name) = other.unwrap_or_else(|| {
+                let (_, t) = corpus.pick(&mut rng);
+                (t.text.clone(), t.rel.clone())
+            });
+            sources.push(name);
+            let (t, s) = splice(&mut rng, &p.text, &b)?;
+            (t, s.to_owned())
+        } else if r < 65 {
+            relocate(&mut rng, &p.text)?
+        } else if r < 80 {
+            add_gate(&mut rng, &p.text, &corpus.incomplete)?
+        } else {
+            edit(&mut rng, &p.text, i)?
+        };
+        let (config, extra) = pick_config(&mut rng);
+        let mut flags = p.flags.clone();
+        flags.extend(extra.iter().map(|s| s.to_string()));
+        Some((Mutant { i, strategy: format!("guided-{strategy}"), sources, config: config.into() }, text, flags, p.edition.clone()))
+    })
+}
+
+/// Where the sites found are: by crate and by source file, from the site tables.
+fn report_sites(tables: &Path, found: &[u64], work: &Path) {
+    let wanted: HashSet<u64> = found.iter().copied().collect();
+    let mut by_crate: BTreeMap<String, usize> = BTreeMap::new();
+    let mut by_file: BTreeMap<String, usize> = BTreeMap::new();
+    let mut kinds: BTreeMap<String, usize> = BTreeMap::new();
+    let mut listing = String::new();
+    for table in mirth_lab::coverage::files_with(tables, "sites") {
+        for line in String::from_utf8_lossy(&std::fs::read(&table).unwrap_or_default()).lines() {
+            let f: Vec<&str> = line.split('\t').collect();
+            let Some(id) = f.first().and_then(|x| x.parse::<u64>().ok()) else { continue };
+            if f.len() < 7 || !wanted.contains(&id) {
+                continue;
+            }
+            let krate = f[3].rsplit_once('-').filter(|(_, h)| h.len() == 16).map_or(f[3], |(k, _)| k);
+            let file = f[6].rsplitn(3, ':').last().unwrap_or(f[6]);
+            *by_crate.entry(krate.to_owned()).or_default() += 1;
+            *by_file.entry(file.to_owned()).or_default() += 1;
+            *kinds.entry(f[1].to_owned()).or_default() += 1;
+            let _ = writeln!(listing, "{}\t{}\t{}\t{}", f[1], krate, f[4], f[6]);
+        }
+    }
+    let top = |m: &BTreeMap<String, usize>, n: usize| {
+        let mut v: Vec<(&String, &usize)> = m.iter().collect();
+        v.sort_by(|a, b| b.1.cmp(a.1));
+        v.into_iter().take(n).map(|(k, c)| format!("    {c:6} {k}")).collect::<Vec<_>>().join("\n")
+    };
+    println!("new sites by kind: {kinds:?}");
+    println!("by crate:\n{}", top(&by_crate, 15));
+    println!("by file:\n{}", top(&by_file, 20));
+    let _ = std::fs::write(work.join("new-sites-where.tsv"), listing);
 }
 
 // ---- signatures ----
@@ -397,31 +625,57 @@ struct Env<'a> {
 /// Status and signature (for an ICE, or "hang" for a confirmed timeout), and whether the
 /// compiler complained of a missing feature gate.
 fn compile(env: &Env, text: &str, flags: &[String], edition: &str) -> (Status, Option<Signature>, bool) {
-    let (status, sig, ungated, _) = compile_checked(env, text, flags, edition, false);
+    let (status, sig, ungated, _, _) = compile_full(env, text, flags, edition, false, false);
     (status, sig, ungated)
 }
 
-/// `compile`, and with `checks` what the patched compiler's own checks reported.
-fn compile_checked(env: &Env, text: &str, flags: &[String], edition: &str, checks: bool) -> (Status, Option<Signature>, bool, Vec<String>) {
+/// `compile`; with `checks`, also what the patched compiler's own checks reported; with
+/// `coverage`, also the sites the first compile reached (its MIRTH_OUT logs, deleted after
+/// reading). Only the first compile carries either; a longer retry after a timeout does not.
+fn compile_full(
+    env: &Env,
+    text: &str,
+    flags: &[String],
+    edition: &str,
+    checks: bool,
+    coverage: bool,
+) -> (Status, Option<Signature>, bool, Vec<String>, HashSet<u64>) {
     let d = tempfile::tempdir_in(&env.scratch).expect("scratch");
     let src = d.path().join("m.rs");
     let _ = std::fs::write(&src, text);
-    let first = Compile::new(&env.args.rustc, &src, d.path(), flags, edition).emit("link").timeout(env.args.timeout);
-    let first = if checks { first.compiler_checks(&d.path().join("incr"), true) } else { first };
-    let c = first.run();
+    let cov = d.path().join("cov");
+    let run = |secs, first: bool| {
+        let mut c = Compile::new(&env.args.rustc, &src, d.path(), flags, edition).emit("link").timeout(secs);
+        if first && checks {
+            c = c.compiler_checks(&d.path().join("incr"), true);
+        }
+        if first && coverage {
+            let _ = std::fs::create_dir_all(&cov);
+            c = c.env("MIRTH_OUT", cov.to_string_lossy());
+        }
+        c.run()
+    };
+    let c = run(env.args.timeout, true);
     let reported = if checks { compiler_checks::read(&c.stderr, &KNOWN).findings() } else { Vec::new() };
-    let (status, sig, ungated) = classify(env, &src, d.path(), flags, edition, c);
-    (status, sig, ungated, reported)
+    let mut reached = HashSet::new();
+    if coverage {
+        for log in mirth_lab::coverage::files_with(&cov, "log") {
+            let text = String::from_utf8_lossy(&std::fs::read(&log).unwrap_or_default()).into_owned();
+            reached.extend(mirth_lab::coverage::log_hits(&text).filter_map(|s| s.parse::<u64>().ok()));
+            let _ = std::fs::remove_file(&log);
+        }
+    }
+    let (status, sig, ungated) = classify(c, |secs| run(secs, false), env.args.timeout);
+    (status, sig, ungated, reported, reached)
 }
 
-fn classify(env: &Env, src: &Path, dir: &Path, flags: &[String], edition: &str, c: mirth_lab::rustc::Compiled) -> (Status, Option<Signature>, bool) {
-    let run = |secs| Compile::new(&env.args.rustc, src, dir, flags, edition).emit("link").timeout(secs).run();
+fn classify(c: mirth_lab::rustc::Compiled, run: impl Fn(u64) -> mirth_lab::rustc::Compiled, timeout: u64) -> (Status, Option<Signature>, bool) {
     let ungated = c.stderr.contains("E0658");
     match c.status {
         Status::Ice => (Status::Ice, Some(signature(&c.stderr)), ungated),
-        Status::Timeout => match run(env.args.timeout * 3) {
+        Status::Timeout => match run(timeout * 3) {
             t if t.status == Status::Timeout => {
-                (Status::Timeout, Some(Signature { key: "hang".into(), message: format!("no result in {}s", env.args.timeout * 3) }), ungated)
+                (Status::Timeout, Some(Signature { key: "hang".into(), message: format!("no result in {}s", timeout * 3) }), ungated)
             }
             t if t.status == Status::Ice => (Status::Ice, Some(signature(&t.stderr)), t.stderr.contains("E0658")),
             t => (t.status, None, t.stderr.contains("E0658")),
@@ -563,6 +817,8 @@ struct Line {
     status: Status,
     #[serde(skip_serializing_if = "Option::is_none")]
     key: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    new: Option<usize>,
 }
 
 fn short_hash(s: &str) -> String {
@@ -616,6 +872,19 @@ pub fn run(args: Args) -> anyhow::Result<ExitCode> {
         })
         .collect();
     let corpus = Corpus::load(&args)?;
+    let coverage = args.guided || args.measure;
+    let guide = if coverage { Some(Guide::load(&args)?) } else { None };
+    if let Some(g) = &guide {
+        println!(
+            "coverage: {} sites already covered, {} found by this run before, corpus of {}",
+            g.seeded,
+            g.found.lock().unwrap().len(),
+            g.entries.lock().unwrap().len()
+        );
+    }
+    let started = Instant::now();
+    let deadline = args.minutes.map(|m| started + std::time::Duration::from_secs(m * 60));
+    let timeline = Mutex::new(std::fs::OpenOptions::new().create(true).append(true).open(args.work.join("timeline.tsv"))?);
     let log_path = args.work.join("results.jsonl");
     let done: BTreeSet<usize> = std::fs::read_to_string(&log_path)
         .unwrap_or_default()
@@ -643,15 +912,20 @@ pub fn run(args: Args) -> anyhow::Result<ExitCode> {
     let pool = rayon::ThreadPoolBuilder::new().num_threads(args.jobs).stack_size(256 << 20).build()?;
     pool.install(|| {
         pending.par_iter().for_each(|&i| {
-            if stop.load(Ordering::Relaxed) {
+            if stop.load(Ordering::Relaxed) || deadline.is_some_and(|d| Instant::now() > d) {
                 return;
             }
-            let Some((mutant, text, flags, edition)) = make(&corpus, args.seed, i) else {
+            let made = match &guide {
+                Some(g) if g.guided => make_guided(&corpus, g, args.seed, i),
+                _ => make(&corpus, args.seed, i),
+            };
+            let Some((mutant, text, flags, edition)) = made else {
                 let mut l = log.lock().unwrap();
                 let _ = writeln!(l, "{}", serde_json::json!({"i": i, "strategy": "none"}));
                 return;
             };
-            let (status, sig, _, reported) = compile_checked(&env, &text, &flags, &edition, args.compiler_checks);
+            let (status, sig, _, reported, reached) =
+                compile_full(&env, &text, &flags, &edition, args.compiler_checks, coverage);
             if !reported.is_empty() {
                 let dir = args.work.join("compiler-checks");
                 let _ = std::fs::create_dir_all(&dir);
@@ -661,6 +935,7 @@ pub fn run(args: Args) -> anyhow::Result<ExitCode> {
                     let _ = writeln!(f, "{line}");
                 }
             }
+            let new = guide.as_ref().map(|g| g.observe(i, &mutant, &text, &flags, &edition, &reached));
             let mut key = None;
             if let Some(sig) = sig {
                 // Not a finding when the unmutated test already gives it.
@@ -678,16 +953,46 @@ pub fn run(args: Args) -> anyhow::Result<ExitCode> {
                     record(&env, &groups, &groups_path, &known, &mutant, &text, &flags, &edition, &sig, &new_groups, &stop);
                 }
             }
-            let line = Line { mutant, status, key };
+            let line = Line { mutant, status, key, new };
             let mut l = log.lock().unwrap();
             let _ = writeln!(l, "{}", serde_json::to_string(&line).unwrap());
             drop(l);
             let n = progress.fetch_add(1, Ordering::Relaxed) + 1;
             if n % 100 == 0 {
-                println!("{n}/{} made, {} ICEs or hangs, {} signatures new this run", pending.len(), ices.load(Ordering::Relaxed), new_groups.load(Ordering::Relaxed));
+                let (found, entries) = guide.as_ref().map_or((0, 0), |g| (g.found.lock().unwrap().len(), g.entries.lock().unwrap().len()));
+                let cov = if coverage { format!(", {found} new sites, corpus {entries}") } else { String::new() };
+                println!(
+                    "{n}/{} made, {} ICEs or hangs, {} signatures new this run{cov}",
+                    pending.len(),
+                    ices.load(Ordering::Relaxed),
+                    new_groups.load(Ordering::Relaxed)
+                );
+                let mut t = timeline.lock().unwrap();
+                let _ = writeln!(
+                    t,
+                    "{}\t{n}\t{found}\t{entries}\t{}\t{}",
+                    started.elapsed().as_secs(),
+                    ices.load(Ordering::Relaxed),
+                    new_groups.load(Ordering::Relaxed)
+                );
             }
         })
     });
+    if let Some(g) = &guide {
+        let found = g.found.lock().unwrap().clone();
+        println!("{} new sites in {}s; corpus of {}", found.len(), started.elapsed().as_secs(), g.entries.lock().unwrap().len());
+        if let Some(tables) = &args.sites {
+            report_sites(tables, &found, &args.work);
+        }
+        if let Some(dir) = &args.suite {
+            std::fs::create_dir_all(dir)?;
+            let mut text = String::new();
+            for s in &found {
+                let _ = writeln!(text, "{s}");
+            }
+            std::fs::write(dir.join("union.txt"), text)?;
+        }
+    }
     let groups = groups.into_inner().unwrap();
     println!("{} signatures:", groups.len());
     for g in groups.values() {
