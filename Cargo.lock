@@ -389,6 +389,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "similar",
+ "syn 2.0.119",
  "tar",
  "tempfile",
  "wait-timeout",
