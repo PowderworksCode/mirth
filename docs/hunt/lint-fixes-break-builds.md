@@ -9,7 +9,7 @@ a lint never stops a build, so its fix must not introduce an error. 111 lint fix
 ## Six shapes, reduced, on stable 1.98.0
 
 Each file in [`tests/lint-fixes/`](tests/lint-fixes/) compiles with warnings; applying the one
-named suggestion (`apply-one-suggestion.py <file> 1.98.0`) gives the error shown. The same on
+named suggestion (`mirth-lab apply-suggestions <file> 1.98.0`) gives the error shown. The same on
 nightly-2026-10-06.
 
 | file | lint | code | suggestion | after applying it |

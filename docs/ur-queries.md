@@ -81,9 +81,10 @@ plans most of what they lacked:
 The same approach, applied to bugs rustc has already fixed: the bugs behind mirth's
 properties ([`motivating.md`](motivating.md)). [`ur/rustc/ClosedBugs.rsc`](../ur/rustc/ClosedBugs.rsc)
 has one query per bug's pattern, each generalized as far as it still finds the code its
-fix changed. [`ur/verify-closed.py`](../ur/verify-closed.py) checks that: for each bug it
+fix changed. `mirth-lab verify-closed <ur binary>` checks that: for each bug it
 fetches the files the fixing PR changed, as they were before the fix, runs the query, and
-looks for the site.
+looks for the site. It needs `ur rewrite --classify --report`, which the current Ur
+(`~/.ur/bin/ur`, 2026-10-10) no longer has; the table below is from the last Ur that did.
 
 | bug | query | the pattern | finds the fixed site |
 |---|---|---|---|

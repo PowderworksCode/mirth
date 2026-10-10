@@ -7,6 +7,7 @@ use clap::{Parser, Subcommand};
 
 mod tools {
     pub mod abi_diff;
+    pub mod apply_suggestions;
     pub mod audit_options;
     pub mod callgraph;
     pub mod coverage;
@@ -27,6 +28,7 @@ mod tools {
     pub mod grammar_coverage;
     pub mod instr_check;
     pub mod miri_diff;
+    pub mod motivating;
     pub mod opt_diff;
     pub mod release_diff;
     pub mod replay;
@@ -35,8 +37,10 @@ mod tools {
     pub mod scale_check;
     pub mod solver_diff;
     pub mod suggest_diff;
+    pub mod survey;
     pub mod ui_coverage;
     pub mod ui_fuzz;
+    pub mod verify_closed;
     pub mod xlink;
 }
 
@@ -113,6 +117,18 @@ enum Check {
     Replay(tools::replay::Args),
     /// Coverage of the compiler across option configurations (a fixture per PICT transitions row).
     CoverageFlags(tools::coverage_flags::Args),
+    /// Each machine-applicable warning suggestion in one file, applied alone: does it compile?
+    ApplySuggestions(tools::apply_suggestions::Args),
+    /// Reproduce docs/motivating's bugs on the toolchains before and after each fix.
+    MotivatingRun(tools::motivating::RunArgs),
+    /// Write docs/motivating.md from bugs.json, notes.json and the outputs.
+    MotivatingDoc(tools::motivating::DocArgs),
+    /// The last closed rust-lang/rust bugs and their fixing PRs, into issues.json.
+    SurveyFetch(tools::survey::FetchArgs),
+    /// Replace rollups in issues.json by the PR inside that names the issue.
+    SurveyUnroll(tools::survey::UnrollArgs),
+    /// Each closed-bug Ur query still finds the code its bug's fix changed.
+    VerifyClosed(tools::verify_closed::Args),
 }
 
 fn main() -> ExitCode {
@@ -150,6 +166,12 @@ fn main() -> ExitCode {
         Check::FuzzReplay(a) => tools::fuzz_replay::run(a),
         Check::Replay(a) => tools::replay::run(a),
         Check::CoverageFlags(a) => tools::coverage_flags::run(a),
+        Check::ApplySuggestions(a) => tools::apply_suggestions::run(a),
+        Check::MotivatingRun(a) => tools::motivating::run(a),
+        Check::MotivatingDoc(a) => tools::motivating::doc(a),
+        Check::SurveyFetch(a) => tools::survey::fetch(a),
+        Check::SurveyUnroll(a) => tools::survey::unroll(a),
+        Check::VerifyClosed(a) => tools::verify_closed::run(a),
     };
     match result {
         Ok(code) => code,

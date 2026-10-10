@@ -8,7 +8,7 @@ with no mirth involved: the original bug, as users met it.
 
 The bugs were found by searching rust-lang/rust for each property; every issue and PR was
 read, and every reproduction run on this machine (Linux x86_64). Reproduce one with
-`docs/motivating/run.py <issue>`; the outputs used here are in `docs/motivating/out/`.
+`mirth-lab motivating-run <issue>`; the outputs used here are in `docs/motivating/out/`.
 
 Some bugs appear under two properties. Three found by mirth itself
 ([`hunt/`](hunt)) are listed under P6 at the end.
