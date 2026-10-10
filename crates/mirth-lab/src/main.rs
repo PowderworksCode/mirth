@@ -6,16 +6,20 @@ use std::process::ExitCode;
 use clap::{Parser, Subcommand};
 
 mod tools {
+    pub mod abi_diff;
     pub mod crash_diff;
     pub mod diag_check;
     pub mod gate_check;
     pub mod instr_check;
     pub mod miri_diff;
     pub mod opt_diff;
+    pub mod release_diff;
     pub mod repro_diff;
     pub mod rewrite_diff;
+    pub mod scale_check;
     pub mod solver_diff;
     pub mod suggest_diff;
+    pub mod xlink;
 }
 
 #[derive(Parser)]
@@ -47,6 +51,14 @@ enum Check {
     GateCheck(tools::gate_check::Args),
     /// PGO and coverage instrumentation round trips.
     InstrCheck(tools::instr_check::Args),
+    /// Real crates accepted by one toolchain are accepted by the next, in comparable time.
+    ReleaseDiff(tools::release_diff::Args),
+    /// Every target builds core and alloc and links a program with no undefined symbols.
+    Xlink(tools::xlink::Args),
+    /// Compile time, memory, frames and future sizes grow about linearly with program size.
+    ScaleCheck(tools::scale_check::Args),
+    /// rustc's extern "C" lowering matches clang's for random C signatures, per target.
+    AbiDiff(tools::abi_diff::Args),
 }
 
 fn main() -> ExitCode {
@@ -62,6 +74,10 @@ fn main() -> ExitCode {
         Check::ReproDiff(a) => tools::repro_diff::run(a),
         Check::GateCheck(a) => tools::gate_check::run(a),
         Check::InstrCheck(a) => tools::instr_check::run(a),
+        Check::ReleaseDiff(a) => tools::release_diff::run(a),
+        Check::Xlink(a) => tools::xlink::run(a),
+        Check::ScaleCheck(a) => tools::scale_check::run(a),
+        Check::AbiDiff(a) => tools::abi_diff::run(a),
     };
     match result {
         Ok(code) => code,

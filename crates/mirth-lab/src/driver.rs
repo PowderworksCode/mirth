@@ -121,7 +121,12 @@ pub fn drive<T: Sync, R: Record>(items: &[T], sweep: &Sweep, check: impl Fn(&T) 
     let done = AtomicUsize::new(0);
     let with_findings = AtomicUsize::new(0);
     let total = items.len();
-    let pool = rayon::ThreadPoolBuilder::new().num_threads(sweep.jobs.max(1)).build().expect("thread pool");
+    // Large stacks: in-process parsers (syn in the rewrites) recurse as deep as a test nests.
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(sweep.jobs.max(1))
+        .stack_size(256 << 20)
+        .build()
+        .expect("thread pool");
     pool.install(|| {
         items.par_iter().for_each(|item| {
             if stop.load(Ordering::Relaxed) {

@@ -16,7 +16,11 @@ static TIMING: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"finished in \d+\.
 pub fn stderr(text: &str) -> String {
     let lines: Vec<&str> = text
         .lines()
-        .filter(|l| !l.starts_with("note: run with `RUST_BACKTRACE") && !l.starts_with("note: Some details are omitted"))
+        .filter(|l| {
+            !l.starts_with("note: run with `RUST_BACKTRACE")
+                && !l.starts_with("note: Some details are omitted")
+                && !l.starts_with("note: in Miri, you may have to set `MIRIFLAGS")
+        })
         .collect();
     let t = THREAD_ID.replace_all(&lines.join("\n"), "$1").into_owned();
     let t = STD_PATH.replace_all(&t, "library/").into_owned();
