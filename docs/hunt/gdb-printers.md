@@ -1,12 +1,12 @@
 # gdb pretty-printers: zero-sized elements, and Ref/RefMut
 
-Facts for findings 33 and 34. Found by the debugger round trip ([`checks.md`](../checks.md),
+Facts for findings 48 and 49. Found by the debugger round trip ([`checks.md`](../checks.md),
 check 20: `mirth-lab debug-check`): generated programs build known values, gdb prints them at a
 breakpoint, and the output is compared with the values. gdb 15.1 (Ubuntu 24.04), the Rust
 pretty-printers shipped with the toolchain (`lib/rustlib/etc/gdb_providers.py`), loaded by
 `rust-gdb`.
 
-## 33. Collections of zero-sized elements
+## 48. Collections of zero-sized elements
 
 [`tests/debug-check/zst-printers.rs`](tests/debug-check/zst-printers.rs),
 `rustc --edition 2021 -g`, then `print` at the breakpoint (pinned nightly):
@@ -41,7 +41,7 @@ No test in `tests/debuginfo` prints a Vec, VecDeque or slice of zero-sized eleme
 Versions: the Vec, VecDeque and slice exceptions are the same with 1.80.0, 1.90.0, 1.98.0,
 nightly-2026-07-18 and nightly-2026-10-06 (each with its own `rust-gdb` and printers).
 
-## 34. Ref and RefMut
+## 49. Ref and RefMut
 
 [`tests/debug-check/ref-printer.rs`](tests/debug-check/ref-printer.rs): a live `RefCell` borrow
 (`let r = a.borrow();`, `let w = b.borrow_mut();`), printed at the breakpoint:

@@ -1,4 +1,4 @@
-// Finding 34: the gdb pretty-printer for core::cell::Ref and RefMut.
+// Finding 49: the gdb pretty-printer for core::cell::Ref and RefMut.
 //   rustc -g ref-printer.rs && rust-gdb -batch -ex 'break ref_printer::bp' -ex run -ex up \
 //     -ex 'print r' -ex 'print w' ./ref-printer
 use std::cell::RefCell;

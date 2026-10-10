@@ -374,7 +374,7 @@ Ten new findings (19–28) in [`hunt.md`](hunt.md), none from the checks mirth h
 
 | check | subcommand | what it found |
 |---|---|---|
-| 20, debugger round trip | `debug-check` | findings 33 (gdb printers on zero-sized elements) and 34 (the `Ref`/`RefMut` printer); 4,000 programs × 3 opt levels, nothing else: no other wrong value, no hang, no gdb crash |
+| 20, debugger round trip | `debug-check` | findings 48 (gdb printers on zero-sized elements) and 34 (the `Ref`/`RefMut` printer); 4,000 programs × 3 opt levels, nothing else: no other wrong value, no hang, no gdb crash |
 
 **debug-check.** Each seed generates a program that builds known values: integers of every
 width (bounds and random), floats from bit patterns (signed zeros, infinities, NaN payloads,
@@ -422,9 +422,9 @@ the programs they occur in:
 
 | class | mismatches | programs |
 |---|---:|---:|
-| finding 34: the Ref/RefMut printer fails on every guard | 1,620 | 380 |
-| finding 33: BTreeMap/BTreeSet show `()` for every zero-sized key or value | 1,277 | 91 |
-| finding 33: VecDeque, Vec and slice printers on zero-sized elements | 1,212 | 389 |
+| finding 49: the Ref/RefMut printer fails on every guard | 1,620 | 380 |
+| finding 48: BTreeMap/BTreeSet show `()` for every zero-sized key or value | 1,277 | 91 |
+| finding 48: VecDeque, Vec and slice printers on zero-sized elements | 1,212 | 389 |
 | expected: gdb 15 cannot read a 128-bit enum discriminant | 1,057 | 332 |
 | expected: gdb prints an array of zero-sized elements as an address | 338 | 110 |
 | expected: gdb takes a struct ending in a zero-sized field for an unsized one | 294 | 92 |
