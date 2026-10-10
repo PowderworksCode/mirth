@@ -370,6 +370,71 @@ Ten new findings (19–28) in [`hunt.md`](hunt.md), none from the checks mirth h
 | determinism (15) | `mirth-lab repro-diff` | 6,886 tests × repeat, other directory with `--remap-path-prefix`, `-Zthreads=8`, decoy `-L` library | nothing new: only `-Zthreads` differences, all in the known async fn (#162202) and RPIT (#163878) families |
 | feature gates (17) | `mirth-lab gate-check` | 143 unstable attributes × 14 positions; 156 unstable library items with resolvable paths × use, renamed use, glob, impl, value, type | every library spelling gated; finding 31 (an ICE after the gate error for `#[rustc_main]` on non-functions); `#[feature]` outside the crate root only warns (intended) |
 
+### Third batch (2026-10-10)
+
+| check | subcommand | what it found |
+|---|---|---|
+| 20, debugger round trip | `debug-check` | findings 33 (gdb printers on zero-sized elements) and 34 (the `Ref`/`RefMut` printer); 4,000 programs × 3 opt levels, nothing else: no other wrong value, no hang, no gdb crash |
+
+**debug-check.** Each seed generates a program that builds known values: integers of every
+width (bounds and random), floats from bit patterns (signed zeros, infinities, NaN payloads,
+subnormals, random), chars and strings with escapes and non-ASCII, arrays, slices, Vec,
+VecDeque built to wrap around, HashMap/BTreeMap/HashSet/BTreeSet (small, and large enough for
+B-tree internal nodes), Option/Result and niche-optimized enums (`Option<NonZero<_>>`,
+`Option<&T>`, `Option<Box<T>>`), Box, Rc/Arc with known strong and weak counts, Weak, RefCell
+with live `Ref`/`RefMut` guards, Cell, tuples, generated structs, tuple structs, unit structs,
+enums with data and fieldless enums with a `repr` and explicit discriminants, unions (every
+field read back from the written one's bytes), references, PhantomData, OsString, `Box<str>`,
+`Box<[T]>`, `Rc<str>`, `Arc<[T]>`, PathBuf, vectors of thousands of elements, and an Rc cycle.
+gdb (with `rust-gdb`'s printers) stops at a breakpoint and prints every local, and `*v` for
+boxes and references, one `-ex` each, under a timeout. The output is parsed into a tree and
+compared structurally with what the generator built: a wrong value, length, count, borrow flag
+or variant, a missing field, a printer exception, a gdb error, a gdb crash or a timeout is a
+finding. At `-Copt-level=1` and `2` an optimized-out value is accepted anywhere, a wrong one
+never. The Rc cycle prints to gdb's depth limit and terminates.
+
+Expected classes (gdb's own behaviour, labelled in `known()`):
+
+- **gdb 15 cannot read a 128-bit enum discriminant** ("That operation is not available on
+  integers of more than 8 bytes"): `Option<i128>`, `Option<NonZero<u128>>`, a `Cell` or `Vec`
+  of them. rustc widens an enum's tag to the alignment of its first field, so `Option<i128>`'s
+  tag is described (correctly) as a `u128` at offset 0; `Result<u128, u8>` keeps a `u8` tag and
+  prints.
+- **gdb prints an array of zero-sized elements as an address** (`[Z; 2]` → `0x7fffffffdc05`,
+  `ptype` `[Z; 2]`): gdb's generic array printer treats an array whose element size is 0 like a
+  pointer to its first element. `Box<[()]>` prints `0x1` the same way.
+- **gdb takes a struct ending in a zero-sized field for an unsized one.** A slice of structs
+  whose last field is zero-sized (`PhantomData`, `()`, the `alloc: Global` of Rc, Arc, Weak and
+  BTreeMap) prints as a single struct, with the length applied to that field (`b4::V {x: 1, m:
+  0x5555555acd61}` for `Box<[V]>` with `struct V { x: u8, m: PhantomData<u8> }`); `v.length`
+  gives "There is no member named length" while `(&v).length` gives 2; an empty `Box<[Rc<T>]>`
+  reads through its dangling pointer (`Cannot access memory at address 0x8`). The same with
+  the Rust printers disabled. `&[T]` is unaffected under rust-gdb (its own printer), `Box<[T]>`
+  has none. The same struct with the zero-sized field first prints correctly.
+
+- **gdb reads through an optimized-out pointer to an enum.** At `-Copt-level=1`/`2`, `print b`
+  for an optimized-out `Box<E>` or `Box<Option<u32>>` gives "Cannot access memory at address
+  0x0" (`info address b`: "Symbol "b" is optimized out"); an optimized-out `Box<S>` of a struct
+  prints `<optimized out>`. The same with the Rust printers disabled.
+
+The run (seeds 0..4000, `--jobs 4`, gdb 15.1, nightly-2026-10-06's printers), mismatches and
+the programs they occur in:
+
+| class | mismatches | programs |
+|---|---:|---:|
+| finding 34: the Ref/RefMut printer fails on every guard | 1,620 | 380 |
+| finding 33: BTreeMap/BTreeSet show `()` for every zero-sized key or value | 1,277 | 91 |
+| finding 33: VecDeque, Vec and slice printers on zero-sized elements | 1,212 | 389 |
+| expected: gdb 15 cannot read a 128-bit enum discriminant | 1,057 | 332 |
+| expected: gdb prints an array of zero-sized elements as an address | 338 | 110 |
+| expected: gdb takes a struct ending in a zero-sized field for an unsized one | 294 | 92 |
+| expected: gdb reads through an optimized-out pointer to an enum | 36 | 10 |
+
+Also seen, not counted: Rc and Arc of unsized values (`Rc<str>`, `Arc<[T]>`) show `value` as an
+address; `&Path` and `PathBuf` have type patterns in `rust_types.py` but no printer (PathBuf
+shows its `inner` OsString through that printer); `Box<dyn Trait>` makes gdb warn "(Internal
+error: pc … in read in CU, but not in symtab.)" when it prints the vtable. No lldb on this host.
+
 ## Running the checks
 
 The checks are subcommands of `mirth-lab` (`crates/mirth-lab`; `mirth-lab --help` lists them):
@@ -381,6 +446,7 @@ target/release/mirth-lab opt-diff --rustc $R --cranelift "$(rustup +nightly-2026
 target/release/mirth-lab solver-diff --rustc $R --tests $T --work <dir>
 target/release/mirth-lab abi-diff --rustc $R --rust ~/mirth-work/rust --work <dir> --seed 3
 target/release/mirth-lab release-diff --corpus ~/proofhouse-repos/rust --old nightly-2026-07-18 --new nightly-2026-10-06 --work <dir>
+target/release/mirth-lab debug-check --toolchain nightly-2026-10-06 --work <dir> --seeds 0..4000 --jobs 4
 ```
 
 Sweeps over UI tests share `--tests`, `--work`, `--only`, `--known`, `--jobs`, `--recheck` and

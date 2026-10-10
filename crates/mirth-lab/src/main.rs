@@ -15,6 +15,7 @@ mod tools {
     pub mod coverage_flags;
     pub mod coverage_generators;
     pub mod crash_diff;
+    pub mod debug_check;
     pub mod diag_check;
     pub mod fuzz;
     pub mod fuzz_replay;
@@ -129,6 +130,8 @@ enum Check {
     SurveyUnroll(tools::survey::UnrollArgs),
     /// Each closed-bug Ur query still finds the code its bug's fix changed.
     VerifyClosed(tools::verify_closed::Args),
+    /// gdb with the Rust pretty-printers shows the values a program defines, and terminates.
+    DebugCheck(tools::debug_check::Args),
 }
 
 fn main() -> ExitCode {
@@ -137,6 +140,7 @@ fn main() -> ExitCode {
         Check::OptDiff(a) => tools::opt_diff::run(a),
         Check::SolverDiff(a) => tools::solver_diff::run(a),
         Check::CrashDiff(a) => tools::crash_diff::run(a),
+        Check::DebugCheck(a) => tools::debug_check::run(a),
         Check::DiagCheck(a) => tools::diag_check::run(a),
         Check::MiriDiff(a) => tools::miri_diff::run(a),
         Check::RewriteDiff(a) => tools::rewrite_diff::run(a),
