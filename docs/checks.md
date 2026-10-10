@@ -360,3 +360,11 @@ over the standalone UI tests at the pin (and real crates for release-to-release)
 | release-to-release | `release-diff.py` | 87 real repositories, nightly-2026-07-18 → 10-06 | findings 26 and 27; `allocative` (unstable features) noted |
 
 Ten new findings (19–28) in [`hunt.md`](hunt.md), none from the checks mirth had before.
+
+### Second batch (2026-10-10)
+
+| check | script | swept | result |
+|---|---|---|---|
+| suggestions apply (18) | `suggest-diff.py` | 17,945 tests without `run-rustfix`, 7,385 machine-applicable suggestions applied one at a time | finding 29: 111 lint fixes break builds (six shapes reduced); error-recovery suggestions that leave the error or do not parse noted |
+| diagnostic invariants (13) | `diag-check.py` | 18,374 tests | finding 30: debug output in two diagnostics; spans all in bounds |
+| determinism (15) | `repro-diff.py` | 6,886 tests × repeat, other directory with `--remap-path-prefix`, `-Zthreads=8`, decoy `-L` library | nothing new: only `-Zthreads` differences, all in the known async fn (#162202) and RPIT (#163878) families |
