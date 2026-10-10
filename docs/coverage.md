@@ -210,6 +210,37 @@ can run (81.2%); without the 911 that only panic, 50,715 of 61,605 (82.3%).**
 `rustc/coverage-report.sh` recomputes this; `mirth-lab callgraph --gaps <file>` lists the rest
 by crate and file, largest first. What is left, and the plan for it: [coverage-handoff.md](coverage-handoff.md).
 
+## The checks of `checks.md` as coverage suites (2026-10-10)
+
+[`rustc/coverage-checks.sh`](../rustc/coverage-checks.sh) runs each check that takes a `--rustc`
+once through the block-instrumented compiler (`build-blk`), each as its own suite
+(`cov-suites/check-<name>`), at `JOBS=3` (at 8 jobs the log compactor fell 26 GB behind on
+solver-diff, so that suite covers part of the corpus). With the two coverage-guided fuzzing
+suites, the 13 new suites take reachable blocks (panic-only blocks aside) from 562,651 of
+696,588 (80.8%) to 566,335 (81.3%), and functions from 50,771 to 50,858 of 62,523 (81.2% to
+81.3%). Blocks each suite adds on its own, over the 48 suites that existed before:
+
+| suite | blocks added |
+|---|---:|
+| guided gate-mutate (150 min) | 2,856 |
+| unguided gate-mutate (150 min, same seed) | 1,093 |
+| gate-mutate (20,000 mutants) | 905 |
+| rewrite-diff | 380 |
+| suggest-diff | 211 |
+| lint-check | 158 |
+| solver-diff (partial) | 155 |
+| gate-check | 146 |
+| opt-diff | 111 |
+| diag-check | 94 |
+| repro-diff | 66 |
+| abi-diff (all targets, one seed) | 26 |
+| scale-check | 24 |
+
+Counted against everything that had run before, guidance pays: the guided fuzzer adds 2.6× the
+blocks of the unguided one with the same budget (against the smaller snapshot it started from,
+the two looked level; [`checks.md`](checks.md)). The oracle checks reuse the UI corpus and add
+little coverage; their value is the properties they check, not new code reached.
+
 ## Beyond functions and blocks
 
 The no-rebuild parts of [coverage-plan.md](coverage-plan.md) (M1, M3, and the codegen half of
