@@ -19,6 +19,17 @@ mkdir -p "$dir"
 lab=$dir/mirth-lab
 [ -x "$lab" ] || cp "$here/../target/release/mirth-lab" "$lab"
 
+findings() { # dir: what the check found, by its own output
+  local d=$1
+  case $(basename "$d") in
+    gate-check) echo "$(grep -oE '"(ice|no-gate-message|ungated)"\): [0-9]+' "$d/run.log" | awk '{s += $NF} END {print s + 0}') problems (ICEs, ungated or no gate message)" ;;
+    abi-diff-*) echo "$(grep -o '"kind"' "$d/results.json" 2>/dev/null | wc -l) unlabelled differences" ;;
+    scale-check) echo "$(awk 'NF && $0 ~ /(timeout|error|k_[a-z]+ = )/' "$d/run.log" | wc -l) shapes over budget" ;;
+    release-diff|xlink) echo "$(tail -1 "$d/run.log" | cut -c1-80)" ;;
+    *) echo "$(ls "$d/findings" 2>/dev/null | wc -l) findings" ;;
+  esac
+}
+
 run() { # name args...
   local name=$1; shift
   if [ -n "${ONLY:-}" ] && [[ " $ONLY " != *" $name "* ]]; then return; fi
@@ -28,7 +39,7 @@ run() { # name args...
   local t0=$SECONDS
   "$lab" "$@" > "$dir/$name/run.log" 2>&1
   echo "exit $? after $((SECONDS - t0))s" > "$dir/$name/DONE"
-  echo "$(date +%T) done $name: $(cat "$dir/$name/DONE"), $(ls "$dir/$name/findings" 2>/dev/null | wc -l) findings"
+  echo "$(date +%T) done $name: $(cat "$dir/$name/DONE"), $(findings "$dir/$name")"
 }
 
 sweep=(--tests "$tests" --jobs "$jobs")
@@ -54,7 +65,7 @@ run xlink xlink --toolchain "$pin" --jobs 8 --work "$dir/xlink"
   for d in "$dir"/*/; do
     n=$(basename "$d")
     [ -e "$d/DONE" ] || continue
-    printf '%-14s %-22s %4s findings   %s\n' "$n" "$(cat "$d/DONE")" "$(ls "$d/findings" 2>/dev/null | wc -l)" "$(tail -1 "$d/run.log" | cut -c1-120)"
+    printf '%-14s %-22s %s\n' "$n" "$(cat "$d/DONE")" "$(findings "$d")"
   done
 } > "$dir/summary.txt"
 cat "$dir/summary.txt"

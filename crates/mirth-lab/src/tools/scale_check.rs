@@ -214,6 +214,16 @@ struct Res {
 fn one(args: &Args, sizes: &[usize], shape: &(&str, fn(usize) -> String, Extra, usize), opt: u32) -> Res {
     let (name, gen_fn, extra, cap) = *shape;
     let mut rows = Vec::new();
+    // A shape capped below the series gets the series scaled to end at its cap, so it still has
+    // enough points for a fit.
+    let scaled: Vec<usize>;
+    let sizes = if sizes.iter().filter(|&&n| n <= cap).count() >= 3 {
+        sizes
+    } else {
+        let top = *sizes.last().unwrap_or(&1) as f64;
+        scaled = sizes.iter().map(|&n| ((n as f64 / top) * cap as f64).round().max(1.0) as usize).collect();
+        &scaled
+    };
     for &n in sizes.iter().filter(|&&n| n <= cap) {
         let mut r = measure(args, &gen_fn(n), opt);
         r.n = n;
@@ -225,7 +235,12 @@ fn one(args: &Args, sizes: &[usize], shape: &(&str, fn(usize) -> String, Extra, 
     }
     let ok: Vec<&Row> = rows.iter().filter(|r| r.user.is_some()).collect();
     let first_user = ok.first().and_then(|r| r.user).unwrap_or(0.0);
-    let k_time = exponent(&ok.iter().map(|r| (r.n, (r.user.unwrap() - first_user * 0.5).max(1e-3))).collect::<Vec<_>>());
+    // Below half a second the timer's noise decides the slope.
+    let k_time = if ok.last().and_then(|r| r.user).unwrap_or(0.0) < 0.5 {
+        None
+    } else {
+        exponent(&ok.iter().map(|r| (r.n, (r.user.unwrap() - first_user * 0.5).max(1e-3))).collect::<Vec<_>>())
+    };
     let k_rss = exponent(&ok.iter().map(|r| (r.n, r.rss_kb.unwrap_or(0) as f64)).collect::<Vec<_>>());
     let k_frame = (extra == Extra::Frame).then(|| exponent(&ok.iter().map(|r| (r.n, r.max_frame as f64)).collect::<Vec<_>>())).flatten();
     let k_size = (extra == Extra::RunSize).then(|| exponent(&ok.iter().map(|r| (r.n, r.run_size.unwrap_or(0) as f64)).collect::<Vec<_>>())).flatten();
