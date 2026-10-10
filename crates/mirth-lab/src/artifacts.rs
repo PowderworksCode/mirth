@@ -89,114 +89,87 @@ pub fn digest_dir(dir: &Path) -> BTreeMap<String, String> {
     out
 }
 
-/// What a Cargo build produced, for packages built from a path, in a form two builds can be
-/// compared in (from `cargo build --message-format=json-render-diagnostics`).
-#[derive(Default, Debug, Clone)]
+/// What a Cargo build produced for packages built from a path, from the JSON messages of
+/// `cargo build --message-format=json-render-diagnostics`: every .rmeta and executable by
+/// digest, every .rlib member by member, every rendered diagnostic counted per crate. Paths are
+/// relative to the target directory.
+#[derive(Default, Debug, PartialEq, serde::Serialize)]
 pub struct Collected {
-    /// Every .rmeta, by path relative to the target directory.
     pub rmeta: BTreeMap<String, String>,
-    /// Every .rlib's members by name, session suffixes removed.
     pub rlib: BTreeMap<String, BTreeMap<String, String>>,
-    /// Every executable.
     pub exe: BTreeMap<String, String>,
-    /// Every rendered diagnostic, counted per (target name, text).
     pub diag: BTreeMap<(String, String), usize>,
 }
 
-/// Artifacts from cargo's JSON messages, keyed by path relative to `target`.
 pub fn collect(stdout: &str, target: &Path) -> Collected {
     let mut found = Collected::default();
-    let rel = |f: &str| -> String {
-        Path::new(f).strip_prefix(target).map_or_else(|_| f.to_owned(), |p| p.to_string_lossy().into_owned())
-    };
+    let rel = |f: &str| Path::new(f).strip_prefix(target).map_or(f.to_owned(), |r| r.display().to_string());
     for line in stdout.lines() {
         let Ok(msg) = serde_json::from_str::<serde_json::Value>(line) else { continue };
         if !msg["package_id"].as_str().unwrap_or("").contains("path+file") {
             continue;
         }
-        let target_name = msg["target"]["name"].as_str().unwrap_or("").to_owned();
         match msg["reason"].as_str() {
             Some("compiler-message") => {
                 let m = &msg["message"];
-                let text = m["rendered"].as_str().filter(|s| !s.is_empty()).or(m["message"].as_str()).unwrap_or("").to_owned();
-                *found.diag.entry((target_name, text)).or_default() += 1;
-                continue;
+                let text = m["rendered"].as_str().filter(|t| !t.is_empty()).or(m["message"].as_str()).unwrap_or("");
+                let krate = msg["target"]["name"].as_str().unwrap_or("").to_owned();
+                *found.diag.entry((krate, text.to_owned())).or_default() += 1;
             }
-            Some("compiler-artifact") => {}
-            _ => continue,
-        }
-        for f in msg["filenames"].as_array().into_iter().flatten().filter_map(|f| f.as_str()) {
-            if f.ends_with(".rmeta") {
-                found.rmeta.insert(rel(f), sha256(&std::fs::read(f).unwrap_or_default()));
-            } else if f.ends_with(".rlib") {
-                found.rlib.insert(rel(f), normalized_rlib(Path::new(f)));
+            Some("compiler-artifact") => {
+                for f in msg["filenames"].as_array().into_iter().flatten().filter_map(|f| f.as_str()) {
+                    if f.ends_with(".rmeta") {
+                        found.rmeta.insert(rel(f), sha256(&std::fs::read(f).unwrap_or_default()));
+                    } else if f.ends_with(".rlib") {
+                        found.rlib.insert(rel(f), normalized_rlib(Path::new(f)));
+                    }
+                }
+                if let Some(f) = msg["executable"].as_str() {
+                    let data = std::fs::read(f).unwrap_or_default();
+                    found.exe.insert(rel(f), sha256(&SESSION.replace_all(&data, &b"$1"[..])));
+                }
             }
-        }
-        if let Some(f) = msg["executable"].as_str() {
-            let data = std::fs::read(f).unwrap_or_default();
-            found.exe.insert(rel(f), sha256(&SESSION.replace_all(&data, &b"$1"[..])));
+            _ => {}
         }
     }
     found
 }
 
-/// Python's repr of a string, as the findings have always shown texts.
-pub fn py_repr(s: &str) -> String {
-    let q = if s.contains('\'') && !s.contains('"') { '"' } else { '\'' };
-    let mut out = String::from(q);
-    for c in s.chars() {
-        match c {
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c if c == q => {
-                out.push('\\');
-                out.push(c);
-            }
-            c if (c as u32) < 0x20 || c as u32 == 0x7f => out.push_str(&format!("\\x{:02x}", c as u32)),
-            c => out.push(c),
-        }
-    }
-    out.push(q);
-    out
-}
-
 /// {kind: [what differs]} for the kinds that differ between two collections.
-pub fn compare(a: &Collected, b: &Collected) -> BTreeMap<String, Vec<String>> {
+pub fn compare(a: &Collected, b: &Collected) -> BTreeMap<&'static str, Vec<String>> {
+    fn keys<'a, V: PartialEq>(a: &'a BTreeMap<String, V>, b: &'a BTreeMap<String, V>) -> Vec<String> {
+        let all: std::collections::BTreeSet<&String> = a.keys().chain(b.keys()).collect();
+        all.into_iter().filter(|k| a.get(*k) != b.get(*k)).cloned().collect()
+    }
     let mut out = BTreeMap::new();
     for (kind, x, y) in [("rmeta", &a.rmeta, &b.rmeta), ("exe", &a.exe, &b.exe)] {
-        let keys: std::collections::BTreeSet<&String> = x.keys().chain(y.keys()).collect();
-        let diff: Vec<String> = keys.into_iter().filter(|k| x.get(*k) != y.get(*k)).cloned().collect();
+        let diff = keys(x, y);
         if !diff.is_empty() {
-            out.insert(kind.to_owned(), diff);
+            out.insert(kind, diff);
         }
     }
     let empty = BTreeMap::new();
-    let mut diff = Vec::new();
-    let rels: std::collections::BTreeSet<&String> = a.rlib.keys().chain(b.rlib.keys()).collect();
-    for rel in rels {
-        let (ma, mb) = (a.rlib.get(rel).unwrap_or(&empty), b.rlib.get(rel).unwrap_or(&empty));
-        let members: std::collections::BTreeSet<&String> = ma.keys().chain(mb.keys()).filter(|m| ma.get(*m) != mb.get(*m)).collect();
-        if !members.is_empty() {
-            let shown: Vec<&str> = members.iter().take(5).map(|m| m.as_str()).collect();
-            diff.push(format!("{rel}: {}{}", shown.join(", "), if members.len() > 5 { " …" } else { "" }));
-        }
-    }
-    if !diff.is_empty() {
-        out.insert("rlib".to_owned(), diff);
+    let rlibs: Vec<String> = keys(&a.rlib, &b.rlib)
+        .into_iter()
+        .map(|rel| {
+            let members = keys(a.rlib.get(&rel).unwrap_or(&empty), b.rlib.get(&rel).unwrap_or(&empty));
+            let more = if members.len() > 5 { " …" } else { "" };
+            format!("{rel}: {}{more}", members[..members.len().min(5)].join(", "))
+        })
+        .collect();
+    if !rlibs.is_empty() {
+        out.insert("rlib", rlibs);
     }
     if a.diag != b.diag {
-        let mut d = Vec::new();
-        for (label, x, y) in [("first", &a.diag, &b.diag), ("second", &b.diag, &a.diag)] {
-            for ((c, t), n) in x {
-                if *n > y.get(&(c.clone(), t.clone())).copied().unwrap_or(0) {
-                    let short: String = t.chars().take(200).collect();
-                    d.push(format!("{c} only in the {label}: {}", py_repr(&short)));
-                }
-            }
-        }
-        out.insert("diag".to_owned(), d);
+        let only = |x: &BTreeMap<(String, String), usize>, y: &BTreeMap<(String, String), usize>, which: &str| -> Vec<String> {
+            x.iter()
+                .filter(|(k, n)| **n > y.get(*k).copied().unwrap_or(0))
+                .map(|((c, t), _)| format!("{c} only in the {which}: {:?}", t.chars().take(200).collect::<String>()))
+                .collect()
+        };
+        let mut d = only(&a.diag, &b.diag, "first");
+        d.extend(only(&b.diag, &a.diag, "second"));
+        out.insert("diag", d);
     }
     out
 }
@@ -213,5 +186,14 @@ mod tests {
         ar.extend(body);
         let m = ar_members(&ar);
         assert!(m.contains_key("t.rcgu.o"), "{m:?}");
+    }
+
+    #[test]
+    fn diagnostics_compared_by_count() {
+        let line = |t: &str| format!(r#"{{"reason":"compiler-message","package_id":"path+file:///x#a@0.1.0","target":{{"name":"a"}},"message":{{"rendered":"{t}"}}}}"#);
+        let a = collect(&format!("{}\n{}", line("w"), line("w")), Path::new("/t"));
+        let b = collect(&line("w"), Path::new("/t"));
+        assert_eq!(compare(&a, &b)["diag"], vec![r#"a only in the first: "w""#]);
+        assert!(compare(&a, &a).is_empty());
     }
 }

@@ -21,6 +21,6 @@ rebuild, a query reached earlier (while checking what can be reused) hits the mi
 outside that loop, and the first fatal error ends the session. Any fatal error reached in a
 different order would do the same.
 
-**How mirth found it.** `rustc/ui-fuzz.py` over rustc's UI tests, after an edit renamed the lang
+**How mirth found it.** `mirth-lab ui-fuzz` over rustc's UI tests, after an edit renamed the lang
 item. Such differences (the rebuild's diagnostics a subset of the clean build's, each missing
 line repeating a message the rebuild has) are labelled known since.

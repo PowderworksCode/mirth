@@ -27,10 +27,12 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
+use rand::rngs::StdRng;
+use rand::{Rng as _, SeedableRng};
 use serde_json::Value;
 
 use super::flag_model::{self, to_json_indent1, Opt};
-use mirth_lab::artifacts::{self, py_repr, Collected};
+use mirth_lab::artifacts::{self, Collected};
 use mirth_lab::mutations;
 use mirth_lab::rustc::{run_command, Exit};
 
@@ -103,6 +105,28 @@ pub fn slice(spec: &str, n: usize) -> Vec<usize> {
         }
     };
     (at(lo, 0)..at(hi, n)).collect()
+}
+
+/// Python's repr of a string, as the findings have always shown texts.
+pub fn py_repr(s: &str) -> String {
+    let q = if s.contains('\'') && !s.contains('"') { '"' } else { '\'' };
+    let mut out = String::from(q);
+    for c in s.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if c == q => {
+                out.push('\\');
+                out.push(c);
+            }
+            c if (c as u32) < 0x20 || c as u32 == 0x7f => out.push_str(&format!("\\x{:02x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push(q);
+    out
 }
 
 /// Python's repr of a JSON value (lists of strings and numbers, None).
@@ -253,7 +277,7 @@ impl Walk<'_> {
     }
 
     /// Apply `n` random edits to the fixture's sources; returns the unified diff.
-    fn edit(&self, src: &Path, rng: &mut fastrand::Rng, n: usize) -> String {
+    fn edit(&self, src: &Path, rng: &mut StdRng, n: usize) -> String {
         let mut diff = String::new();
         for k in 0..n {
             let mut paths: Vec<PathBuf> = walkdir::WalkDir::new(src)
@@ -267,9 +291,9 @@ impl Walk<'_> {
                 break;
             }
             for _ in 0..20 {
-                let path = &paths[rng.usize(..paths.len())];
-                let f = mutations::choose(rng);
-                if mutations::is_literal_edit(f) && path.file_name().is_some_and(|n| n == "build.rs") {
+                let path = &paths[rng.random_range(..paths.len())];
+                let (name, f) = mutations::pick(rng);
+                if (name == "int_literal" || name == "str_literal") && path.file_name().is_some_and(|n| n == "build.rs") {
                     continue; // stale OUT_DIR files, or a build script that loops
                 }
                 let Ok(old) = std::fs::read_to_string(path) else { continue };
@@ -352,7 +376,7 @@ impl Walk<'_> {
             findings.push("ICE in clean A".into());
         }
         if first.ok {
-            let mut rng = fastrand::Rng::with_seed(self.args.seed.wrapping_mul(1_000_003).wrapping_add(i as u64));
+            let mut rng = StdRng::seed_from_u64(self.args.seed.wrapping_mul(1_000_003).wrapping_add(i as u64));
             res.diff = Some(self.edit(&src, &mut rng, self.args.edits));
             let inc = self.build(&src, &target, &b);
             let _ = std::fs::rename(&target, &inc_target);

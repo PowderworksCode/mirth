@@ -18,6 +18,7 @@ use std::process::{Command, ExitCode};
 use std::sync::LazyLock;
 use std::time::Duration;
 
+use rand::{Rng as _, SeedableRng};
 use rayon::prelude::*;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -178,7 +179,7 @@ struct Pair {
 /// cover the most uncovered pairs. Values are indices into each domain; index 0 is the
 /// option's absence.
 fn covering_array(domains: &[Vec<Option<String>>], forbidden: &HashSet<(Option<String>, Option<String>)>, seed: u64) -> Vec<Vec<usize>> {
-    let mut rng = fastrand::Rng::with_seed(seed);
+    let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
     let n = domains.len();
     let bad = |i: usize, a: usize, j: usize, b: usize| forbidden.contains(&(domains[i][a].clone(), domains[j][b].clone()));
     let mut uncovered: HashSet<(usize, usize, usize, usize)> = HashSet::new();
@@ -197,7 +198,7 @@ fn covering_array(domains: &[Vec<Option<String>>], forbidden: &HashSet<(Option<S
     while let Some(&target) = uncovered.iter().min() {
         let (mut best, mut best_gain) = (Vec::new(), -1i64);
         for _ in 0..30 {
-            let mut row: Vec<usize> = domains.iter().map(|d| rng.usize(..d.len())).collect();
+            let mut row: Vec<usize> = domains.iter().map(|d| rng.random_range(..d.len())).collect();
             row[target.0] = target.1;
             row[target.2] = target.3;
             // repair forbidden pairs by falling back to absence

@@ -27,6 +27,7 @@ mod tools {
     pub mod scale_check;
     pub mod solver_diff;
     pub mod suggest_diff;
+    pub mod ui_fuzz;
     pub mod xlink;
 }
 
@@ -67,6 +68,8 @@ enum Check {
     ScaleCheck(tools::scale_check::Args),
     /// rustc's extern "C" lowering matches clang's for random C signatures, per target.
     AbiDiff(tools::abi_diff::Args),
+    /// Incremental rebuilds of UI tests after random edits match clean builds.
+    UiFuzz(tools::ui_fuzz::Args),
     /// Reachability over the compiler's call graph; coverage of what can run, and gap lists.
     Callgraph(tools::callgraph::Args),
     /// rustc's -C and -Z options: domains, values and pairs accepted, covering-array sizes.
@@ -102,6 +105,7 @@ fn main() -> ExitCode {
         Check::Xlink(a) => tools::xlink::run(a),
         Check::ScaleCheck(a) => tools::scale_check::run(a),
         Check::AbiDiff(a) => tools::abi_diff::run(a),
+        Check::UiFuzz(a) => tools::ui_fuzz::run(a),
         Check::Callgraph(a) => tools::callgraph::run(a),
         Check::FlagUniverse(a) => tools::flag_universe::run(a),
         Check::FlagModel(a) => tools::flag_model::run(a),
