@@ -52,6 +52,7 @@ run suggest-diff suggest-diff --rustc "$rustc" "${sweep[@]}" --work "$dir/sugges
 run opt-diff opt-diff --rustc "$rustc" --cranelift "$(rustup +$pin which rustc)" "${sweep[@]}" --work "$dir/opt-diff"
 run rewrite-diff rewrite-diff --rustc "$rustc" "${sweep[@]}" --work "$dir/rewrite-diff"
 run miri-diff miri-diff --rustc "$rustc" --miri-toolchain "$pin" "${sweep[@]}" --work "$dir/miri-diff"
+run lint-check lint-check --rustc "$rustc" "${sweep[@]}" --work "$dir/lint-check"
 run rustdoc-diff rustdoc-diff --toolchain "$pin" "${sweep[@]}" --work "$dir/rustdoc-diff"
 run instr-check instr-check --toolchain "$pin" "${sweep[@]}" --work "$dir/instr-check"
 for s in 1 2 3 4 5 6 7 8 9 10; do
