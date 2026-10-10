@@ -374,14 +374,14 @@ Ten new findings (19–28) in [`hunt.md`](hunt.md), none from the checks mirth h
 
 | check | subcommand | swept | result |
 |---|---|---|---|
-| feature-gate mutation (Part 1, item 1) | `mirth-lab gate-mutate` | 88,174 mutants of the 4,419 standalone UI tests that enable a feature (348 features; the 37 incomplete ones drawn three times as often): 35% splices of two tests with different features, 30% items moved into a generic fn, async fn, closure, anonymous const, module, trait default or inherent impl, 15% an extra incomplete gate, 20% fuzzer edits; each compiled once, under the test's flags (half), `-Znext-solver=globally` (30%) or `-Zassumptions-on-binders` (20%); about 23,000 mutants an hour on 4 cores | 482 ICEs and 16 timeouts; 197 mutants gave a signature their unmutated test does not give, in 19 signatures and 12 families. Known: #153733 (pin_ergonomics, explicit deref), #156099 (transmutability `Assume`), #151310 (blanket `CoerceUnsized`, fixed after the pin), #156410 (`#[const_continue]` to an associated const), #153735 (gca + `generic_const_exprs` "can't type-check body"), and the async-drop "insta-stable" assertion of closed #162756, still reached through `staged_api` (internal) by two other routes. Looks new: findings 40–45 (one stable-reachable, 44; one hang in the default configuration, 45) |
+| feature-gate mutation (Part 1, item 1) | `mirth-lab gate-mutate` | 88,174 mutants of the 4,419 standalone UI tests that enable a feature (348 features; the 37 incomplete ones drawn three times as often): 35% splices of two tests with different features, 30% items moved into a generic fn, async fn, closure, anonymous const, module, trait default or inherent impl, 15% an extra incomplete gate, 20% fuzzer edits; each compiled once, under the test's flags (half), `-Znext-solver=globally` (30%) or `-Zassumptions-on-binders` (20%); about 23,000 mutants an hour on 4 cores | 482 ICEs and 16 timeouts; 197 mutants gave a signature their unmutated test does not give, in 19 signatures and 12 families. Known: #153733 (pin_ergonomics, explicit deref), #156099 (transmutability `Assume`), #151310 (blanket `CoerceUnsized`, fixed after the pin), #156410 (`#[const_continue]` to an associated const), #153735 (gca + `generic_const_exprs` "can't type-check body"), and the async-drop "insta-stable" assertion of closed #162756, still reached through `staged_api` (internal) by two other routes. Looks new: findings 50–55 (one stable-reachable, 44; one hang in the default configuration, 45) |
 
 `gate-mutate` keeps each signature's smallest mutant, reduces it (top-level items, brace blocks,
 runs of lines; a step may not introduce E0658), checks the reduced file alone (with `--test`
 when the source test uses the harness) and searches rust-lang/rust's issues for the message
 (`--triage`); the search only proposes candidates, which were read by hand. Signatures are the
 panic's location and the first query on the stack, or a delayed bug's message, so one bug can
-show as several signatures (finding 40 as six).
+show as several signatures (finding 50 as six).
 
 ## Running the checks
 
