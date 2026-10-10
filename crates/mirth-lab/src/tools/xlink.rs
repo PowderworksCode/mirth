@@ -126,6 +126,8 @@ fn one(args: &Args, probe: &Path, target: &str) -> Res {
     };
     let result = if exit == Exit::Code(0) {
         "ok"
+    } else if exit == Exit::Timeout {
+        "timeout"
     } else if err.contains("internal compiler error") || err.contains("panicked at") {
         "ice"
     } else if err.contains("linking with") || err.contains("lld: error") {
