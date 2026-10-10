@@ -6,7 +6,7 @@ solver everywhere, since #160895), checked against the tracking issue
 affected-crates tables and the "unintended breakage" list), rust-lang/rust issues and
 rust-lang/trait-system-refactor-initiative (tsri) issues, on 2026-10-10.
 
-Sources: the UI-test solver differential ([`solver.md`](solver.md), `rustc/solver-diff.py`:
+Sources: the UI-test solver differential ([`solver.md`](solver.md), `mirth-lab solver-diff`:
 26 tests accepted by the old solver and rejected by the new, 3 crashes), the internal-checks sweep
 (findings 22 and 23), release-to-release (finding 27).
 
@@ -30,7 +30,7 @@ Sources: the UI-test solver differential ([`solver.md`](solver.md), `rustc/solve
 | F | higher-ranked associated type no longer guides inference (`escaping-bounds`; `diskann-wide`) | 1 + crate | yes | #160895, tsri#168: intended | low | surrealdb as an affected project on #160895 |
 | G | type alias `impl Trait`: "does not constrain", a cycle | 2 | no | #160895: RPIT/TAIT handling changed | low | no |
 | H | `fn_delegation` with `impl Trait` returns: E0282 | 1 | no (incomplete) | no | low | optional |
-| I | a help suggestion containing inference variables: "consider casting both fn items to fn pointers using `as fn(?0t) -> ?0t`" (`fn/fn_def_opaque_coercion_to_fn_ptr.rs`; the old solver gives no such help) | 1 | yes | no | low | optional (found by `diag-check.py`) |
+| I | a help suggestion containing inference variables: "consider casting both fn items to fn pointers using `as fn(?0t) -> ?0t`" (`fn/fn_def_opaque_coercion_to_fn_ptr.rs`; the old solver gives no such help) | 1 | yes | no | low | optional (found by `mirth-lab diag-check`) |
 | 22 | debug assertion `!type_outlives.has_non_rigid_aliases()` in region outlives | 5 | some | sibling of closed #160206 | low | optional: debug builds only, but an invariant broken |
 | 23 | integer overflow in `ty/instance.rs:421` (`recursion/issue-83150.rs`) | 1 | yes | no | low | optional |
 

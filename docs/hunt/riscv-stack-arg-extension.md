@@ -1,7 +1,7 @@
 # riscv64 and loongarch64: integer arguments passed on the stack are not sign-extended
 
 Facts for finding 19. Found by the ABI differential ([`checks.md`](../checks.md), check 14:
-`rustc/abi-diff.py`, rustc's `extern "C"` lowering against clang's for random C signatures).
+`mirth-lab abi-diff`, rustc's `extern "C"` lowering against clang's for random C signatures).
 
 ## What happens
 

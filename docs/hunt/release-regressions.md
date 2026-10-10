@@ -1,6 +1,6 @@
 # Regressions in real crates, nightly-2026-07-18 to nightly-2026-10-06
 
-Facts for findings 26 and 27. Found by the release-to-release check (`rustc/release-diff.py`,
+Facts for findings 26 and 27. Found by the release-to-release check (`mirth-lab release-diff`,
 [`checks.md`](../checks.md) check 2): `cargo check --locked` of 87 popular repositories
 (`~/proofhouse-repos/rust`) under both nightlies. 53 behave the same, 18 fail on both, 10 could not
 fetch their locked dependencies. Of the 5 regressions, two are `allocative 0.3.4`, which enables

@@ -1,6 +1,6 @@
 # An invalid constant is accepted when its unused reference sits in a generic function
 
-Facts for finding 25. Found by the equivalent-rewrite differential (`rustc/rewrite-diff.py`, the
+Facts for finding 25. Found by the equivalent-rewrite differential (`mirth-lab rewrite-diff`, the
 `generic-wrap` rewrite: a function's body moved into a generic inner function called with
 `()`) on `tests/ui/consts/interior-mut-const-via-union.rs`.
 
@@ -68,4 +68,4 @@ parameter it gives E0080 at every level.
 
 ## Local stopgap
 
-None; not an incremental difference. `rewrite-diff.py` lists the test as known for `generic-wrap`.
+None; not an incremental difference. `mirth-lab rewrite-diff` lists the test as known for `generic-wrap`.

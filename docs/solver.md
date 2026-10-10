@@ -5,11 +5,11 @@ everywhere by default (`CFG_DEFAULT_NEXT_SOLVER_GLOBALLY`), while compiletest pa
 `-Znext-solver=coherence` to every UI test, so the suite checks the old solver only. Code that
 nightly users compile is therefore not what the suite checks.
 
-`rustc/ui-solver-diff.py` compiles every UI test both ways with stock nightly-2026-10-06, the way
+`rustc/ui-mirth-lab solver-diff` compiles every UI test both ways with stock nightly-2026-10-06, the way
 its `//@` headers say (tests needing auxiliary crates or another target, and tests that set
 `-Znext-solver` themselves, are left out):
 
-    rustc/ui-solver-diff.py --rustc <rustc> --tests <rust>/tests/ui --out <dir>
+    rustc/ui-mirth-lab solver-diff --rustc <rustc> --tests <rust>/tests/ui --out <dir>
 
 17,716 tests compiled both ways; **300 differ**: 271 fail either way with a different first error,
 **26 compile under the pinned solver and fail under nightly's default**, and **3 crash under the

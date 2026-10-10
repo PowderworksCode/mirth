@@ -1,6 +1,6 @@
 # Glob-import ambiguity depends on the order of items
 
-Facts for finding 28. Found by the equivalent-rewrite differential (`rustc/rewrite-diff.py`, the
+Facts for finding 28. Found by the equivalent-rewrite differential (`mirth-lab rewrite-diff`, the
 `reorder` rewrite: top-level items in reverse order, `use` items first) on
 `tests/ui/imports/ambiguous-9.rs`; the same rewrite also flips `imports/ambiguous-14.rs`
 (error → compiles) and `imports/overwrite-different-ambig-2.rs` (compiles → error).

@@ -1,6 +1,6 @@
 # rustc's internal checks on the UI tests
 
-Facts for findings 21 to 24. Found by `rustc/crash-diff.py` ([`checks.md`](../checks.md), check 19):
+Facts for findings 21 to 24. Found by `mirth-lab crash-diff` ([`checks.md`](../checks.md), check 19):
 every standalone UI test (18,624) compiled with the release compiler under test and again with a
 compiler built from the same tree with `rust.debug-assertions = true`,
 `rust.debug-assertions-std = true` and `rust.overflow-checks = true`, plus `-Zvalidate-mir`.
@@ -80,4 +80,4 @@ rust.debug-assertions-std=true --set rust.overflow-checks=true` (mirth: `~/mirth
 ## Local stopgap
 
 None: these are checks failing, not wrong output, and they do not affect mirth's incremental
-checks. `crash-diff.py` takes them as `--known` (`rustc/crash-known.txt`).
+checks. `mirth-lab crash-diff` takes them as `--known` (`rustc/crash-known.txt`).

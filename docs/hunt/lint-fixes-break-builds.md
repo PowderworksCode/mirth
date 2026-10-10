@@ -1,6 +1,6 @@
 # Machine-applicable lint fixes that break builds
 
-Facts for finding 29. Found by the suggestions-apply check (`rustc/suggest-diff.py`, check 18 in
+Facts for finding 29. Found by the suggestions-apply check (`mirth-lab suggest-diff`, check 18 in
 [`checks.md`](../checks.md)): every `MachineApplicable` suggestion of every UI test without
 `//@ run-rustfix` (17,945 tests, 7,385 suggestions), each applied alone and compiled again. A
 lint's machine-applicable fix is what `cargo fix` and `cargo clippy --fix` apply without asking;

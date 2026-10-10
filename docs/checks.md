@@ -210,7 +210,7 @@ partly covered by checks 1, 9 and 17.
 UB (#160670, #160669), and diagnostic differences between the solvers (#162919). The check:
 compile everything with `-Znext-solver=globally` and with the old solver, and with NLL and
 `-Zpolonius=next`. Compare the verdicts and error codes, and run one-sided acceptances under
-Miri. **The cheapest check here: `ui-solver-diff.py` already does half of it**
+Miri. **The cheapest check here: `ui-mirth-lab solver-diff` already does half of it**
 ([solver.md](solver.md)).
 
 ### 10. Scaling and budgets (31)
@@ -316,7 +316,7 @@ Ordered by bugs caught per unit of effort, and by what mirth already has:
 
 1. **Optimization and pass differential** (45). It extends the option matrix with a run step.
    Two afternoons.
-2. **Solver differential** (32, plus up to 73 ICEs). It is `ui-solver-diff.py` plus Polonius,
+2. **Solver differential** (32, plus up to 73 ICEs). It is `ui-mirth-lab solver-diff` plus Polonius,
    and the next solver as a configuration column for the whole corpus.
 3. **Miri differential** (52). It runs Miri over the run-pass tests, then once per MIR pass.
 4. **Equivalent rewrites in ui-fuzz** (63). Four rewrites to start with.
@@ -351,13 +351,13 @@ over the standalone UI tests at the pin (and real crates for release-to-release)
 
 | check | script | swept | result |
 |---|---|---|---|
-| optimization and pass differential | `opt-diff.py` | 3,217 runnable tests × 13 configurations (opt levels, MIR opt levels, LTO, target CPU, Cranelift) | nothing; Cranelift's gaps (tail calls, some linkages and SIMD intrinsics) noted |
-| solver differential | `solver-diff.py` | 17,634 tests × old/new solver × NLL/Polonius | the 26 rejections and 3 crashes of [`solver.md`](solver.md); Polonius agrees with NLL everywhere |
-| Miri differential | `miri-diff.py` | 3,094 runnable tests at MIR opt levels 0, 2, 4 and natively | nothing; tests asserting unspecified behavior (function pointer equality, ZST addresses) listed |
-| equivalent rewrites | `mirth-rewrite` + `rewrite-diff.py` | 18,624 tests × generic-wrap, alias, reorder, unused | findings 25 (generic-wrap) and 28 (reorder) |
-| ABI vs clang | `abi-diff.py` | 21 main targets × 10 seeds × 300 random signatures | findings 19 and 20; #163911 reproduced; i686 MSVC small-struct returns and a PowerPC64 `inreg` float undecided |
-| internal checks on | `crash-diff.py` + a debug-assertions compiler | 18,624 tests with `-Zvalidate-mir` | findings 21–24 (17 tests) |
-| release-to-release | `release-diff.py` | 87 real repositories, nightly-2026-07-18 → 10-06 | findings 26 and 27; `allocative` (unstable features) noted |
+| optimization and pass differential | `mirth-lab opt-diff` | 3,217 runnable tests × 13 configurations (opt levels, MIR opt levels, LTO, target CPU, Cranelift) | nothing; Cranelift's gaps (tail calls, some linkages and SIMD intrinsics) noted |
+| solver differential | `mirth-lab solver-diff` | 17,634 tests × old/new solver × NLL/Polonius | the 26 rejections and 3 crashes of [`solver.md`](solver.md); Polonius agrees with NLL everywhere |
+| Miri differential | `mirth-lab miri-diff` | 3,094 runnable tests at MIR opt levels 0, 2, 4 and natively | nothing; tests asserting unspecified behavior (function pointer equality, ZST addresses) listed |
+| equivalent rewrites | `mirth-rewrite` + `mirth-lab rewrite-diff` | 18,624 tests × generic-wrap, alias, reorder, unused | findings 25 (generic-wrap) and 28 (reorder) |
+| ABI vs clang | `mirth-lab abi-diff` | 21 main targets × 10 seeds × 300 random signatures | findings 19 and 20; #163911 reproduced; i686 MSVC small-struct returns and a PowerPC64 `inreg` float undecided |
+| internal checks on | `mirth-lab crash-diff` + a debug-assertions compiler | 18,624 tests with `-Zvalidate-mir` | findings 21–24 (17 tests) |
+| release-to-release | `mirth-lab release-diff` | 87 real repositories, nightly-2026-07-18 → 10-06 | findings 26 and 27; `allocative` (unstable features) noted |
 
 Ten new findings (19–28) in [`hunt.md`](hunt.md), none from the checks mirth had before.
 
@@ -365,7 +365,24 @@ Ten new findings (19–28) in [`hunt.md`](hunt.md), none from the checks mirth h
 
 | check | script | swept | result |
 |---|---|---|---|
-| suggestions apply (18) | `suggest-diff.py` | 17,945 tests without `run-rustfix`, 7,385 machine-applicable suggestions applied one at a time | finding 29: 111 lint fixes break builds (six shapes reduced); error-recovery suggestions that leave the error or do not parse noted |
-| diagnostic invariants (13) | `diag-check.py` | 18,374 tests | finding 30: debug output in two diagnostics; spans all in bounds |
-| determinism (15) | `repro-diff.py` | 6,886 tests × repeat, other directory with `--remap-path-prefix`, `-Zthreads=8`, decoy `-L` library | nothing new: only `-Zthreads` differences, all in the known async fn (#162202) and RPIT (#163878) families |
-| feature gates (17) | `gate-check.py` | 143 unstable attributes × 14 positions; 156 unstable library items with resolvable paths × use, renamed use, glob, impl, value, type | every library spelling gated; finding 31 (an ICE after the gate error for `#[rustc_main]` on non-functions); `#[feature]` outside the crate root only warns (intended) |
+| suggestions apply (18) | `mirth-lab suggest-diff` | 17,945 tests without `run-rustfix`, 7,385 machine-applicable suggestions applied one at a time | finding 29: 111 lint fixes break builds (six shapes reduced); error-recovery suggestions that leave the error or do not parse noted |
+| diagnostic invariants (13) | `mirth-lab diag-check` | 18,374 tests | finding 30: debug output in two diagnostics; spans all in bounds |
+| determinism (15) | `mirth-lab repro-diff` | 6,886 tests × repeat, other directory with `--remap-path-prefix`, `-Zthreads=8`, decoy `-L` library | nothing new: only `-Zthreads` differences, all in the known async fn (#162202) and RPIT (#163878) families |
+| feature gates (17) | `mirth-lab gate-check` | 143 unstable attributes × 14 positions; 156 unstable library items with resolvable paths × use, renamed use, glob, impl, value, type | every library spelling gated; finding 31 (an ICE after the gate error for `#[rustc_main]` on non-functions); `#[feature]` outside the crate root only warns (intended) |
+
+## Running the checks
+
+The checks are subcommands of `mirth-lab` (`crates/mirth-lab`; `mirth-lab --help` lists them):
+
+```sh
+cargo build --release -p mirth-lab
+R=~/mirth-work/campaign/rustc/bin/rustc T=~/mirth-work/rust/tests/ui
+target/release/mirth-lab opt-diff --rustc $R --cranelift "$(rustup +nightly-2026-10-06 which rustc)" --tests $T --work <dir>
+target/release/mirth-lab solver-diff --rustc $R --tests $T --work <dir>
+target/release/mirth-lab abi-diff --rustc $R --rust ~/mirth-work/rust --work <dir> --seed 3
+target/release/mirth-lab release-diff --corpus ~/proofhouse-repos/rust --old nightly-2026-07-18 --new nightly-2026-10-06 --work <dir>
+```
+
+Sweeps over UI tests share `--tests`, `--work`, `--only`, `--known`, `--jobs`, `--recheck` and
+`--pause-on-finding` (exit 3 at the first finding: the frontier loop). Results go to
+`<work>/results.jsonl`, findings to `<work>/findings/<test>/`.

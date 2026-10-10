@@ -1,7 +1,7 @@
 # RISC-V and LoongArch: a struct of a float and a pointer goes in the wrong registers
 
 Facts for finding 20. Found by the ABI differential ([`checks.md`](../checks.md), check 14:
-`rustc/abi-diff.py`).
+`mirth-lab abi-diff`).
 
 ## What happens
 
