@@ -54,7 +54,7 @@ programs that fail to compile, built incrementally, will.
 
 ## With option configurations
 
-`rustc/coverage-flags.py` builds sink once per row of a pairwise transitions table (clean with
+`mirth-lab coverage-flags` builds sink once per row of a pairwise transitions table (clean with
 the row's A options, then rebuilt after one random edit with its B options). 60 rows, 1,586
 rustc processes in all with the run above: **30,657 functions (42.8%)**. The largest gains: MIR
 optimization passes (+460, from `-Copt-level` and `-Zmir-opt-level`), `rustc_trait_selection`

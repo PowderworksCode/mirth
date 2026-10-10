@@ -154,7 +154,7 @@ MIRTH_RUNTIME=$WORK/build-cg/mirth-runtime/libmirth_runtime.rlib MIRTH_WATCH=cg.
 1. **Saturate with generators** (cheap, broad). Next: the dumps over all 18,553 runnable UI
    tests instead of 300; ui-fuzz and `tests/incremental` under `RUSTC_VERIFY_REUSE`; every
    `rustc --explain` example compiled; rustdoc over the UI tests (`rustdoc --document-private-items`,
-   `--output-format json`, `--test`); target × option combinations (PICT, as `flag-model.py`).
+   `--output-format json`, `--test`); target × option combinations (PICT, as `mirth-lab flag-model`).
    Measure each with `coverage-report.sh` and keep the ones that add.
 2. **Tighten the denominator** where the graph says reachable but nothing can run it. For each
    suspicious class, `--why` a sample: if the chain has a spurious step (a demand nothing really

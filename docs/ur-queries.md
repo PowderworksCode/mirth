@@ -129,7 +129,7 @@ every site was triaged; what was:
 **Three untracked options that change reused output.** `optionRead`, joined with the
 options marked `[UNTRACKED]`, gave 74 such options read outside the session and the
 driver. Most only affect linking, which runs every session, or debugging output. To test
-the rest without judging each by hand, [`rustc/audit-options.py`](../rustc/audit-options.py)
+the rest without judging each by hand, [`mirth-lab audit-options`](../crates/mirth-lab/src/tools/audit_options.rs)
 builds a crate incrementally without an option, then with it, and compares with a clean
 build that has it, as a comment on rust-lang/rust#84232 ("Audit all UNTRACKED options",
 open since 2021) suggests. Of 50 boolean options, three change what an incremental session

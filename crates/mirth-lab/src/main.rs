@@ -7,14 +7,22 @@ use clap::{Parser, Subcommand};
 
 mod tools {
     pub mod abi_diff;
+    pub mod audit_options;
     pub mod callgraph;
     pub mod coverage;
     pub mod coverage_compact;
+    pub mod coverage_flags;
     pub mod coverage_generators;
     pub mod crash_diff;
     pub mod diag_check;
     pub mod fuzz;
     pub mod fuzz_replay;
+    pub mod flag_fuzz;
+    pub mod flag_min;
+    pub mod flag_model;
+    pub mod flag_rows;
+    pub mod flag_universe;
+    pub mod flag_walk;
     pub mod gate_check;
     pub mod grammar_coverage;
     pub mod instr_check;
@@ -73,6 +81,20 @@ enum Check {
     UiFuzz(tools::ui_fuzz::Args),
     /// Reachability over the compiler's call graph; coverage of what can run, and gap lists.
     Callgraph(tools::callgraph::Args),
+    /// rustc's -C and -Z options: domains, values and pairs accepted, covering-array sizes.
+    FlagUniverse(tools::flag_universe::Args),
+    /// A PICT model of the option universe (optionally of transitions, for a Cargo build).
+    FlagModel(tools::flag_model::Args),
+    /// Compile a trivial crate per PICT row; count the rejected rows by first error.
+    FlagRows(tools::flag_rows::Args),
+    /// Option transitions between incremental sessions: the rebuild must match a clean build.
+    FlagWalk(tools::flag_walk::Args),
+    /// Delta-debug the options of a flag walk's failing rows to a minimal set per error.
+    FlagMin(tools::flag_min::Args),
+    /// The fuzzer under the option configurations of a PICT table.
+    FlagFuzz(tools::flag_fuzz::Args),
+    /// [UNTRACKED] options must not change what incremental compilation reuses.
+    AuditOptions(tools::audit_options::Args),
     /// Which of the compiler's functions ran, per crate and file, from coverage logs.
     Coverage(tools::coverage::Args),
     /// Fold coverage logs into a running union as they finish, and delete them.
@@ -89,6 +111,8 @@ enum Check {
     FuzzReplay(tools::fuzz_replay::Args),
     /// A crate's git history through incremental builds, each compared with a clean build.
     Replay(tools::replay::Args),
+    /// Coverage of the compiler across option configurations (a fixture per PICT transitions row).
+    CoverageFlags(tools::coverage_flags::Args),
 }
 
 fn main() -> ExitCode {
@@ -110,6 +134,13 @@ fn main() -> ExitCode {
         Check::AbiDiff(a) => tools::abi_diff::run(a),
         Check::UiFuzz(a) => tools::ui_fuzz::run(a),
         Check::Callgraph(a) => tools::callgraph::run(a),
+        Check::FlagUniverse(a) => tools::flag_universe::run(a),
+        Check::FlagModel(a) => tools::flag_model::run(a),
+        Check::FlagRows(a) => tools::flag_rows::run(a),
+        Check::FlagWalk(a) => tools::flag_walk::run(a),
+        Check::FlagMin(a) => tools::flag_min::run(a),
+        Check::FlagFuzz(a) => tools::flag_fuzz::run(a),
+        Check::AuditOptions(a) => tools::audit_options::run(a),
         Check::Coverage(a) => tools::coverage::run(a),
         Check::CoverageCompact(a) => tools::coverage_compact::run(a),
         Check::CoverageGenerators(a) => tools::coverage_generators::run(a),
@@ -118,6 +149,7 @@ fn main() -> ExitCode {
         Check::Fuzz(a) => tools::fuzz::run(a),
         Check::FuzzReplay(a) => tools::fuzz_replay::run(a),
         Check::Replay(a) => tools::replay::run(a),
+        Check::CoverageFlags(a) => tools::coverage_flags::run(a),
     };
     match result {
         Ok(code) => code,

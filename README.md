@@ -58,7 +58,7 @@ EDITS=regressions rustc/edits.sh chain  # the same for the past bugs in rustc/re
 rustc/hunt.sh wide                    # repeated threaded builds, and P6 for each of fixtures/wide/edits
 mirth-lab fuzz --rustc <rustc> --fixture fixtures/sink --work <dir>      # random edits, P6 on each
 mirth-lab replay --rustc <rustc> --repo <git checkout> --work <dir>     # a crate's history, P6 per commit
-rustc/audit-options.py --rustc <rustc> --source <rust checkout> --crate fixtures/audit/lib.rs  # untracked options
+mirth-lab audit-options --rustc <rustc> --source <rust checkout> --crate fixtures/audit/lib.rs  # untracked options
 ```
 
 The build takes about an hour on 16 cores. `rustc/rmeta.toml` says what is

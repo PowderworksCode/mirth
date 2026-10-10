@@ -70,7 +70,7 @@ pub struct Diagnostics {
     pub paths: bool,
     /// Write each body's outgoing edges to `<crate>.graph` beside the site table: direct calls,
     /// functions and closures used as values, and callees MIR inlining merged in; and, for a
-    /// method implementing a trait's, which trait item (rustc/callgraph.py reads them).
+    /// method implementing a trait's, which trait item (`mirth-lab callgraph` reads them).
     #[serde(default)]
     pub callgraph: bool,
 }

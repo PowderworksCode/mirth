@@ -1,4 +1,4 @@
-//! A crate for rustc/audit-options.py: generic code, code of its own for codegen
+//! A crate for mirth-lab audit-options: generic code, code of its own for codegen
 //! options to change, a closure, a static, and warnings for diagnostic options.
 
 use std::collections::BTreeMap;

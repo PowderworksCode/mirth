@@ -83,7 +83,7 @@ warnings and keeps its full build.
 A tool that does this for every untracked boolean option, comparing metadata, each rlib
 member (object names have their incremental session suffix removed, since the objects are
 otherwise identical), diagnostics and files written, is
-[`rustc/audit-options.py`](../../rustc/audit-options.py) in mirth:
+[`mirth-lab audit-options`](../../crates/mirth-lab/src/tools/audit_options.rs) in mirth:
 
 ```text
 (control: no option)                     same
