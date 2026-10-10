@@ -27,20 +27,20 @@ lab=$here/../target/release/mirth-lab
 want() { [ -z "${ONLY:-}" ] || [[ " $ONLY " == *" $1 "* ]]; }
 done_already() { [ -e "$COV_SUITES/$1/done" ]; }
 
-if want ui && ! done_already ui; then
-  "$here/coverage-run.sh" ui "$lab" diag-check --rustc "$R" --tests "$T" --jobs "$jobs" --work "$scratch/ui"
-fi
 if want incremental && ! done_already incremental; then
   RUST_TEST_THREADS=$jobs MIRTH_RUST=$rust BUILD_DIR=$build \
     "$here/coverage-suites.sh" "$COV_SUITES" incremental tests/incremental
 fi
-if want threads && ! done_already threads; then
-  "$here/coverage-run.sh" threads "$lab" repro-diff --rustc "$R" --tests "$T" --variants threads --jobs "$jobs" --work "$scratch/threads"
+if want ui && ! done_already ui; then
+  "$here/coverage-run.sh" ui "$lab" diag-check --rustc "$R" --tests "$T" --jobs "$jobs" --work "$scratch/ui"
 fi
 if want opt && ! done_already opt; then
   "$here/coverage-run.sh" opt "$lab" opt-diff --rustc "$R" --tests "$T" --configs O2,O3-mir4 --jobs "$jobs" --work "$scratch/opt"
 fi
 
+if want threads && ! done_already threads; then
+  "$here/coverage-run.sh" threads "$lab" repro-diff --rustc "$R" --tests "$T" --variants threads --jobs "$jobs" --work "$scratch/threads"
+fi
 suites=()
 for d in "$COV_SUITES"/*/; do [ -s "$d/union.txt" ] && suites+=("$d"); done
 hits=(); dims=()

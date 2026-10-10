@@ -209,3 +209,96 @@ logs the same way.
 can run (81.2%); without the 911 that only panic, 50,715 of 61,605 (82.3%).**
 `rustc/coverage-report.sh` recomputes this; `mirth-lab callgraph --gaps <file>` lists the rest
 by crate and file, largest first. What is left, and the plan for it: [coverage-handoff.md](coverage-handoff.md).
+
+## Beyond blocks
+
+[`coverage-plan.md`](coverage-plan.md) names two blind spots of block coverage: a block reached
+from several predecessors does not say which way a switch went, and a generic body (the query
+engine, the dependency graph) is one site for every query that runs through it. A second
+instrumented compiler measures the dimensions that close them
+(`rustc/build-dims.sh`: `rustc/coverage-dims.toml` and
+[`hunt/coverage-dims.patch`](hunt/coverage-dims.patch) on the campaign's patch series, built
+into `build-cov2` from a separate source tree). It records everything `build-blk` does, with the
+same site identities, plus:
+
+| dimension | how | site table | per process |
+|---|---|---|---|
+| branch arms | mirth-watch splits each `SwitchInt` edge into a block other paths reach too, with a `cover` call | 61,020 `arm` rows (58,903 with a site of their own) | `V` lines, like blocks |
+| configuration arms | the switch's discriminant traced back (copies, casts, negations, comparisons) to a `Features::<gate>()` accessor, a `read_<option>()` getter, an edition check, a `Target`/`TargetOptions` field or a session query; every arm of such a switch is listed (an arm into a block only it reaches is that block's site) | 2,563 arms tagged | none |
+| keyed engine paths | `[[coverage.keyed]]`: the query engine and the per-query plumbing keyed by the vtable's `dep_kind`, read at entry; each block reports `site ^ mix(key)` | 7,070 `keyed` rows, 1,247 `keyenum` (variant names) | `K` lines, about 8k |
+| incremental transitions | the dependency graph keyed by the `DepNode`'s kind | (in the above) | |
+| feature gates consulted | each `Features::<gate>()` accessor keyed by its return value | (in the above) | |
+| type kinds | layout, ABI, coercion, const eval and `ty::util` keyed by the `TyKind` of their first `Ty` argument, read through the interned pointer | (in the above) | |
+| call pairs | at each function's entry, the instrumented function running on the thread (a thread-local set at entry, restored at returns) | none | `D` lines, about 30k |
+| MIR pass effect | `RUSTC_PASS_EFFECT`: each body's blocks and locals hashed (spans aside) before and after each pass | none | a `.passes` file |
+| lock contention | `RUSTC_LOCK_CONTENTION`: `Lock::lock` tries first and records the `#[track_caller]` site it found held | none | a `.locks` file under `-Zthreads` |
+
+Cost: about twice `build-blk`'s compile time (an iterator-chain stress test: 25 s against 12.6 s
+user time; `build-blk` is itself slower than a plain compiler) and 130 MB more memory, mostly the
+call-pair table and the keyed functions on hot type utilities; logs grow by about 70%. The
+compiler crates build in about 10 minutes at `-j8` from a warm build directory.
+
+Four suites, through `rustc/coverage-dims-suites.sh` (`--jobs 4`, 2026-10-10, 1 h 30 min):
+`tests/incremental` through compiletest (180 tests), every standalone UI test compiled once
+(`diag-check`, 18,374), every UI test again under `-Zthreads=8` (`repro-diff --variants threads`,
+7,106), and the run-pass tests at `-Copt-level=2` and `-Copt-level=3 -Zmir-opt-level=4`
+(`opt-diff --configs O2,O3-mir4`, 3,341). Reports: `~/mirth-work/cov-dims/coverage-report.txt`,
+`gaps-arms.md`, and the two copied here, [`coverage-dims.md`](coverage-dims.md) and
+[`coverage-config.md`](coverage-config.md).
+
+**Arms.** On the same runs, 70.2% of the blocks in reachable functions ran (panic-only blocks
+aside) but only 50.0% of the arms into shared blocks (24,837 of 49,632). Block coverage hides
+most in the crates where error recovery joins back into the main path:
+
+| crate | blocks | arms into shared blocks |
+|---|---:|---:|
+| rustc_hir_typeck | 87.9% | 62.0% (3,648 arms) |
+| rustc_hir_analysis | 82.4% | 53.0% (2,744) |
+| rustc_trait_selection | 75.9% | 47.3% (3,819) |
+| rustc_borrowck | 75.5% | 49.1% (2,400) |
+| rustc_middle | 64.7% | 60.4% (3,316) |
+| rustc_codegen_ssa | 53.7% | 38.6% (1,427) |
+| rustc_target | 23.6% | 4.2% (5,710: per-target ABI code) |
+
+**Configuration arms.** 142 feature gates, 59 options, the edition, 71 target properties and 8
+session queries are read by switches in reachable functions. In functions that ran, these arms
+were never taken: 117 of the 788 feature-gate arms, 71 of 222 option arms, 22 of 154 edition
+arms, 659 of 1,260 target-property arms (every test runs on x86_64 Linux) and 43 of 109 session
+arms. Never taken at all, though read at 5 or more places: `feature:coroutine_clone`,
+`option:mir_include_spans`, `option:strip`, `target:llvm_abiname` (46), `target:linker_flavor`
+(24), `target:cfg_abi`, `target:env`, `target:os`, `target:endian`.
+
+**Keyed engine paths.** 1,124 engine and plumbing functions are keyed by the query. 330 of the
+338 dep kinds were seen (the 8 others are not queries: `Null`, `Red`, `SideEffect`,
+`AnonZeroDeps`, `TraitSelect`, `CompileCodegenUnit`, `CompileMonoItem`, `Metadata`). Block
+coverage counts 2,357 engine blocks as covered; per query, 49,333 (query, block) pairs were
+taken. Of the engine's paths: 293 queries ran through `execute_job_incr`, 210 were loaded from
+disk or recomputed green (`load_from_disk_or_invoke_provider_green`), 133 were forced from a dep
+node, 56 reached `ensure_can_skip_execution`, 166 waited on another thread's job, 28 handled a
+cycle, 23 checked a fed value's consistency. The queries with the most engine paths other
+queries took and they never did lead the list in [`coverage-dims.md`](coverage-dims.md).
+
+**Incremental transitions.** 25 dependency-graph functions keyed by node kind; 302 kinds seen.
+263 kinds went through `try_mark_green`, 159 through `try_force_from_dep_node`, 49 were marked
+loaded from disk, 11 had their color read with `node_color`.
+
+**Feature gates consulted.** Of the 268 `Features::<gate>()` accessors, 136 were consulted with
+the gate on and off, 9 only while on, 6 only while off (`asm_experimental_reg`,
+`cfg_contract_checks`, `cfg_sanitizer_cfi`, `freeze_impls`,
+`ref_pat_eat_one_layer_2024_structural`, `rustc_private`: code that checks the gate, reached,
+with the gate never on), and 117 never. Features checked through `Features::enabled(sym)` with
+a symbol known only at run time are not told apart.
+
+**Type kinds.** 90 functions keyed; 81 ran; every one of the 29 `TyKind`s reached at least one.
+
+**Call pairs.** 162,817 distinct pairs. Of the call graph's 122,984 direct and resolved edges
+between functions that both ran, 116,210 were taken (94.5%); 40,006 pairs are not such edges
+(function pointers, `dyn`, closures passed through code outside the compiler).
+
+**MIR pass effect.** 73 passes ran. 12 never changed a body's blocks or locals: the checking and
+lint passes (which do not change MIR by design), `MentionedItems` (it writes a field outside
+what is hashed), and one transforming pass, `SimplifyConstCondition-final`.
+
+**Lock contention.** 37 `Lock::lock` sites were found held under `-Zthreads=8`: the sharded maps
+(`sharded.rs`), the diagnostic context (`rustc_errors`), canonical instantiation in
+`rustc_infer`, and others listed in [`coverage-dims.md`](coverage-dims.md).
