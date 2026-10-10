@@ -42,7 +42,11 @@ pub struct Args {
 }
 
 /// Tests whose flags make no sense to rustdoc, or ask rustc for something rustdoc does not do.
-static SKIP_FLAG: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(--test|--print|-Zunpretty|--emit|-o$|--out-dir|-Zno-codegen)").unwrap());
+/// Matched against the flags joined by spaces (`-Z x` is two tokens). `-Zparse-crate-root-only`
+/// stops rustc after parsing, so its "accepts" means "parses".
+static SKIP_FLAG: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(^| )(--test|--print|-Z ?unpretty|--emit|-o( |$)|--out-dir|-Z ?no-codegen|-Z ?parse-crate-root-only|-Z ?parse-only)").unwrap()
+});
 /// Flags rustdoc does not take; left out (the outcome cannot depend on them).
 static DROP_FLAG: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(-O|-g)$").unwrap());
 static CRATE_TYPE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"crate_type|crate-type").unwrap());
@@ -55,6 +59,9 @@ const NOISE: &[(&str, &str)] = &[
     // `#![deny(warnings)]`: rustc does not run them.
     ("rustdoc::", "a rustdoc lint denied by the test"),
 ];
+
+/// rustdoc ICEs already reported upstream: a line of the panic, and the issue.
+const KNOWN_ICE: &[(&str, &str)] = &[("cx.impl_trait_bounds.is_empty()", "rust-lang/rust#155728 (fn_delegation)")];
 
 const AUTO_TRAITS: &[&str] = &["Send", "Sync", "Unpin", "UnwindSafe", "RefUnwindSafe"];
 
@@ -323,12 +330,17 @@ impl Render<'_> {
                     (0, Some((_, rest))) => format!("crate::{}", rest.join("::")),
                     (_, Some((_, rest))) if rest.last().is_some_and(|l| AUTO_TRAITS.contains(l) || *l == "Sized") => {
                         let l = rest.last().unwrap();
-                        if l.ends_with("UnwindSafe") { format!("::std::panic::{l}") } else { format!("::std::marker::{l}") }
+                        if l.ends_with("UnwindSafe") { format!("std::panic::{l}") } else { format!("std::marker::{l}") }
                     }
-                    (_, Some((krate, rest))) => {
-                        let krate = if matches!(*krate, "core" | "alloc") { "std" } else { krate };
-                        format!("::{krate}::{}", rest.join("::"))
+                    (_, Some((krate, rest))) if matches!(*krate, "core" | "alloc" | "std") => {
+                        // The canonical path can go through private modules (core::ops::function):
+                        // std re-exports nearly everything at its second level.
+                        match rest {
+                            [m, .., last] if rest.len() > 2 => format!("std::{m}::{last}"),
+                            _ => format!("std::{}", rest.join("::")),
+                        }
                     }
+                    (_, Some((krate, rest))) => format!("::{krate}::{}", rest.join("::")),
                     _ => {
                         self.ok = false;
                         String::new()
@@ -543,7 +555,9 @@ fn in_probe_module(test: &Test, line: usize) -> bool {
 }
 
 fn auto_trait_probes(doc: &Value, base_lines: usize) -> (String, Vec<Probe>) {
-    let mut code = String::from("\n#[allow(warnings, clippy::all)]\nmod __mirth_probe {\n");
+    // `use std;` makes `std::` paths work in every edition (2015 paths are module-relative), and
+    // `dyn std::…` parses where `dyn ::std::…` does not in 2015. It takes no line of its own.
+    let mut code = String::from("\n#[allow(warnings, clippy::all)]\nmod __mirth_probe { use std;\n");
     // The block starts with an empty line, the attribute and `mod`: the first probe is N + 4.
     let mut line = base_lines + 4;
     let mut probes = Vec::new();
@@ -560,7 +574,7 @@ fn auto_trait_probes(doc: &Value, base_lines: usize) -> (String, Vec<Probe>) {
         }
         let mut r = Render { paths, ok: true };
         // The canonical path can go through a private module (core::panic::unwind_safe).
-        let trait_path = if tname.ends_with("UnwindSafe") { format!("::std::panic::{tname}") } else { format!("::std::marker::{tname}") };
+        let trait_path = if tname.ends_with("UnwindSafe") { format!("std::panic::{tname}") } else { format!("std::marker::{tname}") };
         let for_ty = r.ty(&imp["for"]);
         let (params, mut preds) = r.generics(&imp["generics"]);
         // rustdoc leaves the type's own bounds implied; the probe must state them to name it.
@@ -642,6 +656,12 @@ fn run_probes(tools: &Tools, test: &Test, dir: &Path, code: &str, probes: &[Prob
             other.insert(line);
         }
     }
+    // Any other error (resolution, privacy) can stop rustc before it checks the probes at all:
+    // then a missing E0277 proves nothing.
+    if !other.is_empty() && probes.iter().any(|p| p.negative) {
+        notes.push("probe module broken: no verdict for the negative impls".into());
+        return None;
+    }
     if outside || c.status == Status::Ice || c.status == Status::Timeout {
         let first = diags.iter().find(|d| d.level == "error").map_or(String::new(), |d| d.message.chars().take(120).collect());
         notes.push(format!("probe compile failed outside the probes ({:?}): {first}", c.status));
@@ -666,7 +686,7 @@ fn run_probes(tools: &Tools, test: &Test, dir: &Path, code: &str, probes: &[Prob
 
 fn check(args: &Args, tools: &Tools, test: &Test) -> Rec {
     let mut rec = Rec { test: test.rel.clone(), skip: None, rustc: None, found: Vec::new(), notes: Vec::new(), probes: 0 };
-    if test.flags.iter().any(|f| SKIP_FLAG.is_match(f)) {
+    if SKIP_FLAG.is_match(&test.flags.join(" ")) {
         rec.skip = Some("flags".into());
         return rec;
     }
@@ -706,8 +726,13 @@ fn check(args: &Args, tools: &Tools, test: &Test) -> Rec {
         }
         match d.status {
             Status::Ice => {
-                rec.found.push(format!("ice ({name}): {}", ice_line(&d.stderr)));
-                files.push((format!("rustdoc-{name}.stderr"), d.stderr.into_bytes()));
+                match KNOWN_ICE.iter().find(|(pat, _)| d.stderr.contains(pat)) {
+                    Some((_, issue)) => rec.notes.push(format!("ice ({name}): known, {issue}")),
+                    None => {
+                        rec.found.push(format!("ice ({name}): {}", ice_line(&d.stderr)));
+                        files.push((format!("rustdoc-{name}.stderr"), d.stderr.into_bytes()));
+                    }
+                }
                 break;
             }
             Status::Timeout => rec.notes.push(format!("rustdoc timeout ({name})")),
