@@ -4,8 +4,8 @@
 //! `cargo check --locked --offline --workspace` of each repository in a corpus of real crates
 //! with an older and a newer toolchain (dependencies fetched first), each in its own target
 //! directory, removed afterwards. Findings: a regression (old passes, new fails), an ICE, or the
-//! new toolchain taking more than --slower times as long. A regression whose failing crate
-//! enables unstable features (`#![feature]`, often only when it detects a nightly) is noted, not
+//! new toolchain taking more than --slower times as much CPU time (wall time follows the load).
+//! A regression whose failing crate enables unstable features (`#![feature]`, often only when it detects a nightly) is noted, not
 //! reported.
 
 use std::path::{Path, PathBuf};
@@ -47,6 +47,9 @@ static FEATURE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"#!\[(cfg_attr\([
 struct Check {
     exit: Exit,
     seconds: f64,
+    /// CPU seconds of cargo and the compilers it ran; what "slower" compares, since wall time
+    /// grows with the machine's load.
+    cpu: f64,
     ice: bool,
     codes: Vec<String>,
     first: String,
@@ -83,13 +86,14 @@ fn check(args: &Args, repo: &Path, toolchain: &str) -> Check {
     let done = run_command(cmd, Duration::from_secs(args.timeout));
     let seconds = (start.elapsed().as_secs_f64() * 10.0).round() / 10.0;
     let _ = std::fs::remove_dir_all(&target);
-    let (exit, err) = match done {
-        Ok(d) => (d.exit.clone(), d.stderr_text()),
-        Err(e) => (Exit::Code(-1), e.to_string()),
+    let (exit, err, cpu) = match done {
+        Ok(d) => (d.exit.clone(), d.stderr_text(), d.cpu.unwrap_or(0.0)),
+        Err(e) => (Exit::Code(-1), e.to_string(), 0.0),
     };
+    let cpu = (cpu * 10.0).round() / 10.0;
     let first = err.lines().find(|l| ERROR_LINE.is_match(l)).unwrap_or("").chars().take(300).collect();
     let tail = if exit == Exit::Code(0) { String::new() } else { err.chars().rev().take(3000).collect::<String>().chars().rev().collect() };
-    Check { exit, seconds, ice: is_ice(&err), codes: error_codes(&err), first, tail }
+    Check { exit, seconds, cpu, ice: is_ice(&err), codes: error_codes(&err), first, tail }
 }
 
 /// The crate a first error points into, if its source enables `#![feature(...)]`.
@@ -123,8 +127,8 @@ fn one(args: &Args, repo: &Path) -> Rec {
         }
     } else if !ok(&old) && ok(&new) {
         notes.push("fixed".into());
-    } else if ok(&old) && ok(&new) && old.seconds > 5.0 && new.seconds > args.slower * old.seconds {
-        found.push(format!("slower: {}s -> {}s", old.seconds, new.seconds));
+    } else if ok(&old) && ok(&new) && old.cpu > 5.0 && new.cpu > args.slower * old.cpu {
+        found.push(format!("slower: {}s -> {}s of CPU", old.cpu, new.cpu));
     }
     if new.ice && !found.iter().any(|f| f == "ice") {
         found.push("ice".into());

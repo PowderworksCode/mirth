@@ -424,6 +424,8 @@ Ten new findings (19–28) in [`hunt.md`](hunt.md), none from the checks mirth h
 | diagnostic invariants (13) | `mirth-lab diag-check` | 18,374 tests | finding 30: debug output in two diagnostics; spans all in bounds |
 | determinism (15) | `mirth-lab repro-diff` | 6,886 tests × repeat, other directory with `--remap-path-prefix`, `-Zthreads=8`, decoy `-L` library | nothing new: only `-Zthreads` differences, all in the known async fn (#162202) and RPIT (#163878) families |
 | feature gates (17) | `mirth-lab gate-check` | 143 unstable attributes × 14 positions; 156 unstable library items with resolvable paths × use, renamed use, glob, impl, value, type | every library spelling gated; finding 31 (an ICE after the gate error for `#[rustc_main]` on non-functions); `#[feature]` outside the crate root only warns (intended) |
+| cross-target link (5) | `mirth-lab xlink` | every target rustc knows (334): `-Zbuild-std=core,alloc` and a link of a `no_std` probe with the target's linker, or `rust-lld` when it is missing | 222 link; 9 VxWorks targets ICE with `-Clinker-flavor=ld.lld` (finding 59); 4 need OS-provided `__atomic_*` builtins (NuttX, risc0: expected); the rest are this host's environment (missing C toolchains and runtimes, the MSVC CRT under `/NODEFAULTLIB`, architectures lld cannot link: csky, m68k, sparc, xtensa, ppc64 ELFv1, aarch64 ILP32) or timeouts waiting on Cargo's package lock under load |
+| scaling and budgets (10) | `mirth-lab scale-check` | 8 shapes × opt 0/2 × N up to 800: compile CPU time and memory (wait4 rusage), stack frames, future sizes | linear or better except `iter-chain`, whose over-limit rejection is slow and noisy under the new solver (finding 32, corrected: not a regression on valid code) |
 
 
 ### Third batch (2026-10-10)

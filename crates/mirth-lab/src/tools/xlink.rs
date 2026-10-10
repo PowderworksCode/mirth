@@ -38,7 +38,11 @@ pub struct Args {
 /// Targets that need more than a target name (a CPU, a linker that is not lld).
 static SKIP: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(amdgcn|nvptx|bpf|spirv)|avr-none").unwrap());
 static UNDEFINED: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"undefined symbol: (\S+)").unwrap());
-static ENV_MISSING: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"unable to find library|cannot open crt|cannot open .*\.o\b|No such file").unwrap());
+// Missing system files, or an architecture or ABI lld does not support (csky, m68k, sparc,
+// xtensa, ppc64 ELFv1, aarch64 ILP32, sparc64 relocations): this host cannot link those.
+static ENV_MISSING: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"unable to find library|cannot open crt|cannot open .*\.o\b|No such file|unsupported e_machine|ABI version 1 is not supported|unknown relocation \(\d+\)|R_SPARC_64 cannot be used").unwrap()
+});
 
 /// The parts of a target spec the link options depend on.
 #[derive(Deserialize, Default)]
@@ -77,7 +81,9 @@ fn link_flags(spec: &Spec) -> Vec<String> {
         flags.extend(["-Clink-arg=--no-entry", "-Clink-arg=--export=probe_entry"]);
     } else if spec.is_like_msvc || f.starts_with("msvc") {
         if !own_lld {
-            flags.extend(["-Clinker=rust-lld", "-Clinker-flavor=lld-link"]);
+            // A custom entry point leaves lld-link unable to infer the subsystem (UEFI targets
+            // bring their own linker and subsystem).
+            flags.extend(["-Clinker=rust-lld", "-Clinker-flavor=lld-link", "-Clink-arg=/SUBSYSTEM:CONSOLE"]);
         }
         flags.extend(["-Clink-arg=/ENTRY:probe_entry", "-Clink-arg=/NODEFAULTLIB"]);
     } else if spec.is_like_darwin || f.starts_with("darwin") {
@@ -145,6 +151,14 @@ fn one(args: &Args, probe: &Path, target: &str) -> Res {
     undefined.sort();
     undefined.dedup();
     undefined.truncate(20);
+    // Symbols the platform's C runtime provides, which the probe links without: the MSVC CRT
+    // (`/NODEFAULTLIB`: stack probes, float markers, 64-bit division, libm), and the `__atomic_*`
+    // builtins NuttX's libc supplies for cores without atomic instructions (a documented choice in
+    // those target specs).
+    let from_runtime = |u: &String| {
+        (spec.is_like_msvc && !target.ends_with("-uefi")) || u.starts_with("__atomic_")
+    };
+    let result = if result == "link-undefined" && !undefined.is_empty() && undefined.iter().all(from_runtime) { "env" } else { result };
     let first = err.lines().find(|l| l.contains("error[") || l.contains("error:")).unwrap_or("").chars().take(300).collect();
     let tail = if result == "ok" { String::new() } else { err.chars().rev().take(2500).collect::<String>().chars().rev().collect() };
     Res { result: result.into(), flags, undefined, first, tail }
