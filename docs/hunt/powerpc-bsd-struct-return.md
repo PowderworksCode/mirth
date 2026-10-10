@@ -1,6 +1,6 @@
 # 32-bit PowerPC BSDs: small structs are returned through memory, clang returns them in registers
 
-Facts for finding 42. Found by the ABI differential's assembly-level mode ([`checks.md`](../checks.md),
+Facts for finding 46. Found by the ABI differential's assembly-level mode ([`checks.md`](../checks.md),
 check 14).
 
 ## What happens

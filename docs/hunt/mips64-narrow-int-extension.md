@@ -1,6 +1,6 @@
 # mips64: narrow integer arguments are no longer sign- or zero-extended
 
-Facts for finding 40. Found by the ABI differential's assembly-level mode ([`checks.md`](../checks.md),
+Facts for finding 44. Found by the ABI differential's assembly-level mode ([`checks.md`](../checks.md),
 check 14: `mirth-lab abi-diff --asm --all`).
 
 ## What happens

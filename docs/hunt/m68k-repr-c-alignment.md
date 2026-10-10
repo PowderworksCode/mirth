@@ -1,6 +1,6 @@
 # m68k: `repr(C)` structs with `i64` or `f64` are laid out unlike GCC's
 
-Facts for finding 43. Found by the ABI differential's assembly-level mode ([`checks.md`](../checks.md),
+Facts for finding 47. Found by the ABI differential's assembly-level mode ([`checks.md`](../checks.md),
 check 14): every placement difference on m68k (480 functions over 3 seeds) involves a struct
 containing `long long` or `double`.
 

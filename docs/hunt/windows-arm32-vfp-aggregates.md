@@ -1,6 +1,6 @@
 # thumbv7a Windows: homogeneous float aggregates are not passed in VFP registers
 
-Facts for finding 41. Found by the ABI differential's assembly-level mode ([`checks.md`](../checks.md),
+Facts for finding 45. Found by the ABI differential's assembly-level mode ([`checks.md`](../checks.md),
 check 14).
 
 ## What happens
