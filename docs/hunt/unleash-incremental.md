@@ -1,6 +1,6 @@
 # `-Zunleash-the-miri-inside-of-you`: an incremental rebuild drops its warning and its feature-gate error
 
-Facts for finding 56. Found by `mirth-lab ui-incr` (P6 over the UI corpus,
+Facts for finding 58. Found by `mirth-lab ui-incr` (P6 over the UI corpus,
 [`checks.md`](../checks.md), fourth batch) on `consts/const-eval/const_fn_ptr.rs` and
 `const_fn_ptr_fail.rs`: after an edit, the incremental rebuild lacks the "skipping const checks"
 warning a clean build of the same source prints.

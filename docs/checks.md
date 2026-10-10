@@ -568,7 +568,7 @@ incremental session.
 
 | sweep | swept | result |
 |---|---|---|
-| `ui-incr` | 18,502 tests (7,249 compile, 11,236 fail as expected; 17 ICE or time out in the clean session) × 3 rebuilds, each against a clean build | finding 56; otherwise no incremental session differs from a clean one: no output byte, program output or diagnostic difference |
+| `ui-incr` | 18,502 tests (7,249 compile, 11,236 fail as expected; 17 ICE or time out in the clean session) × 3 rebuilds, each against a clean build | finding 58; otherwise no incremental session differs from a clean one: no output byte, program output or diagnostic difference |
 | `diag-check --compiler-checks` | 18,374 tests, each a clean incremental session recomputing every cached value | no recomputed value differs; no new untracked read |
 | `gate-mutate --compiler-checks` | 3,000 mutants | nothing reported by the checks |
 
