@@ -81,9 +81,10 @@ plans most of what they lacked:
 The same approach, applied to bugs rustc has already fixed: the bugs behind mirth's
 properties ([`motivating.md`](motivating.md)). [`ur/rustc/ClosedBugs.rsc`](../ur/rustc/ClosedBugs.rsc)
 has one query per bug's pattern, each generalized as far as it still finds the code its
-fix changed. [`ur/verify-closed.py`](../ur/verify-closed.py) checks that: for each bug it
+fix changed. `mirth-lab verify-closed <ur binary>` checks that: for each bug it
 fetches the files the fixing PR changed, as they were before the fix, runs the query, and
-looks for the site.
+looks for the site. It needs `ur rewrite --classify --report`, which the current Ur
+(`~/.ur/bin/ur`, 2026-10-10) no longer has; the table below is from the last Ur that did.
 
 | bug | query | the pattern | finds the fixed site |
 |---|---|---|---|
@@ -129,7 +130,7 @@ every site was triaged; what was:
 **Three untracked options that change reused output.** `optionRead`, joined with the
 options marked `[UNTRACKED]`, gave 74 such options read outside the session and the
 driver. Most only affect linking, which runs every session, or debugging output. To test
-the rest without judging each by hand, [`rustc/audit-options.py`](../rustc/audit-options.py)
+the rest without judging each by hand, [`mirth-lab audit-options`](../crates/mirth-lab/src/tools/audit_options.rs)
 builds a crate incrementally without an option, then with it, and compares with a clean
 build that has it, as a comment on rust-lang/rust#84232 ("Audit all UNTRACKED options",
 open since 2021) suggests. Of 50 boolean options, three change what an incremental session

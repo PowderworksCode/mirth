@@ -9,7 +9,7 @@
 # <dir>/rustc at the patched toolchain, and rerun with --recheck: the rows with findings run
 # again first, then everything not yet walked.
 #
-# Needs PICT (PICT=..., default ~/mirth-work/tools/pict/pict) and flag-universe.py's results
+# Needs PICT (PICT=..., default ~/mirth-work/tools/pict/pict) and `mirth-lab flag-universe`'s results
 # (FLAGS=..., default ~/mirth-work/flags).
 set -u
 D=$(cd "$1" && pwd); shift
@@ -20,7 +20,7 @@ FIXTURE=${FIXTURE:-$here/../fixtures/sink}
 cd "$D"
 
 model() { # name subset
-  [ -f "$1.txt" ] || python3 "$here/flag-model.py" "$FLAGS" "$2" "$1.txt" --transitions --cargo --allow-known > /dev/null
+  [ -f "$1.txt" ] || "$here/../target/release/mirth-lab" flag-model "$FLAGS" "$2" "$1.txt" --transitions --cargo --allow-known > /dev/null
 }
 table() { # model strength seed
   t="$1-t$2-r$3.tsv"
@@ -30,7 +30,7 @@ table() { # model strength seed
 walk() { # table edits seed [flag-walk options]
   local tab=$1 edits=$2 seed=$3; shift 3
   w="walk-${tab%.tsv}-e$edits"
-  python3 "$here/flag-walk.py" --rustc "$D/rustc/bin/rustc" --fixture "$FIXTURE" --flags "$FLAGS" \
+  "$here/../target/release/mirth-lab" flag-walk --rustc "$D/rustc/bin/rustc" --fixture "$FIXTURE" --flags "$FLAGS" \
     --table "$tab" --work "$w" --workers 10 --edits "$edits" --seed "$seed" --pause-on-finding "$@" \
     > "$w.log" 2>&1
   echo "$(date +%T) $w $(tail -1 "$w.log")" | tee -a campaign.log

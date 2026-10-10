@@ -1,6 +1,6 @@
 # The compiler's call graph: every body in the compiler's own crates (and rustdoc, a second
 # entry point into them: build with WITH_RUSTDOC=1) writes its calls and
-# references to <crate>.graph (rustc/callgraph.py reads them, with rustc/coverage.toml's sites).
+# references to <crate>.graph (`mirth-lab callgraph` reads them, with rustc/coverage.toml's sites).
 [scope]
 crates = ["rustc_*", "rustdoc"]
 

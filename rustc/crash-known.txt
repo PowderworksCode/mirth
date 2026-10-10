@@ -1,0 +1,17 @@
+async-await/issue-86507.rs
+consts/const-eval/simd/insert_extract.rs
+pattern/usefulness/impl-trait.rs
+recursion/issue-83150.rs
+simd/intrinsic/generic-arithmetic-saturating-2.rs
+simd/intrinsic/generic-gather-scatter.rs
+simd/intrinsic/generic-select.rs
+simd/intrinsic/generic-shuffle.rs
+simd/intrinsic/inlining-issue67557-ice.rs
+simd/masked-load-store-build-fail.rs
+simd/monomorphize-shuffle-index.rs
+simd/shuffle.rs
+type-alias-impl-trait/implied_bounds2.rs
+type-alias-impl-trait/implied_lifetime_wf_check3.rs
+type-alias-impl-trait/implied_lifetime_wf_check4_static.rs
+type-alias-impl-trait/unbounded_opaque_type.rs
+unsized-locals/unsized-exprs2.rs

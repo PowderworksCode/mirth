@@ -1,0 +1,12 @@
+[package]
+name = "mirth-rewrite"
+description = "Meaning-preserving rewrites of a Rust file, for metamorphic testing of rustc"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+syn = { version = "2.0.119", features = ["full", "visit-mut", "extra-traits"] }
+quote = "1"
+proc-macro2 = "1"

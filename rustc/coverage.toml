@@ -1,7 +1,9 @@
 # Which functions of the compiler run: every function and closure in the compiler's own
-# crates records its first call in each rustc process (rustc/coverage.py reads the result).
+# crates records its first call in each rustc process (`mirth-lab coverage` reads the result).
 [scope]
 crates = ["rustc_*"]
 
 [coverage]
 functions = true
+# Every basic block too (`mirth-lab callgraph --block-gaps`).
+blocks = true

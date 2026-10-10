@@ -2,12 +2,12 @@
 # Run rustc's own test suites through compiletest with the coverage-instrumented compiler
 # (rustc/build.sh with MIRTH_WATCH=rustc/coverage.toml and BUILD_DIR), recording which of the
 # compiler's functions each rustc process reaches. Logs are folded as they finish
-# (rustc/coverage-compact.py), so the disk holds only the union and what each test added.
+# (`mirth-lab coverage-compact`), so the disk holds only the union and what each test added.
 #
 #   MIRTH_RUST=<rust checkout> BUILD_DIR=<instrumented build dir> \
 #     rustc/coverage-suites.sh <work dir> <name> <x test paths...> [-- <x test options>]
 #
-# Writes <work dir>/<name>/{union.txt,added.jsonl,x.log}. Read with rustc/coverage.py
+# Writes <work dir>/<name>/{union.txt,added.jsonl,x.log}. Read with `mirth-lab coverage`
 # --union <work dir>/*/union.txt.
 set -uo pipefail
 : "${MIRTH_RUST:?set MIRTH_RUST}"
@@ -27,7 +27,9 @@ rm -f "$out/done"
 export RUSTFLAGS_BOOTSTRAP="-L dependency=$BUILD_DIR/mirth-runtime"
 export RUSTFLAGS_NOT_BOOTSTRAP="$RUSTFLAGS_BOOTSTRAP"
 
-python3 "$here/coverage-compact.py" --logs "$out/logs" --out "$out" --until "$out/done" > "$out/compact.log" 2>&1 &
+# The compactor is a mirth-lab subcommand: build it first (a no-op when up to date).
+(cd "$here/.." && cargo build --release -q --offline -p mirth-lab) || exit 1
+"$here/../target/release/mirth-lab" coverage-compact --logs "$out/logs" --out "$out" --until "$out/done" > "$out/compact.log" 2>&1 &
 compactor=$!
 
 # A test compile running more than five minutes is killed and named.

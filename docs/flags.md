@@ -6,7 +6,7 @@ builds cover every pair or triple of option values? Pinned compiler: nightly-202
 
 ## Enumeration
 
-`rustc/flag-universe.py` reads `compiler/rustc_session/src/options.rs`:
+`mirth-lab flag-universe` reads `compiler/rustc_session/src/options.rs`:
 
 | | options | enumerable | free-form (left out) |
 |---|---|---|---|
@@ -17,7 +17,7 @@ builds cover every pair or triple of option values? Pinned compiler: nightly-202
 An option's domain is absence plus: `yes`/`no` for a boolean, present for an option without a
 value, the backticked values in its parser's description for an enumerated one, `1` and `16`
 for a number. Strings, paths, lists, target features, passes and the like are left out,
-except 19 options with hand-picked samples (`SAMPLES` in `flag-universe.py`): the first tables
+except 19 options with hand-picked samples (`SAMPLES` in `mirth-lab flag-universe`): the first tables
 below were made before these were added, and left out `-Copt-level` (its parser takes a
 string), so the walks there ran at opt-level 0. With the samples, 235 options are enumerable,
 556 values were tried alone and 508 accepted; the pairs were not tried again.
@@ -64,7 +64,7 @@ The 47 values rejected alone fall into four groups:
   `-Zlink-only`, `-Zimplicit-sysroot-deps=no` (needs `#![no_std]`).
 
 So the declared constraints are few: 1 pairwise exclusion and 17 implications. They are in
-`rustc/flag-model.py`, which writes a [PICT](https://github.com/microsoft/pict) model.
+`mirth-lab flag-model`, which writes a [PICT](https://github.com/microsoft/pict) model.
 
 ## Covering array sizes
 
@@ -100,14 +100,14 @@ Each row is a clean build with A, then a rebuild with B, compared with a clean b
 
 ## Walking transitions on sink
 
-`rustc/flag-walk.py` takes a table from `flag-model.py --transitions --cargo` and, per row,
+`mirth-lab flag-walk` takes a table from `mirth-lab flag-model --transitions --cargo` and, per row,
 builds `fixtures/sink` clean with the A options, rebuilds with the B options, builds clean
 with the B options, and compares (metadata, object code, binaries, diagnostics, the
 program's output). A difference is checked against up to 12 more clean builds first, and
 reported as P5 (nondeterminism) if clean builds differ among themselves.
 
 A real workspace adds constraints the trivial crate does not show (`CARGO_DROP` and
-`CARGO_NEEDS` in `flag-model.py`): `-Clto` is rejected for rlibs and dylibs, Cargo's target
+`CARGO_NEEDS` in `mirth-lab flag-model`): `-Clto` is rejected for rlibs and dylibs, Cargo's target
 probe fails on values that need another option, there are no sanitizer runtimes here,
 `-Cprefer-dynamic` with `-Cpanic=abort` or LTO cannot link, and so on. Single values on sink:
 428 of 466 build; no single option, set the same in both sessions, changes a rebuild.
@@ -145,9 +145,9 @@ a message (both left out of `--cargo` models).
 A walk that keeps hitting a known bug finds nothing behind it, and excluding the bug from the
 model loses the coverage. So a found bug is patched locally and the walk resumes:
 
-1. `flag-walk.py --pause-on-finding` stops taking rows at the first finding and writes
+1. `mirth-lab flag-walk --pause-on-finding` stops taking rows at the first finding and writes
    `PAUSED` (the row and what it found); rows in flight finish.
-2. Minimize (`flag-min.py` for failing rows, delta debugging by hand for differences),
+2. Minimize (`mirth-lab flag-min` for failing rows, delta debugging by hand for differences),
    reproduce with plain rustc, write the facts (`docs/hunt/`).
 3. Patch `~/mirth-work/rust` (a stopgap in `docs/hunt/*-stopgap.patch`; the reproduction in
    `docs/hunt/repro.sh` must change), build stage 1, freeze it as a new toolchain.
@@ -170,10 +170,10 @@ each is about a day.
 
 ## Reproduce
 
-    rustc/flag-universe.py --rustc <rustc> --source <rust checkout> --work <dir> --jobs 10
-    rustc/flag-model.py <dir> all model.txt              # or untracked / tracked, --transitions
+    mirth-lab flag-universe --rustc <rustc> --source <rust checkout> --work <dir> --jobs 10
+    mirth-lab flag-model <dir> all model.txt              # or untracked / tracked, --transitions
     pict model.txt /o:2 /r:1 > rows.tsv
-    rustc/flag-rows.py <dir> rows.tsv <rustc> --emit=metadata
-    rustc/flag-model.py <dir> untracked tr.txt --transitions --cargo
+    mirth-lab flag-rows <dir> rows.tsv <rustc> --emit=metadata
+    mirth-lab flag-model <dir> untracked tr.txt --transitions --cargo
     pict tr.txt /o:3 /r:1 > tr.tsv
-    rustc/flag-walk.py --rustc <rustc> --fixture fixtures/sink --flags <dir> --table tr.tsv --work <walk dir>
+    mirth-lab flag-walk --rustc <rustc> --fixture fixtures/sink --flags <dir> --table tr.tsv --work <walk dir>

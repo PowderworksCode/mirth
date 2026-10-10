@@ -48,12 +48,15 @@ pub struct Config {
     pub diagnostics: Diagnostics,
 }
 
-/// Coverage: each function and closure body in scope calls the runtime's `cover` on entry.
+/// Coverage: each function and closure body in scope calls the runtime's `cover` on entry; with
+/// `blocks`, also at the start of each of its other basic blocks (cleanup blocks aside).
 #[derive(Deserialize, Default)]
 #[serde(deny_unknown_fields)]
 pub struct Coverage {
     #[serde(default)]
     pub functions: bool,
+    #[serde(default)]
+    pub blocks: bool,
 }
 
 /// For writing a configuration: what could be matched.
@@ -67,7 +70,7 @@ pub struct Diagnostics {
     pub paths: bool,
     /// Write each body's outgoing edges to `<crate>.graph` beside the site table: direct calls,
     /// functions and closures used as values, and callees MIR inlining merged in; and, for a
-    /// method implementing a trait's, which trait item (rustc/callgraph.py reads them).
+    /// method implementing a trait's, which trait item (`mirth-lab callgraph` reads them).
     #[serde(default)]
     pub callgraph: bool,
 }

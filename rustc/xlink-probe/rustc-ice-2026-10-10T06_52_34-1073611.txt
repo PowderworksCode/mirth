@@ -1,0 +1,32 @@
+thread 'rustc' panicked at /rustc-dev/ea137335b78829b4514bf1b4c16302f74fab8581/compiler/rustc_codegen_ssa/src/back/linker.rs:225:5:
+assertion failed: l.is_cc()
+stack backtrace:
+   0:     0x7f74e2e5eb95 - <std[f097bc1422754316]::backtrace::Backtrace>::create
+   1:     0x7f74e2e5eae5 - <std[f097bc1422754316]::backtrace::Backtrace>::force_capture
+   2:     0x7f74e1b98fb2 - std[f097bc1422754316]::panicking::update_hook::<alloc[9a3cc8629af471e6]::boxed::Box<rustc_driver_impl[538812ad21a3ed]::install_ice_hook::{closure#1}>>::{closure#0}
+   3:     0x7f74e2e74fb2 - std[f097bc1422754316]::panicking::panic_with_hook
+   4:     0x7f74e2e526a4 - std[f097bc1422754316]::panicking::panic_handler::{closure#0}
+   5:     0x7f74e2e4ae59 - std[f097bc1422754316]::sys::backtrace::__rust_end_short_backtrace::<std[f097bc1422754316]::panicking::panic_handler::{closure#0}, !>
+   6:     0x7f74e2e5424d - __rustc[e66452c6972d9e87]::rust_begin_unwind
+   7:     0x7f74df8aa8ec - core[fd4243e10de856d2]::panicking::panic_fmt
+   8:     0x7f74dfe60be2 - core[fd4243e10de856d2]::panicking::panic
+   9:     0x7f74e4d15f4e - <rustc_codegen_ssa[8f359b88cd05c65d]::back::linker::GccLinker as rustc_codegen_ssa[8f359b88cd05c65d]::back::linker::Linker>::set_output_kind
+  10:     0x7f74e4d32a23 - rustc_codegen_ssa[8f359b88cd05c65d]::back::link::add_order_independent_options
+  11:     0x7f74e4a3f039 - rustc_codegen_ssa[8f359b88cd05c65d]::back::link::linker_with_args
+  12:     0x7f74e4a3240f - rustc_codegen_ssa[8f359b88cd05c65d]::back::link::link_natively
+  13:     0x7f74e4732f26 - rustc_codegen_ssa[8f359b88cd05c65d]::back::link::link_binary
+  14:     0x7f74e4731eb2 - <rustc_codegen_llvm[4ddaa0ca85ef3b57]::back::llvm_backend::LlvmCodegenBackend as rustc_codegen_ssa[8f359b88cd05c65d]::traits::backend::CodegenBackend>::link
+  15:     0x7f74e48ebec6 - <rustc_interface[1a497e1e07f914a9]::queries::Linker>::link
+  16:     0x7f74e48e5751 - rustc_interface[1a497e1e07f914a9]::interface::run_compiler::<(), rustc_driver_impl[538812ad21a3ed]::compiler_entrypoint::{closure#0}>::{closure#2}
+  17:     0x7f74e491cd42 - std[f097bc1422754316]::sys::backtrace::__rust_begin_short_backtrace::<rustc_interface[1a497e1e07f914a9]::util::run_in_thread_with_globals<rustc_interface[1a497e1e07f914a9]::util::run_in_thread_pool_with_globals<rustc_interface[1a497e1e07f914a9]::interface::run_compiler<(), rustc_driver_impl[538812ad21a3ed]::compiler_entrypoint::{closure#0}>::{closure#2}, ()>::{closure#0}, ()>::{closure#0}::{closure#0}, ()>
+  18:     0x7f74e491caed - <std[f097bc1422754316]::thread::lifecycle::spawn_unchecked<rustc_interface[1a497e1e07f914a9]::util::run_in_thread_with_globals<rustc_interface[1a497e1e07f914a9]::util::run_in_thread_pool_with_globals<rustc_interface[1a497e1e07f914a9]::interface::run_compiler<(), rustc_driver_impl[538812ad21a3ed]::compiler_entrypoint::{closure#0}>::{closure#2}, ()>::{closure#0}, ()>::{closure#0}::{closure#0}, ()>::{closure#1} as core[fd4243e10de856d2]::ops::function::FnOnce<()>>::call_once::{shim:vtable#0}
+  19:     0x7f74e4917d9b - <std[f097bc1422754316]::sys::thread::unix::Thread>::new::thread_start
+  20:     0x7f74dd889b84 - start_thread
+                               at ./nptl/pthread_create.c:447:8
+  21:     0x7f74dd916ecc - clone3
+                               at ./misc/../sysdeps/unix/sysv/linux/x86_64/clone3.S:78:0
+  22:                0x0 - <unknown>
+
+
+rustc version: 1.101.0-nightly (ea137335b 2026-10-05)
+platform: x86_64-unknown-linux-gnu

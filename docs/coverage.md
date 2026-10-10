@@ -4,12 +4,12 @@
 the compiler compiling it reaches. mirth-watch's `[coverage]` mode (`rustc/coverage.toml`)
 instruments every function and closure of the compiler's own crates (`rustc_*`) with one call
 at entry, which records the function's first call in each process; at exit each rustc
-process writes the functions it entered. `rustc/coverage.py` joins those with the site
+process writes the functions it entered. `mirth-lab coverage` joins those with the site
 tables.
 
     MIRTH_RUST=<rust checkout> BUILD_DIR=<dir> MIRTH_WATCH=rustc/coverage.toml rustc/build.sh
     MIRTH_OUT=<logs> RUSTC=<dir>/<host>/stage1/bin/rustc cargo build   # any number of builds
-    rustc/coverage.py --sites <dir>/mirth-sites --logs <logs> [--files] [--unhit rustc_borrowck]
+    target/release/mirth-lab coverage --sites <dir>/mirth-sites --logs <logs> [--files] [--unhit rustc_borrowck]
 
 The instrumented compiler is the same source as `rustc-verify12` (pinned nightly plus the
 local patches); 72,774 functions in 80 crates.
@@ -54,7 +54,7 @@ programs that fail to compile, built incrementally, will.
 
 ## With option configurations
 
-`rustc/coverage-flags.py` builds sink once per row of a pairwise transitions table (clean with
+`mirth-lab coverage-flags` builds sink once per row of a pairwise transitions table (clean with
 the row's A options, then rebuilt after one random edit with its B options). 60 rows, 1,586
 rustc processes in all with the run above: **30,657 functions (42.8%)**. The largest gains: MIR
 optimization passes (+460, from `-Copt-level` and `-Zmir-opt-level`), `rustc_trait_selection`
@@ -63,7 +63,7 @@ handling), `rustc_thread_pool` (+226, `-Zthreads`).
 
 ## rustc's UI tests
 
-`rustc/ui-coverage.py run` compiles each UI test file (the way its `//@` headers say) with the
+`mirth-lab ui-coverage run` compiles each UI test file (the way its `//@` headers say) with the
 instrumented compiler and keeps the functions it reaches beyond sink's; `pick` chooses tests
 greedily. Of 20,419 files, 1,839 were skipped (auxiliary crates, other targets); together the rest
 reach **17,668 functions sink does not (61% of the compiler with sink's)**; **300 picked tests
@@ -77,7 +77,7 @@ reach 13,626 of them (55%)**. The first few:
 | `attributes/malformed-attrs.rs` | 444 |
 | `abi/stack-protector.rs` | 432 |
 
-`rustc/ui-fuzz.py` runs the picked tests through incremental rebuilds after the fuzzer's edits,
+`mirth-lab ui-fuzz` runs the picked tests through incremental rebuilds after the fuzzer's edits,
 each compared with a clean build (status, diagnostics, outputs): error reporting and recovery
 under incremental compilation, which sink cannot reach.
 
@@ -86,7 +86,7 @@ solver, while nightly defaults to the new one: [`solver.md`](solver.md).
 
 ### Through incremental rebuilds
 
-`rustc/ui-fuzz.py` over every UI test that compiles standalone (18,553 files), up to 8 random
+`mirth-lab ui-fuzz` over every UI test that compiles standalone (18,553 files), up to 8 random
 edits each: **123,063 edit, incremental rebuild and clean rebuild cycles**, each compared on exit
 status, diagnostics and outputs. Checked first on finding 7's shape (a warning from inline
 assembly, lost when a codegen unit is reused), which it finds in 2 of 37 edits.
@@ -123,7 +123,7 @@ of rustc-hash share a name):
   `T: From<U>`, a derive's `T: Encodable<E>` for every field) and of the trait's associated
   types (`type Domain: JoinSemiLattice`), recursively.
 
-`rustc/callgraph.py` computes reachability from the compiler's `main`s, every function with a
+`mirth-lab callgraph` computes reachability from the compiler's `main`s, every function with a
 foreign ABI (callbacks from C, C++ and LLVM), every implementation of a trait from outside the
 compiler (which `std` may call), and every initializer. A call to a trait item reaches its
 implementations (class hierarchy analysis), but an implementation for one of the compiler's
@@ -156,7 +156,7 @@ a normal error path and is not counted. Coverage is reported with and without th
 
 `rustc/coverage-suites.sh` runs a suite through compiletest (`./x.py test`) on the
 instrumented compiler, with `MIRTH_OUT` set, folding logs as they finish
-(`rustc/coverage-compact.py`): compiletest handles what a standalone runner cannot (auxiliary
+(`mirth-lab coverage-compact`): compiletest handles what a standalone runner cannot (auxiliary
 crates, every revision, `minicore` cross-targets, run-make). With `--keep-stage 0 --keep-stage 1`,
 and a refusal when the log shows the compiler compiling: a changed mirth runtime once made
 `x.py` rebuild the compiler without the instrumentation, so `build.sh` now keeps a runtime per
@@ -201,11 +201,11 @@ logs the same way.
 
 | run | functions reached |
 |---|---:|
-| ui tests through incremental rebuilds (`ui-fuzz.py`, 18,553 tests, 3 edits each) | 44,196 |
-| `coverage-generators.py`: every `--print` request on the host and on all 334 targets; minicore and an ABI file compiled for every target at `-Copt-level=0` and 3; the 300 picked UI tests under 48 debugging and printing options | 41,768 |
-| `coverage-generators.py --only links`: a binary, cdylib, staticlib and dylib on minicore for every target with `-Clinker=true`, under 11 sets of linker options | 18,228 |
+| ui tests through incremental rebuilds (`mirth-lab ui-fuzz`, 18,553 tests, 3 edits each) | 44,196 |
+| `mirth-lab coverage-generators`: every `--print` request on the host and on all 334 targets; minicore and an ABI file compiled for every target at `-Copt-level=0` and 3; the 300 picked UI tests under 48 debugging and printing options | 41,768 |
+| `mirth-lab coverage-generators --only links`: a binary, cdylib, staticlib and dylib on minicore for every target with `-Clinker=true`, under 11 sets of linker options | 18,228 |
 
 **All together, with sink and its option configurations: 50,762 of the 62,516 functions that
 can run (81.2%); without the 911 that only panic, 50,715 of 61,605 (82.3%).**
-`rustc/coverage-report.sh` recomputes this; `rustc/callgraph.py --gaps <file>` lists the rest
+`rustc/coverage-report.sh` recomputes this; `mirth-lab callgraph --gaps <file>` lists the rest
 by crate and file, largest first. What is left, and the plan for it: [coverage-handoff.md](coverage-handoff.md).

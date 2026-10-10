@@ -22,5 +22,5 @@ list at the end of the session. A rebuild that takes const checking's results fr
 incremental cache records nothing, so there is nothing to warn about: a side effect of a query
 that is not replayed, the same kind as finding 7. The option is for testing the compiler.
 
-**How mirth found it.** `rustc/ui-fuzz.py` over rustc's UI tests ([`coverage.md`](../coverage.md)):
+**How mirth found it.** `mirth-lab ui-fuzz` over rustc's UI tests ([`coverage.md`](../coverage.md)):
 the first edit to this test, its rebuild's diagnostics compared with a clean build's.

@@ -153,6 +153,6 @@ ten crates.
 
 ## In the runs
 
-`rustc/fuzz.py` and `rustc/replay.py` set `RUSTC_REPORT_UNTRACKED` with the reuse check and
+`mirth-lab fuzz` and `mirth-lab replay` set `RUSTC_REPORT_UNTRACKED` with the reuse check and
 keep every distinct line in `<work>/untracked.txt`, so a code path that only a real crate
 reaches adds a line.

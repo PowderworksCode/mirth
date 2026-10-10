@@ -19,5 +19,5 @@ depends on `sink-core`, where the edit is.
 reverts to computing the crate hash from the HIR. Since the crate hash is what dependents
 compare, a wrong one can make them reuse or reject the wrong things.
 
-**How mirth found it.** The fuzzer under walk configurations (`rustc/flag-fuzz.py`), first
+**How mirth found it.** The fuzzer under walk configurations (`mirth-lab flag-fuzz`), first
 edit of a row; excluded from the models since (a known bug without a stopgap).
