@@ -382,6 +382,8 @@ dependencies = [
  "flate2",
  "libc",
  "mirth-rewrite",
+ "proc-macro2",
+ "quote",
  "rand",
  "rayon",
  "regex",

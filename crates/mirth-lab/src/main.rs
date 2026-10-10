@@ -27,6 +27,7 @@ mod tools {
     pub mod gate_check;
     pub mod grammar_coverage;
     pub mod instr_check;
+    pub mod lint_check;
     pub mod miri_diff;
     pub mod motivating;
     pub mod opt_diff;
@@ -132,6 +133,8 @@ enum Check {
     VerifyClosed(tools::verify_closed::Args),
     /// rustdoc agrees with rustc: accepts what it accepts, consistent JSON, re-exports, auto-trait bounds.
     RustdocDiff(tools::rustdoc_diff::Args),
+    /// A lint fires only when its premise holds; allowing it or removing what it flags changes nothing else.
+    LintCheck(tools::lint_check::Args),
 }
 
 fn main() -> ExitCode {
@@ -147,6 +150,7 @@ fn main() -> ExitCode {
         Check::ReproDiff(a) => tools::repro_diff::run(a),
         Check::GateCheck(a) => tools::gate_check::run(a),
         Check::InstrCheck(a) => tools::instr_check::run(a),
+        Check::LintCheck(a) => tools::lint_check::run(a),
         Check::ReleaseDiff(a) => tools::release_diff::run(a),
         Check::Xlink(a) => tools::xlink::run(a),
         Check::ScaleCheck(a) => tools::scale_check::run(a),

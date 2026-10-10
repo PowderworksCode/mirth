@@ -19,7 +19,6 @@ regex = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 similar = "2"
-syn = { version = "2.0.119", features = ["full"] }
 sha2 = "0.10"
 tempfile = "3"
 walkdir = "2"
@@ -28,3 +27,6 @@ libc = "0.2"
 flate2 = "1"
 tar = "0.4"
 mirth-rewrite = { path = "../mirth-rewrite" }
+syn = { version = "2.0.119", features = ["full", "visit"] }
+proc-macro2 = { version = "1", features = ["span-locations"] }
+quote = "1"

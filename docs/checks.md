@@ -371,7 +371,9 @@ Ten new findings (19–28) in [`hunt.md`](hunt.md), none from the checks mirth h
 | feature gates (17) | `mirth-lab gate-check` | 143 unstable attributes × 14 positions; 156 unstable library items with resolvable paths × use, renamed use, glob, impl, value, type | every library spelling gated; finding 31 (an ICE after the gate error for `#[rustc_main]` on non-functions); `#[feature]` outside the crate root only warns (intended) |
 
 
-### Third batch (2026-10-10): rustdoc consistency (6)
+### Third batch (2026-10-10)
+
+#### rustdoc consistency (6)
 
 `mirth-lab rustdoc-diff` runs rustdoc (nightly-2026-10-06, the same commit as the campaign
 rustc) on every standalone UI test, in HTML, HTML with `--document-private-items`, JSON and
@@ -391,6 +393,26 @@ public JSON (open upstream: #113674, #119626, #117718, #112852); the `fn_delegat
 rustdoc does not read `#![crate_type]` (only `--crate-type`, as Cargo passes it), so the check
 passes the attribute's value. 345 probes are inconclusive (a type that cannot be named from the
 crate root, an unrenderable bound).
+#### lint oracles (16)
+
+| check | script | swept | result |
+|---|---|---|---|
+| lint oracles (16) | `mirth-lab lint-check` | 18,624 tests; the 8,055 that compile without errors (lints capped to warnings where a test denies them), with 16 allow-by-default lints turned on; 4,244 have a lint warning, 211 lints in all; 30,100 compilations | findings 40–43 (`let_underscore_drop`; lifetime-lint fixes; `dead_code` on needed traits and opaque-type definitions; `trivial_numeric_casts` on literals); known #110332 and #163369 reproduced; `unreachable_pub` and `missing_copy_implementations` edge cases noted in [`hunt/lint-check.md`](hunt/lint-check.md) |
+
+`lint-check` acts on each warning four ways, and reports when anything else changes:
+- `#![allow(lint)]`;
+- deleting what a premise lint flags (all `dead_code` items at once with their impls, each
+  `unreachable_patterns` arm, `unreachable_code` statements up to the block's tail);
+- rewriting to what the premise says is equivalent (`trivial_casts` through a coercion site,
+  `trivial_numeric_casts` without the cast, `ambiguous_wide_pointer_comparisons` through a
+  const assertion that the operand is two words, `impl Copy` for
+  `missing_copy_implementations`);
+- applying allow-by-default lints' machine-applicable fixes, which suggest-diff never sees,
+  alone and then all of a lint's together.
+
+Failures the lint's design or the edit explains are listed per test under `expected` in
+`results.jsonl` and not counted: items only exempt dead code uses, re-exports, macro-generated
+users, unreachable code that takes part in inference.
 
 ## Running the checks
 
@@ -403,6 +425,7 @@ target/release/mirth-lab opt-diff --rustc $R --cranelift "$(rustup +nightly-2026
 target/release/mirth-lab solver-diff --rustc $R --tests $T --work <dir>
 target/release/mirth-lab rustdoc-diff --toolchain nightly-2026-10-06 --tests $T --work <dir>
 target/release/mirth-lab abi-diff --rustc $R --rust ~/mirth-work/rust --work <dir> --seed 3
+target/release/mirth-lab lint-check --rustc $R --tests $T --work <dir>
 target/release/mirth-lab release-diff --corpus ~/proofhouse-repos/rust --old nightly-2026-07-18 --new nightly-2026-10-06 --work <dir>
 ```
 
