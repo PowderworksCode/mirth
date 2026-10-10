@@ -29,6 +29,7 @@ mod tools {
     pub mod gate_mutate;
     pub mod grammar_coverage;
     pub mod instr_check;
+    pub mod invariant_sweep;
     pub mod lint_check;
     pub mod miri_diff;
     pub mod motivating;
@@ -75,6 +76,8 @@ enum Check {
     ReproDiff(tools::repro_diff::Args),
     /// Nothing unstable is usable from stable code (attributes, library items).
     GateCheck(tools::gate_check::Args),
+    /// The compiler's own invariants (docs/hunt/check-invariants.patch) on every UI test.
+    InvariantSweep(tools::invariant_sweep::Args),
     /// PGO and coverage instrumentation round trips.
     InstrCheck(tools::instr_check::Args),
     /// Real crates accepted by one toolchain are accepted by the next, in comparable time.
@@ -156,6 +159,7 @@ fn main() -> ExitCode {
         Check::SuggestDiff(a) => tools::suggest_diff::run(a),
         Check::ReproDiff(a) => tools::repro_diff::run(a),
         Check::GateCheck(a) => tools::gate_check::run(a),
+        Check::InvariantSweep(a) => tools::invariant_sweep::run(a),
         Check::GateMutate(a) => tools::gate_mutate::run(a),
         Check::InstrCheck(a) => tools::instr_check::run(a),
         Check::LintCheck(a) => tools::lint_check::run(a),

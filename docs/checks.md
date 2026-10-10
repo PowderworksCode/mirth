@@ -545,6 +545,35 @@ when the source test uses the harness) and searches rust-lang/rust's issues for 
 panic's location and the first query on the stack, or a delayed bug's message, so one bug can
 show as several signatures (finding 50 as six).
 
+## In-compiler invariants (2026-10-10)
+
+[`hunt/check-invariants.patch`](hunt/check-invariants.patch), applied last on the
+verify-reuse stack (`rustc/regen-patches.sh` regenerates it), checks invariants from
+[`properties.md`](properties.md) inside rustc on every compilation when `RUSTC_CHECK_INVARIANTS`
+is set: a violation prints `rustc-invariant: <property>: <details>` and compilation goes on.
+`RUSTC_CHECK_INVARIANTS=selftest` also prints which checks ran (and, for #18, which queries'
+results are checked and which are not). Built into `~/mirth-work/rustc-verify13`.
+
+| property | where | what upstream had |
+|---|---|---|
+| 18: query results contain no inference variables | `rustc_query_impl`: each provider's typed result, before it is erased | nothing. The probe dispatches on the value's type (autoref specialization): `TypeVisitable` values, `EarlyBinder`/`&`/`Option`/`Result` around one, canonical query responses, typeck results' node types, borrowck's hidden types, clauses, impl headers, layouts. 99 of the ~200 query kinds a small program runs are checked; the rest return types without types in them, or `Steal`ed bodies |
+| 14: a compile that emitted no error has no error types | end of `analysis`, when no error or delayed bug was emitted: typeck results (tainted, node types), `type_of` and `fn_sig` of every local item | nothing |
+| 24: symbol names are injective | `assert_symbols_are_distinct`: local mono items against upstream crates' exported symbols | within a session, in every build (fatal `SymbolAlreadyDefined`); across crates, nothing |
+| 15: each metadata record is written once | `TableBuilder::set`: an entry set a second time | nothing |
+| 9: layout views agree | type lowering: LLVM's ABI size of the lowered type against the layout's size; and rustc's own expensive layout sanity checks, on in release | the sanity checks in debug builds only |
+| 1: interned values are well-formed | `debug_assert_args_compatible`, `debug_assert_alias_term_args_compatible`: argument lists against generics, reported instead of a bug | debug builds only |
+| 7: spans are valid | metadata span encoding: `lo <= hi`, `lo` inside its file | `debug_assert!` only |
+
+`mirth-lab invariant-sweep` compiles every standalone UI test with the variable set (to a
+binary when the test builds, so codegen's checks run; to metadata otherwise), collects the
+lines, and counts an ICE that happens only with the variable set as `env-only-ice` (the
+enabled debug assertions panic instead of reporting).
+
+| swept | result |
+|---|---|
+| 18,624 UI tests: 7,408 compile, 11,198 fail as expected, 17 ICE without the checks too, 1 timeout | 315 tests with findings, all property 15: findings 56 (the crate root's module children, encoded twice in every library with a public item) and 57 (coroutine layouts, encoded twice); proc-macro `def_keys` written twice on purpose (6 tests). Nothing for 18, 14, 24, 9, 1, 7 |
+| 12,000 `gate-mutate` mutants with the variable set | no ICE signature the earlier run had not seen (the invariant lines themselves are not collected by gate-mutate) |
+
 ## Running the checks
 
 The checks are subcommands of `mirth-lab` (`crates/mirth-lab`; `mirth-lab --help` lists them):
@@ -561,6 +590,7 @@ target/release/mirth-lab gate-mutate --rustc $R --rust ~/mirth-work/rust --work 
 target/release/mirth-lab gate-mutate --rustc $R --rust ~/mirth-work/rust --work <dir> --triage
 target/release/mirth-lab release-diff --corpus ~/proofhouse-repos/rust --old nightly-2026-07-18 --new nightly-2026-10-06 --work <dir>
 target/release/mirth-lab debug-check --toolchain nightly-2026-10-06 --work <dir> --seeds 0..4000 --jobs 4
+target/release/mirth-lab invariant-sweep --rustc ~/mirth-work/rustc-verify13/bin/rustc --tests $T --work <dir>
 ```
 
 Sweeps over UI tests share `--tests`, `--work`, `--only`, `--known`, `--jobs`, `--recheck` and

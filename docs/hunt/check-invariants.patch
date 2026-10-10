@@ -1,0 +1,641 @@
+diff --git a/compiler/rustc_codegen_llvm/src/llvm/ffi.rs b/compiler/rustc_codegen_llvm/src/llvm/ffi.rs
+index bc9ce9580a9a..570f836f7376 100644
+--- a/compiler/rustc_codegen_llvm/src/llvm/ffi.rs
++++ b/compiler/rustc_codegen_llvm/src/llvm/ffi.rs
+@@ -713,6 +713,12 @@ struct InvariantOpaque<'a> {
+     /// `&'ll DbgRecord` represents `LLVMDbgRecordRef`.
+     pub(crate) type DbgRecord;
+ }
++// `RUSTC_CHECK_INVARIANTS`: LLVM's view of a type's size, compared with the layout's.
++unsafe extern "C" {
++    pub(crate) type TargetData;
++    pub(crate) fn LLVMGetModuleDataLayout(M: &Module) -> &TargetData;
++    pub(crate) fn LLVMABISizeOfType(TD: &TargetData, Ty: &Type) -> c_ulonglong;
++}
+ #[repr(C)]
+ pub(crate) struct Builder<'a>(InvariantOpaque<'a>);
+ unsafe extern "C" {
+diff --git a/compiler/rustc_codegen_llvm/src/type_of.rs b/compiler/rustc_codegen_llvm/src/type_of.rs
+index 0624d8db460c..b6feebaa88e8 100644
+--- a/compiler/rustc_codegen_llvm/src/type_of.rs
++++ b/compiler/rustc_codegen_llvm/src/type_of.rs
+@@ -281,6 +281,27 @@ fn llvm_type<'a>(&self, cx: &CodegenCx<'a, 'tcx>) -> &'a Type {
+             let (llfields, packed) = struct_llfields(cx, layout);
+             cx.set_struct_body(llty, &llfields, packed);
+         }
++        if rustc_data_structures::invariants::enabled() && self.is_sized() {
++            // `RUSTC_CHECK_INVARIANTS`: LLVM's size of the type equals the layout's.
++            if rustc_data_structures::invariants::selftest() {
++                rustc_data_structures::invariants::report("selftest", "layout-views-agree runs");
++            }
++            let llsize = unsafe {
++                crate::llvm::LLVMABISizeOfType(crate::llvm::LLVMGetModuleDataLayout(cx.llmod), llty)
++            };
++            if llsize != self.size.bytes() {
++                rustc_data_structures::invariants::report(
++                    "layout-views-agree",
++                    &rustc_middle::ty::print::with_no_trimmed_paths!(format!(
++                        "`{}`{}: layout size {} but LLVM type {:?} has size {llsize}",
++                        self.ty,
++                        variant_index.map(|v| format!(" variant {v:?}")).unwrap_or_default(),
++                        self.size.bytes(),
++                        llty
++                    )),
++                );
++            }
++        }
+         llty
+     }
+ 
+diff --git a/compiler/rustc_data_structures/src/invariants.rs b/compiler/rustc_data_structures/src/invariants.rs
+new file mode 100644
+index 000000000000..dd6d0ebcc288
+--- /dev/null
++++ b/compiler/rustc_data_structures/src/invariants.rs
+@@ -0,0 +1,38 @@
++//! For testing the compiler: invariants checked on every compilation when
++//! `RUSTC_CHECK_INVARIANTS` is set. A violation prints one line,
++//! `rustc-invariant: <property>: <details>`, and compilation continues.
++
++use std::collections::HashSet;
++use std::sync::{Mutex, OnceLock};
++
++/// Whether `RUSTC_CHECK_INVARIANTS` is set (read once).
++#[inline]
++pub fn enabled() -> bool {
++    static ENABLED: OnceLock<bool> = OnceLock::new();
++    *ENABLED.get_or_init(|| std::env::var_os("RUSTC_CHECK_INVARIANTS").is_some())
++}
++
++/// `RUSTC_CHECK_INVARIANTS=selftest`: also report which checks ran (to see that they are wired).
++#[inline]
++pub fn selftest() -> bool {
++    static SELFTEST: OnceLock<bool> = OnceLock::new();
++    *SELFTEST.get_or_init(|| {
++        std::env::var_os("RUSTC_CHECK_INVARIANTS").is_some_and(|v| v == "selftest")
++    })
++}
++
++/// Reports a violation of `property`, once per distinct line.
++#[cold]
++pub fn report(property: &str, details: &str) {
++    static SEEN: Mutex<Option<HashSet<String>>> = Mutex::new(None);
++    let mut details: String =
++        details.chars().map(|c| if c == '\n' { ' ' } else { c }).take(600).collect();
++    if details.len() >= 600 {
++        details.push_str(" …");
++    }
++    let line = format!("rustc-invariant: {property}: {details}");
++    let mut seen = SEEN.lock().unwrap_or_else(|e| e.into_inner());
++    if seen.get_or_insert_with(HashSet::new).insert(line.clone()) {
++        eprintln!("{line}");
++    }
++}
+diff --git a/compiler/rustc_data_structures/src/lib.rs b/compiler/rustc_data_structures/src/lib.rs
+index dc71d2ae3245..895993435de3 100644
+--- a/compiler/rustc_data_structures/src/lib.rs
++++ b/compiler/rustc_data_structures/src/lib.rs
+@@ -60,6 +60,7 @@
+ pub mod fx;
+ pub mod graph;
+ pub mod intern;
++pub mod invariants;
+ pub mod jobserver;
+ pub mod marker;
+ pub mod memmap;
+diff --git a/compiler/rustc_interface/src/passes.rs b/compiler/rustc_interface/src/passes.rs
+index eb0c39a279b5..2554e266ad6a 100644
+--- a/compiler/rustc_interface/src/passes.rs
++++ b/compiler/rustc_interface/src/passes.rs
+@@ -1305,6 +1305,65 @@ fn analysis(tcx: TyCtxt<'_>, (): ()) {
+             });
+         });
+     }
++
++    if rustc_data_structures::invariants::enabled() {
++        check_no_error_types(tcx);
++    }
++}
++
++/// `RUSTC_CHECK_INVARIANTS`: a compilation that emitted no error contains no error types (and
++/// no inference variables) in its typeck results, item types and signatures, and no typeck
++/// result is tainted by errors: an `ErrorGuaranteed` exists only once an error was emitted.
++fn check_no_error_types(tcx: TyCtxt<'_>) {
++    use std::cell::Cell;
++
++    use rustc_data_structures::invariants::report;
++    use rustc_hir::def::DefKind;
++    use rustc_middle::ty::TypeVisitableExt;
++
++    if tcx.dcx().has_errors_or_delayed_bugs().is_some() {
++        return;
++    }
++    if rustc_data_structures::invariants::selftest() {
++        report("selftest", "no-error-types runs");
++    }
++    for def_id in tcx.hir_body_owners() {
++        if tcx.typeck_root_def_id(def_id.to_def_id()) != def_id.to_def_id() {
++            continue;
++        }
++        let results = tcx.typeck(def_id);
++        if results.tainted_by_errors.is_some() {
++            report("no-error-types", &format!("typeck({def_id:?}) is tainted by errors"));
++        }
++        let bad = Cell::new(None);
++        results.node_types().items().any(|(_, &ty)| {
++            let found = ty.references_error() || ty.has_infer();
++            if found {
++                bad.set(Some(ty));
++            }
++            found
++        });
++        if let Some(ty) = bad.get() {
++            report("no-error-types", &format!("typeck({def_id:?}) has a node of type `{ty:?}`"));
++        }
++    }
++    for def_id in tcx.hir_crate_items(()).definitions() {
++        let what = match tcx.def_kind(def_id) {
++            DefKind::Const | DefKind::Static { .. } | DefKind::TyAlias | DefKind::AssocConst
++            | DefKind::Field => {
++                let ty = tcx.type_of(def_id).instantiate_identity().skip_norm_wip();
++                (ty.references_error() || ty.has_infer()).then(|| format!("type_of = `{ty:?}`"))
++            }
++            DefKind::Fn | DefKind::AssocFn => {
++                let sig = tcx.fn_sig(def_id).instantiate_identity().skip_norm_wip();
++                (sig.references_error() || sig.has_infer()).then(|| format!("fn_sig = `{sig:?}`"))
++            }
++            _ => None,
++        };
++        if let Some(what) = what {
++            report("no-error-types", &format!("{def_id:?}: {what}"));
++        }
++    }
+ }
+ 
+ /// Runs the codegen backend, after which the AST and analysis can
+diff --git a/compiler/rustc_metadata/src/rmeta/encoder.rs b/compiler/rustc_metadata/src/rmeta/encoder.rs
+index 8125544d62ae..a6c63ed6cf8a 100644
+--- a/compiler/rustc_metadata/src/rmeta/encoder.rs
++++ b/compiler/rustc_metadata/src/rmeta/encoder.rs
+@@ -284,6 +284,15 @@ fn encode(&self, s: &mut EncodeContext<'a, 'tcx>) {
+ 
+         // The Span infrastructure should make sure that this invariant holds:
+         debug_assert!(self.lo <= self.hi);
++        if rustc_data_structures::invariants::selftest() {
++            rustc_data_structures::invariants::report("selftest", "spans-valid runs");
++        }
++        if rustc_data_structures::invariants::enabled() && self.lo > self.hi {
++            rustc_data_structures::invariants::report(
++                "spans-valid",
++                &format!("encoding a span with lo {:?} > hi {:?}", self.lo, self.hi),
++            );
++        }
+ 
+         if !s.source_file_cache.0.contains(self.lo) {
+             let source_map = s.tcx.sess.source_map();
+@@ -293,6 +302,15 @@ fn encode(&self, s: &mut EncodeContext<'a, 'tcx>) {
+         }
+         let (ref source_file, source_file_index) = s.source_file_cache;
+         debug_assert!(source_file.contains(self.lo));
++        if rustc_data_structures::invariants::enabled() && !source_file.contains(self.lo) {
++            rustc_data_structures::invariants::report(
++                "spans-valid",
++                &format!(
++                    "encoding a span whose lo {:?} is outside the file found for it, {:?} ({:?}..{:?})",
++                    self.lo, source_file.name, source_file.start_pos, source_file.end_position()
++                ),
++            );
++        }
+ 
+         if !source_file.contains(self.hi) {
+             // Unfortunately, macro expansion still sometimes generates Spans
+diff --git a/compiler/rustc_metadata/src/rmeta/table.rs b/compiler/rustc_metadata/src/rmeta/table.rs
+index c023b61d7357..ad63e244f9af 100644
+--- a/compiler/rustc_metadata/src/rmeta/table.rs
++++ b/compiler/rustc_metadata/src/rmeta/table.rs
+@@ -473,7 +473,26 @@ pub(crate) fn set(&mut self, i: Ie, value: T) {
+             // > trick (i.e. divide things into buckets of 32 or 64 items and then
+             // > store bit-masks of which item in each bucket is actually serialized).
+             let block = self.blocks.ensure_contains_elem(i, || [0; N]);
+-            value.write_to_bytes(block);
++            if rustc_data_structures::invariants::selftest() {
++                rustc_data_structures::invariants::report("selftest", "metadata-written-once runs");
++            }
++            if rustc_data_structures::invariants::enabled() && block.iter().any(|&b| b != 0) {
++                // `RUSTC_CHECK_INVARIANTS`: each entry is written once.
++                let old = *block;
++                *block = [0; N];
++                value.write_to_bytes(block);
++                rustc_data_structures::invariants::report(
++                    "metadata-written-once",
++                    &format!(
++                        "table of `{}` entry {} set twice ({})",
++                        std::any::type_name::<T>(),
++                        i.index(),
++                        if old == *block { "same value" } else { "different value" }
++                    ),
++                );
++            } else {
++                value.write_to_bytes(block);
++            }
+             if self.width != N {
+                 let width = N - trailing_zeros(block);
+                 self.width = self.width.max(width);
+diff --git a/compiler/rustc_middle/src/ty/context.rs b/compiler/rustc_middle/src/ty/context.rs
+index dd39a11051c9..d31bddab6ae2 100644
+--- a/compiler/rustc_middle/src/ty/context.rs
++++ b/compiler/rustc_middle/src/ty/context.rs
+@@ -2233,6 +2233,21 @@ fn check_args_compatible_inner(
+     /// [`Self::debug_assert_alias_term_args_compatible`] instead. See note on
+     /// [`Self::check_args_compatible`].
+     pub fn debug_assert_args_compatible(self, def_id: DefId, args: &'tcx [ty::GenericArg<'tcx>]) {
++        if !cfg!(debug_assertions) && rustc_data_structures::invariants::enabled() {
++            // `RUSTC_CHECK_INVARIANTS` in a release build: report instead of the bug below.
++            if rustc_data_structures::invariants::selftest() {
++                rustc_data_structures::invariants::report("selftest", "interned-args-well-formed runs");
++            }
++            if !self.check_args_compatible(def_id, args) {
++                rustc_data_structures::invariants::report(
++                    "interned-args-well-formed",
++                    &crate::ty::print::with_no_queries!(format!(
++                        "args {args:?} do not fit the generics of {def_id:?}"
++                    )),
++                );
++            }
++            return;
++        }
+         if cfg!(debug_assertions) && !self.check_args_compatible(def_id, args) {
+             let is_inherent_assoc_ty = matches!(self.def_kind(def_id), DefKind::AssocTy)
+                 && matches!(self.def_kind(self.parent(def_id)), DefKind::Impl { of_trait: false });
+@@ -2245,6 +2260,18 @@ pub fn debug_assert_alias_term_args_compatible(
+         kind: ty::AliasTermKind<'tcx>,
+         args: ty::GenericArgsRef<'tcx>,
+     ) {
++        if !cfg!(debug_assertions) && rustc_data_structures::invariants::enabled() {
++            // `RUSTC_CHECK_INVARIANTS` in a release build: report instead of the bug below.
++            if !self.check_alias_term_args_compatible(kind, args) {
++                rustc_data_structures::invariants::report(
++                    "interned-args-well-formed",
++                    &crate::ty::print::with_no_queries!(format!(
++                        "args {args:?} do not fit the generics of alias {kind:?}"
++                    )),
++                );
++            }
++            return;
++        }
+         if cfg!(debug_assertions) {
+             self.debug_assert_alias_term_kind_matches_def_kind(kind);
+             if !self.check_alias_term_args_compatible(kind, args) {
+diff --git a/compiler/rustc_monomorphize/src/partitioning.rs b/compiler/rustc_monomorphize/src/partitioning.rs
+index 7fc1f98a8367..6ce00a0d835a 100644
+--- a/compiler/rustc_monomorphize/src/partitioning.rs
++++ b/compiler/rustc_monomorphize/src/partitioning.rs
+@@ -101,11 +101,11 @@
+ use rustc_attr_ir::lang_items::LangItem;
+ use rustc_attr_ir::{InlineAttr, Linkage};
+ use rustc_data_structures::either::Either;
+-use rustc_data_structures::fx::{FxIndexMap, FxIndexSet};
++use rustc_data_structures::fx::{FxHashMap, FxIndexMap, FxIndexSet};
+ use rustc_data_structures::sync::par_join;
+ use rustc_data_structures::unord::{UnordMap, UnordSet};
+ use rustc_hir::def::DefKind;
+-use rustc_hir::def_id::{DefId, DefIdSet, LOCAL_CRATE};
++use rustc_hir::def_id::{CrateNum, DefId, DefIdSet, LOCAL_CRATE};
+ use rustc_hir::definitions::DefPathDataName;
+ use rustc_middle::middle::codegen_fn_attrs::CodegenFnAttrFlags;
+ use rustc_middle::middle::exported_symbols::{SymbolExportInfo, SymbolExportLevel};
+@@ -1164,6 +1164,62 @@ fn assert_symbols_are_distinct<'a, 'tcx, I>(tcx: TyCtxt<'tcx>, mono_items: I)
+             tcx.dcx().emit_fatal(SymbolAlreadyDefined { span, symbol: sym1.to_string() });
+         }
+     }
++
++    if rustc_data_structures::invariants::enabled() {
++        check_symbols_distinct_from_upstream(tcx, &symbols);
++    }
++}
++
++/// `RUSTC_CHECK_INVARIANTS`: no local mono item has the symbol name of a different item that
++/// an upstream crate exports (the two would collide at link time, or one would bind to the
++/// other).
++fn check_symbols_distinct_from_upstream<'tcx>(
++    tcx: TyCtxt<'tcx>,
++    symbols: &[(&MonoItem<'tcx>, ty::SymbolName<'tcx>)],
++) {
++    use rustc_middle::middle::exported_symbols::ExportedSymbol;
++
++    let mut upstream: FxHashMap<&str, (MonoItem<'tcx>, CrateNum)> = FxHashMap::default();
++    for &cnum in tcx.crates(()) {
++        let exported = tcx
++            .exported_non_generic_symbols(cnum)
++            .iter()
++            .chain(tcx.exported_generic_symbols(cnum));
++        for &(symbol, _) in exported {
++            let item = match symbol {
++                ExportedSymbol::NonGeneric(def_id) if tcx.is_static(def_id) => {
++                    MonoItem::Static(def_id)
++                }
++                ExportedSymbol::NonGeneric(def_id) => MonoItem::Fn(ty::Instance::mono(tcx, def_id)),
++                ExportedSymbol::Generic(def_id, args) => {
++                    MonoItem::Fn(ty::Instance::new_raw(def_id, args))
++                }
++                ExportedSymbol::DropGlue(ty) => MonoItem::Fn(ty::Instance::resolve_drop_glue(tcx, ty)),
++                _ => continue,
++            };
++            upstream.insert(symbol.symbol_name_for_local_instance(tcx).name, (item, cnum));
++        }
++    }
++    if rustc_data_structures::invariants::selftest() {
++        rustc_data_structures::invariants::report(
++            "selftest",
++            &format!("symbol-names-injective runs ({} upstream symbols)", upstream.len()),
++        );
++    }
++    for (item, name) in symbols {
++        if let Some((other, cnum)) = upstream.get(name.name)
++            && other != *item
++        {
++            rustc_data_structures::invariants::report(
++                "symbol-names-injective",
++                &format!(
++                    "`{}` is the symbol of local {item:?} and of {other:?} exported by `{}`",
++                    name.name,
++                    tcx.crate_name(*cnum)
++                ),
++            );
++        }
++    }
+ }
+ 
+ fn collect_and_partition_mono_items(tcx: TyCtxt<'_>, (): ()) -> MonoItemPartitions<'_> {
+diff --git a/compiler/rustc_query_impl/src/invariants.rs b/compiler/rustc_query_impl/src/invariants.rs
+new file mode 100644
+index 000000000000..6e7ee8a8a968
+--- /dev/null
++++ b/compiler/rustc_query_impl/src/invariants.rs
+@@ -0,0 +1,209 @@
++//! `RUSTC_CHECK_INVARIANTS`: a query's result contains no inference variables.
++//!
++//! Called on each provider's typed result before it is erased. The probe dispatches by autoref
++//! specialization on the value's type, most specific first: a `TypeVisitable` value; then an
++//! `EarlyBinder` or a reference around one; anything else is not checked.
++
++use std::fmt::Debug;
++use std::marker::PhantomData;
++
++use rustc_data_structures::invariants::{report, selftest};
++use rustc_middle::ty::print::with_no_queries;
++use rustc_data_structures::fx::FxIndexMap;
++use rustc_middle::ty::layout::TyAndLayout;
++use rustc_middle::infer::canonical::Canonical;
++use rustc_middle::ty::{
++    DefinitionSiteHiddenType, EarlyBinder, GenericClauses, ImplTraitHeader, TyCtxt, TypeVisitable,
++    TypeVisitableExt, TypeckResults,
++};
++
++pub(crate) struct Probe<'a, 'tcx, T>(&'a T, PhantomData<TyCtxt<'tcx>>);
++
++impl<'a, 'tcx, T> Probe<'a, 'tcx, T> {
++    pub(crate) fn new(value: &'a T) -> Self {
++        Probe(value, PhantomData)
++    }
++}
++
++fn check<'tcx, V: TypeVisitable<TyCtxt<'tcx>> + Debug>(value: &V, query: &str, key: &dyn Debug) {
++    if selftest() {
++        report("selftest", &format!("query-result-infer checks `{query}`"));
++    }
++    if value.has_infer() {
++        let what = if value.has_non_region_infer() { "type or const" } else { "region" };
++        let (key, value) = with_no_queries!((format!("{key:?}"), format!("{value:?}")));
++        report("query-result-infer", &format!("`{query}({key})` returned a {what} inference variable: {value}"));
++    }
++}
++
++/// A `TypeVisitable` value (receiver `&&&Probe`).
++pub(crate) trait CheckVisitable {
++    fn check_infer(&self, query: &str, key: &dyn Debug);
++}
++
++impl<'b, 'c, 'a, 'tcx, T: TypeVisitable<TyCtxt<'tcx>> + Debug> CheckVisitable for &'b &'c Probe<'a, 'tcx, T> {
++    fn check_infer(&self, query: &str, key: &dyn Debug) {
++        check(self.0, query, key)
++    }
++}
++
++/// An `EarlyBinder` around a `TypeVisitable` value (receiver `&&Probe`).
++pub(crate) trait CheckEarlyBinder {
++    fn check_infer(&self, query: &str, key: &dyn Debug);
++}
++
++impl<'b, 'a, 'tcx, U: TypeVisitable<TyCtxt<'tcx>> + Debug> CheckEarlyBinder
++    for &'b Probe<'a, 'tcx, EarlyBinder<'tcx, U>>
++{
++    fn check_infer(&self, query: &str, key: &dyn Debug) {
++        check(self.0.as_ref().skip_binder(), query, key)
++    }
++}
++
++/// A reference to a `TypeVisitable` value (receiver `&&Probe`).
++pub(crate) trait CheckRef {
++    fn check_infer(&self, query: &str, key: &dyn Debug);
++}
++
++impl<'b, 'd, 'a, 'tcx, U: TypeVisitable<TyCtxt<'tcx>> + Debug> CheckRef for &'b Probe<'a, 'tcx, &'d U> {
++    fn check_infer(&self, query: &str, key: &dyn Debug) {
++        check(*self.0, query, key)
++    }
++}
++
++/// The same level: query results that wrap `TypeVisitable` parts in other types. Each impl is a
++/// trait of its own; for a given value type at most one applies.
++pub(crate) trait CheckResultRef {
++    fn check_infer(&self, query: &str, key: &dyn Debug);
++}
++
++/// `Result<&T, E>`: canonical query responses, codegen selection.
++impl<'b, 'd, 'a, 'tcx, U: TypeVisitable<TyCtxt<'tcx>> + Debug, E> CheckResultRef
++    for &'b Probe<'a, 'tcx, Result<&'d U, E>>
++{
++    fn check_infer(&self, query: &str, key: &dyn Debug) {
++        if let Ok(v) = self.0 {
++            check(*v, query, key)
++        }
++    }
++}
++
++pub(crate) trait CheckOptionBinder {
++    fn check_infer(&self, query: &str, key: &dyn Debug);
++}
++
++impl<'b, 'a, 'tcx, U: TypeVisitable<TyCtxt<'tcx>> + Debug> CheckOptionBinder
++    for &'b Probe<'a, 'tcx, Option<EarlyBinder<'tcx, U>>>
++{
++    fn check_infer(&self, query: &str, key: &dyn Debug) {
++        if let Some(v) = self.0 {
++            check(v.as_ref().skip_binder(), query, key)
++        }
++    }
++}
++
++pub(crate) trait CheckResultOptionBinder {
++    fn check_infer(&self, query: &str, key: &dyn Debug);
++}
++
++impl<'b, 'a, 'tcx, U: TypeVisitable<TyCtxt<'tcx>> + Debug, E> CheckResultOptionBinder
++    for &'b Probe<'a, 'tcx, Result<Option<EarlyBinder<'tcx, U>>, E>>
++{
++    fn check_infer(&self, query: &str, key: &dyn Debug) {
++        if let Ok(Some(v)) = self.0 {
++            check(v.as_ref().skip_binder(), query, key)
++        }
++    }
++}
++
++pub(crate) trait CheckTypeck {
++    fn check_infer(&self, query: &str, key: &dyn Debug);
++}
++
++/// Typeck results: every node's type (after writeback).
++impl<'b, 'd, 'a, 'tcx> CheckTypeck for &'b Probe<'a, 'tcx, &'d TypeckResults<'tcx>> {
++    fn check_infer(&self, query: &str, key: &dyn Debug) {
++        for (_, ty) in self.0.node_types().items_in_stable_order() {
++            check(ty, query, key);
++        }
++    }
++}
++
++pub(crate) trait CheckHiddenTypes {
++    fn check_infer(&self, query: &str, key: &dyn Debug);
++}
++
++/// Borrowck's hidden types of opaques.
++impl<'b, 'd, 'a, 'tcx, K, E> CheckHiddenTypes
++    for &'b Probe<'a, 'tcx, Result<&'d FxIndexMap<K, DefinitionSiteHiddenType<'tcx>>, E>>
++{
++    fn check_infer(&self, query: &str, key: &dyn Debug) {
++        if let Ok(map) = self.0 {
++            for hidden in map.values() {
++                check(hidden.ty.as_ref().skip_binder(), query, key);
++            }
++        }
++    }
++}
++
++pub(crate) trait CheckClauses {
++    fn check_infer(&self, query: &str, key: &dyn Debug);
++}
++
++impl<'b, 'a, 'tcx> CheckClauses for &'b Probe<'a, 'tcx, GenericClauses<'tcx>> {
++    fn check_infer(&self, query: &str, key: &dyn Debug) {
++        for (clause, _) in self.0.clauses {
++            check(clause, query, key);
++        }
++    }
++}
++
++pub(crate) trait CheckImplHeader {
++    fn check_infer(&self, query: &str, key: &dyn Debug);
++}
++
++impl<'b, 'a, 'tcx> CheckImplHeader for &'b Probe<'a, 'tcx, ImplTraitHeader<'tcx>> {
++    fn check_infer(&self, query: &str, key: &dyn Debug) {
++        check(self.0.trait_ref.as_ref().skip_binder(), query, key)
++    }
++}
++
++pub(crate) trait CheckLayout {
++    fn check_infer(&self, query: &str, key: &dyn Debug);
++}
++
++impl<'b, 'a, 'tcx, E> CheckLayout for &'b Probe<'a, 'tcx, Result<TyAndLayout<'tcx>, E>> {
++    fn check_infer(&self, query: &str, key: &dyn Debug) {
++        if let Ok(layout) = self.0 {
++            check(&layout.ty, query, key)
++        }
++    }
++}
++
++pub(crate) trait CheckCanonical {
++    fn check_infer(&self, query: &str, key: &dyn Debug);
++}
++
++/// Canonical query responses: canonicalization replaced every inference variable.
++impl<'b, 'd, 'a, 'tcx, U: TypeVisitable<TyCtxt<'tcx>> + Debug, E> CheckCanonical
++    for &'b Probe<'a, 'tcx, Result<&'d Canonical<'tcx, U>, E>>
++{
++    fn check_infer(&self, query: &str, key: &dyn Debug) {
++        if let Ok(c) = self.0 {
++            check(&c.value, query, key)
++        }
++    }
++}
++
++/// Anything else (receiver `&Probe`): not checked.
++pub(crate) trait SkipCheck {
++    fn check_infer(&self, query: &str, _key: &dyn Debug);
++}
++
++impl<'a, 'tcx, T> SkipCheck for Probe<'a, 'tcx, T> {
++    fn check_infer(&self, query: &str, _key: &dyn Debug) {
++        if selftest() {
++            report("selftest", &format!("`{query}` not checked: {}", std::any::type_name::<T>()));
++        }
++    }
++}
+diff --git a/compiler/rustc_query_impl/src/lib.rs b/compiler/rustc_query_impl/src/lib.rs
+index 5eecf938d29b..e319ecdca9e7 100644
+--- a/compiler/rustc_query_impl/src/lib.rs
++++ b/compiler/rustc_query_impl/src/lib.rs
+@@ -22,6 +22,7 @@
+ mod execution;
+ mod handle_cycle_error;
+ mod incremental;
++mod invariants;
+ mod job;
+ mod query_vtables;
+ mod self_profile;
+diff --git a/compiler/rustc_query_impl/src/query_vtables.rs b/compiler/rustc_query_impl/src/query_vtables.rs
+index 0d05be18233a..b88a0c300b96 100644
+--- a/compiler/rustc_query_impl/src/query_vtables.rs
++++ b/compiler/rustc_query_impl/src/query_vtables.rs
+@@ -133,6 +133,13 @@ pub(crate) fn __rust_begin_short_backtrace<'tcx>(
+                             tracing::trace!(?provided_value);
+                         });
+ 
++                        if rustc_data_structures::invariants::enabled() {
++                            #[allow(unused_imports)]
++                            use crate::invariants::*;
++                            (&&&Probe::<'_, 'tcx, _>::new(&provided_value))
++                                .check_infer(stringify!($name), &key);
++                        }
++
+                         // Erase the returned value, because `QueryVTable` uses erased values.
+                         // For queries with `arena_cache`, this also arena-allocates the value.
+                         provided_to_erased(tcx, provided_value)
+diff --git a/compiler/rustc_ty_utils/src/layout.rs b/compiler/rustc_ty_utils/src/layout.rs
+index 8c1634417c21..f2e63a727166 100644
+--- a/compiler/rustc_ty_utils/src/layout.rs
++++ b/compiler/rustc_ty_utils/src/layout.rs
+@@ -770,7 +770,7 @@ fn layout_of_uncached<'tcx>(
+             }
+ 
+             // If the struct tail is sized and can be unsized, check that unsizing doesn't move the fields around.
+-            if cfg!(debug_assertions)
++            if (cfg!(debug_assertions) || rustc_data_structures::invariants::enabled())
+                 && maybe_unsized
+                 && def
+                     .non_enum_variant()
+diff --git a/compiler/rustc_ty_utils/src/layout/invariant.rs b/compiler/rustc_ty_utils/src/layout/invariant.rs
+index 562a3ef387d9..cbf3ea7483b1 100644
+--- a/compiler/rustc_ty_utils/src/layout/invariant.rs
++++ b/compiler/rustc_ty_utils/src/layout/invariant.rs
+@@ -19,7 +19,8 @@ pub(super) fn layout_sanity_check<'tcx>(cx: &LayoutCx<'tcx>, layout: &TyAndLayou
+     // FIXME(#124403): Once `repr_c_enums_larger_than_int` is a hard error, we could assert
+     // here that a repr(c) enum discriminant is never larger than a c_int.
+ 
+-    if !cfg!(debug_assertions) {
++    // `RUSTC_CHECK_INVARIANTS` runs the expensive checks in release builds too.
++    if !cfg!(debug_assertions) && !rustc_data_structures::invariants::enabled() {
+         // Stop here, the rest is kind of expensive.
+         return;
+     }
