@@ -7,9 +7,16 @@ use clap::{Parser, Subcommand};
 
 mod tools {
     pub mod abi_diff;
+    pub mod audit_options;
     pub mod callgraph;
     pub mod crash_diff;
     pub mod diag_check;
+    pub mod flag_fuzz;
+    pub mod flag_min;
+    pub mod flag_model;
+    pub mod flag_rows;
+    pub mod flag_universe;
+    pub mod flag_walk;
     pub mod gate_check;
     pub mod instr_check;
     pub mod miri_diff;
@@ -62,6 +69,20 @@ enum Check {
     AbiDiff(tools::abi_diff::Args),
     /// Reachability over the compiler's call graph; coverage of what can run, and gap lists.
     Callgraph(tools::callgraph::Args),
+    /// rustc's -C and -Z options: domains, values and pairs accepted, covering-array sizes.
+    FlagUniverse(tools::flag_universe::Args),
+    /// A PICT model of the option universe (optionally of transitions, for a Cargo build).
+    FlagModel(tools::flag_model::Args),
+    /// Compile a trivial crate per PICT row; count the rejected rows by first error.
+    FlagRows(tools::flag_rows::Args),
+    /// Option transitions between incremental sessions: the rebuild must match a clean build.
+    FlagWalk(tools::flag_walk::Args),
+    /// Delta-debug the options of a flag walk's failing rows to a minimal set per error.
+    FlagMin(tools::flag_min::Args),
+    /// The fuzzer under the option configurations of a PICT table.
+    FlagFuzz(tools::flag_fuzz::Args),
+    /// [UNTRACKED] options must not change what incremental compilation reuses.
+    AuditOptions(tools::audit_options::Args),
 }
 
 fn main() -> ExitCode {
@@ -82,6 +103,13 @@ fn main() -> ExitCode {
         Check::ScaleCheck(a) => tools::scale_check::run(a),
         Check::AbiDiff(a) => tools::abi_diff::run(a),
         Check::Callgraph(a) => tools::callgraph::run(a),
+        Check::FlagUniverse(a) => tools::flag_universe::run(a),
+        Check::FlagModel(a) => tools::flag_model::run(a),
+        Check::FlagRows(a) => tools::flag_rows::run(a),
+        Check::FlagWalk(a) => tools::flag_walk::run(a),
+        Check::FlagMin(a) => tools::flag_min::run(a),
+        Check::FlagFuzz(a) => tools::flag_fuzz::run(a),
+        Check::AuditOptions(a) => tools::audit_options::run(a),
     };
     match result {
         Ok(code) => code,
