@@ -40,6 +40,9 @@ STRICT = set()
 NOISE = {
     ("consts/chained-constants-stackoverflow.rs", "reorder"),  # 10,000 chained consts: query depth
     ("consts/interior-mut-const-via-union.rs", "generic-wrap"),  # finding 25 (docs/hunt.md)
+    ("imports/ambiguous-9.rs", "reorder"),  # finding 28
+    ("imports/ambiguous-14.rs", "reorder"),  # finding 28
+    ("imports/overwrite-different-ambig-2.rs", "reorder"),  # finding 28
 }
 NOT_MOVABLE = re.compile(r"^\s*(pub(\([^)]*\))?\s+)?mod\s+\w+\s*;|include(_str|_bytes)?!|#\[path|#!\[no_core\]", re.M)
 # Item order matters to textual macro scoping: no reordering where macros are defined.
