@@ -39,10 +39,12 @@ use std::time::{Duration, Instant};
 
 use rand::SeedableRng;
 use rand::rngs::StdRng;
+use rand::seq::IndexedRandom;
 use regex::Regex;
 use serde_json::{Value, json};
 
-use mirth_lab::cargo::{self, Collected, copy_tree, messages, relative, tail};
+use mirth_lab::artifacts::{self, Collected};
+use mirth_lab::cargo::{self, copy_tree, messages, relative, tail};
 use mirth_lab::mutations;
 
 #[derive(clap::Args, Debug, Clone)]
@@ -169,7 +171,7 @@ impl Ctx {
             ice: cargo::is_ice(&log),
             hang: r.hang,
             reuse: cargo::reuse_checks(&log),
-            art: cargo::collect(&r.stdout, target),
+            art: artifacts::collect(&r.stdout, target),
             rmetas,
             exe,
             log,
@@ -348,16 +350,15 @@ impl Worker<'_> {
             let n = self.stats.edits;
             self.stats.edits += 1;
             let paths = rs_files(&self.src);
-            if paths.is_empty() {
-                break;
-            }
-            let path = paths[mutations::EditRng::below(&mut rng, paths.len())].clone();
+            let Some(path) = paths.choose(&mut rng).cloned() else { break };
             let old = std::fs::read_to_string(&path).unwrap_or_default();
-            let edit = mutations::pick(&mut rng);
-            if mutations::changes_literals(edit) && path.file_name().is_some_and(|f| f == "build.rs") {
+            let (edit, apply) = mutations::pick(&mut rng);
+            if matches!(edit, "int_literal" | "str_literal") && path.file_name().is_some_and(|f| f == "build.rs") {
+                // Cargo keeps stale OUT_DIR files, so renaming a generated file splits the
+                // builds, and a changed number can make the build script loop forever.
                 continue;
             }
-            let new = match (edit.apply)(&old, &mut rng, n) {
+            let new = match apply(&old, &mut rng, n as usize) {
                 Some(new) if new != old => new,
                 _ => continue,
             };
@@ -366,8 +367,8 @@ impl Worker<'_> {
             let diff = unified_diff(&old, &new, &rel);
             let inc = self.ctx.build(&self.src, &self.target);
             cargo::note_untracked(&self.ctx.work.join("untracked.txt"), &cargo::untracked_reads(&inc.log));
-            self.history.push(json!({"edit": edit.name, "file": rel, "diff": diff, "before": old, "after": new, "kept": inc.ok}));
-            self.stats.by_edit.entry(edit.name.to_owned()).or_default()[0] += 1;
+            self.history.push(json!({"edit": edit, "file": rel, "diff": diff, "before": old, "after": new, "kept": inc.ok}));
+            self.stats.by_edit.entry(edit.to_owned()).or_default()[0] += 1;
             if inc.ice {
                 self.report("ICE", &[], &inc, None, Value::Null);
             }
@@ -391,7 +392,7 @@ impl Worker<'_> {
                 self.history.push(json!({"edit": "revert", "file": rel, "diff": "", "kept": false}));
                 continue;
             }
-            self.stats.by_edit.get_mut(edit.name).unwrap()[1] += 1;
+            self.stats.by_edit.get_mut(edit).unwrap()[1] += 1;
             self.stats.built += 1;
             self.compare(inc);
             if self.stats.edits % 20 == 0 {
@@ -425,8 +426,8 @@ impl Worker<'_> {
                 keys.into_iter().filter(|r| a.get(*r) != b.get(*r)).cloned().collect()
             };
             let mut differ = rmeta_differ(&inc.rmetas, &clean.rmetas);
-            let mut others: BTreeMap<String, Vec<String>> =
-                cargo::compare(&inc.art, &clean.art).into_iter().filter(|(k, _)| !skip.contains(&k.as_str())).collect();
+            let mut others: BTreeMap<&str, Vec<String>> =
+                artifacts::compare(&inc.art, &clean.art).into_iter().filter(|(k, _)| !skip.contains(k)).collect();
             if !differ.is_empty() || !others.is_empty() {
                 // Build clean again: if two clean builds differ, the difference is
                 // nondeterminism (P5), not incremental reuse.
@@ -438,9 +439,9 @@ impl Worker<'_> {
                     let b = self.ctx.build(&self.src, &target);
                     p5 = rmeta_differ(&clean.rmetas, &b.rmetas);
                     p5.extend(
-                        cargo::compare(&clean.art, &b.art)
+                        artifacts::compare(&clean.art, &b.art)
                             .into_iter()
-                            .filter(|(k, _)| !skip.contains(&k.as_str()))
+                            .filter(|(k, _)| !skip.contains(k))
                             .map(|(k, v)| format!("{k}: {}", v[0])),
                     );
                     again_ok = b.ok;

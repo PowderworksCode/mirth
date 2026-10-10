@@ -1,15 +1,9 @@
-//! Cargo builds two of which can be compared: what a build produced, read from the JSON messages
-//! of `cargo build --message-format=json-render-diagnostics` for packages built from a path:
-//!
-//!   rmeta   every .rmeta, by path
-//!   rlib    every .rlib's members by name, session suffixes removed (`artifacts`)
-//!   exe     every executable
-//!   diag    every diagnostic, rendered, counted per crate
-//!
-//! Also what the compiler's own checks print (RUSTC_VERIFY_REUSE, RUSTC_REPORT_UNTRACKED), and
-//! the process-group timeout and tree copies the incremental fuzzers need.
+//! Incremental Cargo builds for the fuzzers: Cargo's JSON messages, what the compiler's own
+//! checks print (RUSTC_VERIFY_REUSE, RUSTC_REPORT_UNTRACKED), a process-group timeout, and tree
+//! copies that keep modification times. What a build produced is compared by
+//! `artifacts::collect` and `artifacts::compare`.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::io::Read;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
@@ -20,8 +14,6 @@ use std::time::Duration;
 use regex::Regex;
 use serde::Deserialize;
 use wait_timeout::ChildExt;
-
-use crate::artifacts::{normalized_rlib, sha256};
 
 #[derive(Deserialize)]
 pub struct Message {
@@ -65,93 +57,6 @@ pub fn messages(stdout: &str) -> impl Iterator<Item = Message> + '_ {
 /// `f` relative to `target` when it is inside it.
 pub fn relative(f: &str, target: &Path) -> String {
     Path::new(f).strip_prefix(target).map_or_else(|_| f.to_owned(), |p| p.to_string_lossy().into_owned())
-}
-
-#[derive(Default, Clone, PartialEq)]
-pub struct Collected {
-    pub rmeta: BTreeMap<String, String>,
-    pub rlib: BTreeMap<String, BTreeMap<String, String>>,
-    pub exe: BTreeMap<String, String>,
-    /// (crate, rendered diagnostic) -> count
-    pub diag: BTreeMap<(String, String), usize>,
-}
-
-static SESSION: LazyLock<regex::bytes::Regex> =
-    LazyLock::new(|| regex::bytes::Regex::new(r"\.[0-9a-z]{7}(\.rcgu\.(?:o|dwo))").unwrap());
-
-/// Artifacts from cargo's JSON messages, keyed by path relative to `target`.
-pub fn collect(stdout: &str, target: &Path) -> Collected {
-    let mut found = Collected::default();
-    for msg in messages(stdout) {
-        if !msg.from_path() {
-            continue;
-        }
-        if msg.reason == "compiler-message" {
-            let m = msg.message.as_ref();
-            let text = m
-                .and_then(|m| m.get("rendered").and_then(|r| r.as_str()).filter(|s| !s.is_empty()))
-                .or_else(|| m.and_then(|m| m.get("message")).and_then(|r| r.as_str()))
-                .unwrap_or("");
-            *found.diag.entry((msg.target_name().to_owned(), text.to_owned())).or_default() += 1;
-            continue;
-        }
-        if msg.reason != "compiler-artifact" {
-            continue;
-        }
-        for f in &msg.filenames {
-            let rel = relative(f, target);
-            if f.ends_with(".rmeta") {
-                found.rmeta.insert(rel, sha256(&std::fs::read(f).unwrap_or_default()));
-            } else if f.ends_with(".rlib") {
-                found.rlib.insert(rel, normalized_rlib(Path::new(f)));
-            }
-        }
-        if let Some(f) = &msg.executable {
-            let data = std::fs::read(f).unwrap_or_default();
-            found.exe.insert(relative(f, target), sha256(&SESSION.replace_all(&data, &b"$1"[..])));
-        }
-    }
-    found
-}
-
-fn differing<V: PartialEq>(a: &BTreeMap<String, V>, b: &BTreeMap<String, V>) -> Vec<String> {
-    let keys: BTreeSet<&String> = a.keys().chain(b.keys()).collect();
-    keys.into_iter().filter(|k| a.get(*k) != b.get(*k)).cloned().collect()
-}
-
-/// {kind: [what differs]} for the kinds that differ between two collections.
-pub fn compare(a: &Collected, b: &Collected) -> BTreeMap<String, Vec<String>> {
-    let mut out = BTreeMap::new();
-    for (kind, x, y) in [("rmeta", &a.rmeta, &b.rmeta), ("exe", &a.exe, &b.exe)] {
-        let d = differing(x, y);
-        if !d.is_empty() {
-            out.insert(kind.to_owned(), d);
-        }
-    }
-    let empty = BTreeMap::new();
-    let mut rlib = Vec::new();
-    for rel in a.rlib.keys().chain(b.rlib.keys()).collect::<BTreeSet<_>>() {
-        let members = differing(a.rlib.get(rel).unwrap_or(&empty), b.rlib.get(rel).unwrap_or(&empty));
-        if !members.is_empty() {
-            let more = if members.len() > 5 { " …" } else { "" };
-            rlib.push(format!("{rel}: {}{more}", members[..members.len().min(5)].join(", ")));
-        }
-    }
-    if !rlib.is_empty() {
-        out.insert("rlib".to_owned(), rlib);
-    }
-    if a.diag != b.diag {
-        let only = |x: &BTreeMap<(String, String), usize>, y: &BTreeMap<(String, String), usize>, which: &str| {
-            x.iter()
-                .filter(|(k, n)| y.get(*k).copied().unwrap_or(0) < **n)
-                .map(|((c, t), _)| format!("{c} only in the {which}: {:?}", t.chars().take(200).collect::<String>()))
-                .collect::<Vec<_>>()
-        };
-        let mut d = only(&a.diag, &b.diag, "first");
-        d.extend(only(&b.diag, &a.diag, "second"));
-        out.insert("diag".to_owned(), d);
-    }
-    out
 }
 
 /// What the compiler's own check of reused results (docs/hunt/verify-reuse.patch) found stale:

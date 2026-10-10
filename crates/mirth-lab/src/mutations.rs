@@ -1,93 +1,40 @@
 //! Random mechanical edits to Rust source, shared by the fuzzers.
 //!
-//! Each edit takes the file's text, a random source and a counter (which names what the edit
-//! adds), and returns the new text, or None when it does not apply. [`EDITS`] lists them with
-//! weights; [`pick`] draws one.
+//! Each edit takes the file's text, a random generator and a counter, and returns the new text,
+//! or None when it does not apply. EDITS lists them with weights.
 
 use std::sync::LazyLock;
 
+use rand::distr::Distribution;
+use rand::distr::weighted::WeightedIndex;
+use rand::rngs::StdRng;
+use rand::seq::{IndexedRandom, SliceRandom};
+use rand::{Rng, SeedableRng};
 use regex::Regex;
 
-/// The random choices an edit makes. Implemented for every `rand::Rng`; the draws mirror
-/// Python's `random` (randrange, choice, choices, shuffle) so that a scripted source replays
-/// the same edit in both.
-pub trait EditRng {
-    /// A float in [0, 1).
-    fn float(&mut self) -> f64;
-    /// An integer in [0, n), n > 0.
-    fn below(&mut self, n: usize) -> usize;
+pub type Edit = fn(&str, &mut StdRng, usize) -> Option<String>;
+
+/// A generator seeded by a name (a test path), so a run can be repeated.
+pub fn seeded(name: &str) -> StdRng {
+    let digest = crate::artifacts::sha256(name.as_bytes());
+    StdRng::seed_from_u64(u64::from_str_radix(&digest[..16], 16).unwrap())
 }
 
-impl<R: rand::Rng> EditRng for R {
-    fn float(&mut self) -> f64 {
-        self.random::<f64>()
-    }
-    fn below(&mut self, n: usize) -> usize {
-        self.random_range(0..n)
-    }
+/// A random edit, by weight.
+pub fn pick(rng: &mut StdRng) -> (&'static str, Edit) {
+    static WEIGHTS: LazyLock<WeightedIndex<u32>> = LazyLock::new(|| WeightedIndex::new(EDITS.iter().map(|e| e.2)).unwrap());
+    let (name, f, _) = EDITS[WEIGHTS.sample(rng)];
+    (name, f)
 }
 
-fn choice<'a, T>(rng: &mut dyn EditRng, v: &'a [T]) -> &'a T {
-    &v[rng.below(v.len())]
-}
+static INDENT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*").unwrap());
 
-/// Fisher-Yates from the end, as Python's `random.shuffle`.
-fn shuffle<T>(rng: &mut dyn EditRng, v: &mut [T]) {
-    for i in (1..v.len()).rev() {
-        let j = rng.below(i + 1);
-        v.swap(i, j);
-    }
-}
-
-pub type EditFn = fn(&str, &mut dyn EditRng, u64) -> Option<String>;
-
-pub struct Edit {
-    pub name: &'static str,
-    pub weight: u32,
-    pub apply: EditFn,
-}
-
-pub const EDITS: &[Edit] = &[
-    Edit { name: "comment_line", weight: 10, apply: comment_line },
-    Edit { name: "blank_line", weight: 6, apply: blank_line },
-    Edit { name: "remove_comment", weight: 3, apply: remove_comment },
-    Edit { name: "indent_line", weight: 4, apply: indent_line },
-    Edit { name: "swap_items", weight: 6, apply: swap_items },
-    Edit { name: "move_item_to_end", weight: 3, apply: move_item_to_end },
-    Edit { name: "delete_item", weight: 2, apply: delete_item },
-    Edit { name: "duplicate_fn", weight: 4, apply: duplicate_fn },
-    Edit { name: "add_item", weight: 8, apply: add_item },
-    Edit { name: "int_literal", weight: 6, apply: int_literal },
-    Edit { name: "str_literal", weight: 4, apply: str_literal },
-    Edit { name: "toggle_inline", weight: 4, apply: toggle_inline },
-    Edit { name: "doc_comment", weight: 4, apply: doc_comment },
-    Edit { name: "reorder_derive", weight: 2, apply: reorder_derive },
-    Edit { name: "narrow_visibility", weight: 2, apply: narrow_visibility },
-    Edit { name: "rename_local", weight: 3, apply: rename_local },
-];
-
-/// An edit drawn by weight (Python's `random.choices`).
-pub fn pick(rng: &mut dyn EditRng) -> &'static Edit {
-    let total: u32 = EDITS.iter().map(|e| e.weight).sum();
-    let u = rng.float() * total as f64;
-    let mut acc = 0.0;
-    for e in EDITS {
-        acc += e.weight as f64;
-        if u < acc {
-            return e;
-        }
-    }
-    &EDITS[EDITS.len() - 1]
-}
-
-/// The edits that change literals: not for build scripts (Cargo keeps stale OUT_DIR files, so
-/// renaming a generated file splits the builds, and a changed number can make it loop).
-pub fn changes_literals(e: &Edit) -> bool {
-    e.name == "int_literal" || e.name == "str_literal"
+fn indent(line: &str) -> &str {
+    INDENT.find(line).map_or("", |m| m.as_str())
 }
 
 /// Top-level items: blank-line separated, continuation blocks merged.
-fn blocks(text: &str) -> Vec<String> {
+pub fn blocks(text: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for b in text.split("\n\n") {
         let continues = b.chars().next().is_some_and(char::is_whitespace) || b.starts_with('}') || b.starts_with("where");
@@ -106,89 +53,79 @@ fn lines(text: &str) -> Vec<String> {
     text.split('\n').map(str::to_owned).collect()
 }
 
-fn indent_of(line: &str) -> &str {
-    &line[..line.len() - line.trim_start().len()]
-}
-
-fn comment_line(text: &str, rng: &mut dyn EditRng, n: u64) -> Option<String> {
+pub fn comment_line(text: &str, rng: &mut StdRng, n: usize) -> Option<String> {
     let mut l = lines(text);
-    let i = rng.below(l.len() + 1);
-    let indent = l.get(i).map_or("", |s| indent_of(s)).to_owned();
-    l.insert(i, format!("{indent}// fuzz {n}"));
+    let i = rng.random_range(0..=l.len());
+    let ind = indent(l.get(i).map_or("", String::as_str)).to_owned();
+    l.insert(i, format!("{ind}// fuzz {n}"));
     Some(l.join("\n"))
 }
 
-fn blank_line(text: &str, rng: &mut dyn EditRng, _: u64) -> Option<String> {
+pub fn blank_line(text: &str, rng: &mut StdRng, _: usize) -> Option<String> {
     let mut l = lines(text);
-    let i = rng.below(l.len() + 1);
+    let i = rng.random_range(0..=l.len());
     l.insert(i, String::new());
     Some(l.join("\n"))
 }
 
-fn remove_comment(text: &str, rng: &mut dyn EditRng, _: u64) -> Option<String> {
+pub fn remove_comment(text: &str, rng: &mut StdRng, _: usize) -> Option<String> {
     let mut l = lines(text);
-    let idx: Vec<usize> =
-        (0..l.len()).filter(|&i| l[i].trim().starts_with("//") && !l[i].trim().starts_with("//!")).collect();
-    if idx.is_empty() {
-        return None;
-    }
-    l.remove(*choice(rng, &idx));
+    let idx: Vec<usize> = (0..l.len())
+        .filter(|&i| {
+            let t = l[i].trim();
+            t.starts_with("//") && !t.starts_with("//!")
+        })
+        .collect();
+    let i = *idx.choose(rng)?;
+    l.remove(i);
     Some(l.join("\n"))
 }
 
-fn indent_line(text: &str, rng: &mut dyn EditRng, _: u64) -> Option<String> {
+pub fn indent_line(text: &str, rng: &mut StdRng, _: usize) -> Option<String> {
     let mut l = lines(text);
     let idx: Vec<usize> = (0..l.len()).filter(|&i| !l[i].trim().is_empty()).collect();
-    if idx.is_empty() {
-        return None;
-    }
-    let i = *choice(rng, &idx);
+    let i = *idx.choose(rng)?;
     l[i] = format!("    {}", l[i]);
     Some(l.join("\n"))
 }
 
-fn swap_items(text: &str, rng: &mut dyn EditRng, _: u64) -> Option<String> {
+pub fn swap_items(text: &str, rng: &mut StdRng, _: usize) -> Option<String> {
     let mut b = blocks(text);
     if b.len() < 3 {
         return None;
     }
-    let i = 1 + rng.below(b.len() - 2);
+    let i = rng.random_range(1..b.len() - 1);
     b.swap(i, i + 1);
     Some(b.join("\n\n"))
 }
 
-fn move_item_to_end(text: &str, rng: &mut dyn EditRng, _: u64) -> Option<String> {
+pub fn move_item_to_end(text: &str, rng: &mut StdRng, _: usize) -> Option<String> {
     let mut b = blocks(text);
     if b.len() < 3 {
         return None;
     }
-    let i = 1 + rng.below(b.len() - 1);
-    let item = b.remove(i);
+    let item = b.remove(rng.random_range(1..b.len()));
     b.push(item.trim_end_matches('\n').to_owned());
     Some(b.join("\n\n") + "\n")
 }
 
-fn delete_item(text: &str, rng: &mut dyn EditRng, _: u64) -> Option<String> {
+pub fn delete_item(text: &str, rng: &mut StdRng, _: usize) -> Option<String> {
     let mut b = blocks(text);
     if b.len() < 3 {
         return None;
     }
-    b.remove(1 + rng.below(b.len() - 1));
+    b.remove(rng.random_range(1..b.len()));
     Some(b.join("\n\n"))
 }
 
-static FN_ITEM: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?m)^(pub(\([^)]*\))? )?(const )?(async )?fn \w+").unwrap());
+static FN_ITEM: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?m)^(pub(\([^)]*\))? )?(const )?(async )?fn \w+").unwrap());
 static FN_NAME: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\bfn (\w+)").unwrap());
 
-fn duplicate_fn(text: &str, rng: &mut dyn EditRng, n: u64) -> Option<String> {
+pub fn duplicate_fn(text: &str, rng: &mut StdRng, n: usize) -> Option<String> {
     let mut b = blocks(text);
     let fns: Vec<usize> = (0..b.len()).filter(|&i| FN_ITEM.is_match(&b[i])).collect();
-    if fns.is_empty() {
-        return None;
-    }
-    let i = *choice(rng, &fns);
-    let copy = FN_NAME.replacen(&b[i], 1, |c: &regex::Captures| format!("fn {}_fuzz{n}", &c[1])).into_owned();
+    let i = *fns.choose(rng)?;
+    let copy = FN_NAME.replacen(&b[i], 1, format!("fn ${{1}}_fuzz{n}")).into_owned();
     b.insert(i + 1, copy);
     Some(b.join("\n\n"))
 }
@@ -208,105 +145,64 @@ const ADDITIONS: &[&str] = &[
     "pub mod fuzz_mod_{n} { pub fn inner() -> &'static str { \"{n}\" } }",
 ];
 
-fn add_item(text: &str, rng: &mut dyn EditRng, n: u64) -> Option<String> {
+pub fn add_item(text: &str, rng: &mut StdRng, n: usize) -> Option<String> {
     let mut b = blocks(text);
-    let i = 1 + rng.below(b.len());
-    b.insert(i, choice(rng, ADDITIONS).replace("{n}", &n.to_string()));
+    let i = rng.random_range(1..=b.len());
+    b.insert(i, ADDITIONS.choose(rng).unwrap().replace("{n}", &n.to_string()));
     Some(b.join("\n\n"))
 }
 
-/// Python's `\w`: alphanumeric or underscore.
-fn word(c: char) -> bool {
-    c.is_alphanumeric() || c == '_'
+fn word_or(c: Option<char>, extra: char) -> bool {
+    c.is_some_and(|c| c.is_alphanumeric() || c == '_' || c == extra)
 }
 
 static DIGITS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\d+").unwrap());
 
-/// One more than a decimal number written in ASCII or other digits, as Python's `int(s) + 1`.
-fn increment(s: &str) -> Option<String> {
-    let mut digits: Vec<u8> = s.chars().map(|c| c.to_digit(10).map(|d| d as u8)).collect::<Option<_>>()?;
-    let mut i = digits.len();
-    loop {
-        if i == 0 {
-            digits.insert(0, 1);
-            break;
-        }
-        i -= 1;
-        if digits[i] == 9 {
-            digits[i] = 0;
-        } else {
-            digits[i] += 1;
-            break;
-        }
-    }
-    let first = digits.iter().position(|&d| d != 0).unwrap_or(digits.len() - 1);
-    Some(digits[first..].iter().map(|d| (b'0' + d) as char).collect())
-}
-
-/// Numbers not part of a word or a float: `(?<![\w.])(\d+)(?![\w.])`.
-fn int_literal(text: &str, rng: &mut dyn EditRng, _: u64) -> Option<String> {
+pub fn int_literal(text: &str, rng: &mut StdRng, _: usize) -> Option<String> {
+    // A whole run of digits, not touching a word character or a dot on either side.
     let ms: Vec<regex::Match> = DIGITS
         .find_iter(text)
-        .filter(|m| {
-            let before = text[..m.start()].chars().next_back();
-            let after = text[m.end()..].chars().next();
-            !before.is_some_and(|c| word(c) || c == '.') && !after.is_some_and(|c| word(c) || c == '.')
-        })
+        .filter(|m| !word_or(text[..m.start()].chars().next_back(), '.') && !word_or(text[m.end()..].chars().next(), '.'))
         .collect();
-    if ms.is_empty() {
-        return None;
-    }
-    let m = choice(rng, &ms);
-    Some(format!("{}{}{}", &text[..m.start()], increment(m.as_str())?, &text[m.end()..]))
+    let m = ms.choose(rng)?;
+    let bumped = m.as_str().parse::<u128>().map_or_else(|_| format!("{}1", m.as_str()), |v| (v + 1).to_string());
+    Some(format!("{}{bumped}{}", &text[..m.start()], &text[m.end()..]))
 }
 
-/// Plain string literals: `(?<![\w\\])"([^"\\\n]*)"`, scanned as Python's regex scans.
-fn str_literals(text: &str) -> Vec<(usize, usize)> {
-    let mut out = Vec::new();
-    let mut i = 0;
-    while let Some(off) = text[i..].find('"') {
-        let start = i + off;
-        let before = text[..start].chars().next_back();
-        if !before.is_some_and(|c| word(c) || c == '\\') {
-            let body = &text[start + 1..];
-            let stop = body.find(['"', '\\', '\n']);
-            if let Some(s) = stop
-                && body.as_bytes()[s] == b'"'
-            {
-                let end = start + 1 + s + 1;
-                out.push((start, end));
-                i = end;
-                continue;
-            }
+static STRING: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#""([^"\\\n]*)""#).unwrap());
+
+pub fn str_literal(text: &str, rng: &mut StdRng, _: usize) -> Option<String> {
+    // A string literal not preceded by a word character or a backslash; after a rejected
+    // opening quote the search resumes one character later, as a lookbehind would.
+    let mut ms = Vec::new();
+    let mut pos = 0;
+    while let Some(c) = STRING.captures_at(text, pos) {
+        let m = c.get(0).unwrap();
+        if word_or(text[..m.start()].chars().next_back(), '\\') {
+            pos = m.start() + 1;
+        } else {
+            ms.push((m.start(), m.end(), c[1].to_owned()));
+            pos = m.end();
         }
-        i = start + 1;
     }
-    out
-}
-
-fn str_literal(text: &str, rng: &mut dyn EditRng, _: u64) -> Option<String> {
-    let ms = str_literals(text);
-    if ms.is_empty() {
-        return None;
-    }
-    let (s, e) = *choice(rng, &ms);
-    Some(format!("{}\"{}~\"{}", &text[..s], &text[s + 1..e - 1], &text[e..]))
+    let (s, e, body) = ms.choose(rng)?;
+    Some(format!("{}\"{body}~\"{}", &text[..*s], &text[*e..]))
 }
 
 static FN_LINE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*(pub(\([^)]*\))? )?(const )?fn ").unwrap());
 
-fn toggle_inline(text: &str, rng: &mut dyn EditRng, _: u64) -> Option<String> {
+pub fn toggle_inline(text: &str, rng: &mut StdRng, _: usize) -> Option<String> {
     let mut l = lines(text);
-    let inl: Vec<usize> =
-        (0..l.len()).filter(|&i| matches!(l[i].trim(), "#[inline]" | "#[inline(never)]" | "#[inline(always)]")).collect();
+    let inl: Vec<usize> = (0..l.len()).filter(|&i| matches!(l[i].trim(), "#[inline]" | "#[inline(never)]" | "#[inline(always)]")).collect();
     let fns: Vec<usize> = (0..l.len()).filter(|&i| FN_LINE.is_match(&l[i])).collect();
-    if !inl.is_empty() && rng.float() < 0.5 {
-        l.remove(*choice(rng, &inl));
+    if !inl.is_empty() && rng.random::<f64>() < 0.5 {
+        let i = *inl.choose(rng).unwrap();
+        l.remove(i);
     } else if !fns.is_empty() {
-        let i = *choice(rng, &fns);
-        let indent = indent_of(&l[i]).to_owned();
-        let attr = choice(rng, &["#[inline]", "#[inline(never)]", "#[cold]", "#[must_use]"]);
-        l.insert(i, format!("{indent}{attr}"));
+        let i = *fns.choose(rng).unwrap();
+        let attr = ["#[inline]", "#[inline(never)]", "#[cold]", "#[must_use]"].choose(rng).unwrap();
+        let ind = indent(&l[i]).to_owned();
+        l.insert(i, format!("{ind}{attr}"));
     } else {
         return None;
     }
@@ -316,111 +212,95 @@ fn toggle_inline(text: &str, rng: &mut dyn EditRng, _: u64) -> Option<String> {
 static ITEM_LINE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^\s*(pub(\([^)]*\))? )?(fn|struct|enum|trait|const|static|type|mod) ").unwrap());
 
-fn doc_comment(text: &str, rng: &mut dyn EditRng, n: u64) -> Option<String> {
+pub fn doc_comment(text: &str, rng: &mut StdRng, n: usize) -> Option<String> {
     let mut l = lines(text);
     let idx: Vec<usize> = (0..l.len()).filter(|&i| ITEM_LINE.is_match(&l[i])).collect();
-    if idx.is_empty() {
-        return None;
-    }
-    let i = *choice(rng, &idx);
-    let indent = indent_of(&l[i]).to_owned();
-    l.insert(i, format!("{indent}/// Fuzz doc {n}, see [`Vec`]."));
+    let i = *idx.choose(rng)?;
+    let ind = indent(&l[i]).to_owned();
+    l.insert(i, format!("{ind}/// Fuzz doc {n}, see [`Vec`]."));
     Some(l.join("\n"))
 }
 
 static DERIVE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"#\[derive\(([^)]*)\)\]").unwrap());
 
-fn reorder_derive(text: &str, rng: &mut dyn EditRng, _: u64) -> Option<String> {
+pub fn reorder_derive(text: &str, rng: &mut StdRng, _: usize) -> Option<String> {
     let ms: Vec<regex::Captures> = DERIVE.captures_iter(text).collect();
-    if ms.is_empty() {
-        return None;
-    }
-    let m = choice(rng, &ms);
-    let mut names: Vec<&str> = m[1].split(',').map(str::trim).filter(|x| !x.is_empty()).collect();
+    let c = ms.choose(rng)?;
+    let mut names: Vec<&str> = c[1].split(',').map(str::trim).filter(|x| !x.is_empty()).collect();
     if names.len() < 2 {
         return None;
     }
-    shuffle(rng, &mut names);
-    let all = m.get(0).unwrap();
-    Some(format!("{}#[derive({})]{}", &text[..all.start()], names.join(", "), &text[all.end()..]))
+    names.shuffle(rng);
+    let m = c.get(0).unwrap();
+    Some(format!("{}#[derive({})]{}", &text[..m.start()], names.join(", "), &text[m.end()..]))
 }
 
-static PUB_ITEM: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\bpub (fn|struct|enum|const|static|trait|mod|type) ").unwrap());
+static PUB_ITEM: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\bpub (fn|struct|enum|const|static|trait|mod|type) ").unwrap());
 
-fn narrow_visibility(text: &str, rng: &mut dyn EditRng, _: u64) -> Option<String> {
+pub fn narrow_visibility(text: &str, rng: &mut StdRng, _: usize) -> Option<String> {
     let ms: Vec<regex::Captures> = PUB_ITEM.captures_iter(text).collect();
-    if ms.is_empty() {
-        return None;
-    }
-    let m = choice(rng, &ms);
-    let all = m.get(0).unwrap();
-    Some(format!("{}pub(crate) {} {}", &text[..all.start()], &m[1], &text[all.end()..]))
+    let c = ms.choose(rng)?;
+    let m = c.get(0).unwrap();
+    Some(format!("{}pub(crate) {} {}", &text[..m.start()], &c[1], &text[m.end()..]))
 }
 
 static LET: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\blet (mut )?([a-z_][a-z0-9_]*)\b").unwrap());
 
-fn rename_local(text: &str, rng: &mut dyn EditRng, n: u64) -> Option<String> {
+pub fn rename_local(text: &str, rng: &mut StdRng, n: usize) -> Option<String> {
     let ms: Vec<regex::Captures> = LET.captures_iter(text).collect();
-    if ms.is_empty() {
-        return None;
-    }
-    let m = choice(rng, &ms);
-    let name = &m[2];
+    let c = ms.choose(rng)?;
+    let name = &c[2];
     if name == "_" {
         return None;
     }
-    let (start, after) = (m.get(0).unwrap().start(), m.get(0).unwrap().end());
+    let m = c.get(0).unwrap();
     // Rename from the binding to the end of the enclosing top-level block.
-    let end = text[after..].find("\n}\n").map_or(text.len(), |e| after + e);
-    let re = Regex::new(&format!(r"\b{name}\b")).unwrap();
-    let body = re.replace_all(&text[start..end], format!("{name}_f{n}").as_str());
-    Some(format!("{}{}{}", &text[..start], body, &text[end..]))
+    let end = text[m.end()..].find("\n}\n").map_or(text.len(), |i| m.end() + i);
+    let re = Regex::new(&format!(r"\b{}\b", regex::escape(name))).unwrap();
+    let body = re.replace_all(&text[m.start()..end], format!("{name}_f{n}").as_str()).into_owned();
+    Some(format!("{}{body}{}", &text[..m.start()], &text[end..]))
 }
+
+pub const EDITS: &[(&str, Edit, u32)] = &[
+    ("comment_line", comment_line, 10),
+    ("blank_line", blank_line, 6),
+    ("remove_comment", remove_comment, 3),
+    ("indent_line", indent_line, 4),
+    ("swap_items", swap_items, 6),
+    ("move_item_to_end", move_item_to_end, 3),
+    ("delete_item", delete_item, 2),
+    ("duplicate_fn", duplicate_fn, 4),
+    ("add_item", add_item, 8),
+    ("int_literal", int_literal, 6),
+    ("str_literal", str_literal, 4),
+    ("toggle_inline", toggle_inline, 4),
+    ("doc_comment", doc_comment, 4),
+    ("reorder_derive", reorder_derive, 2),
+    ("narrow_visibility", narrow_visibility, 2),
+    ("rename_local", rename_local, 3),
+];
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// Draws from a fixed list of floats in [0, 1); `below(n)` is `floor(u * n)`.
-    pub struct Scripted(pub Vec<f64>, pub usize);
-    impl EditRng for Scripted {
-        fn float(&mut self) -> f64 {
-            let u = self.0[self.1 % self.0.len()];
-            self.1 += 1;
-            u
-        }
-        fn below(&mut self, n: usize) -> usize {
-            ((self.float() * n as f64) as usize).min(n - 1)
-        }
-    }
-
     #[test]
     fn literals() {
-        assert_eq!(increment("009").as_deref(), Some("10"));
-        assert_eq!(increment("99").as_deref(), Some("100"));
-        let mut r = Scripted(vec![0.0], 0);
-        assert_eq!(int_literal("a1 + 2.0 + 3", &mut r, 0).as_deref(), Some("a1 + 2.0 + 4"));
-        assert_eq!(str_literal(r#"r"x" + "y""#, &mut r, 0).as_deref(), Some(r#"r"x" + "y~""#));
+        let mut rng = seeded("t");
+        assert_eq!(int_literal("let x = 12; y.0; a1", &mut rng, 0).unwrap(), "let x = 13; y.0; a1");
+        assert_eq!(str_literal(r#"r"a" + "b""#, &mut rng, 0).unwrap(), r#"r"a" + "b~""#);
+        assert!(int_literal("x1 y.2", &mut rng, 0).is_none());
     }
 
-    /// Cases written by the Python edits with the same scripted draws (MIRTH_MUTATION_CASES:
-    /// a JSON list of {edit, text, n, draws, out}).
     #[test]
-    fn same_as_python() {
-        let Ok(path) = std::env::var("MIRTH_MUTATION_CASES") else { return };
-        let cases: Vec<serde_json::Value> = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
-        let mut bad = 0;
-        for c in &cases {
-            let edit = EDITS.iter().find(|e| e.name == c["edit"]).unwrap();
-            let draws: Vec<f64> = c["draws"].as_array().unwrap().iter().map(|v| v.as_f64().unwrap()).collect();
-            let got = (edit.apply)(c["text"].as_str().unwrap(), &mut Scripted(draws, 0), c["n"].as_u64().unwrap());
-            if got.as_deref() != c["out"].as_str() {
-                bad += 1;
-                eprintln!("{}: differs", c["edit"]);
-            }
-        }
-        assert_eq!(bad, 0, "of {} cases", cases.len());
-        eprintln!("{} cases agree", cases.len());
+    fn blocks_merge_continuations() {
+        assert_eq!(blocks("fn a() {\n\n    x\n}\n\nfn b() {}"), vec!["fn a() {\n\n    x\n}", "fn b() {}"]);
+    }
+
+    #[test]
+    fn rename() {
+        let mut rng = seeded("t");
+        let t = "fn f() {\n    let x = 1;\n    x + 1\n}\nfn g() { x }\n";
+        assert_eq!(rename_local(t, &mut rng, 3).unwrap(), "fn f() {\n    let x_f3 = 1;\n    x_f3 + 1\n}\nfn g() { x }\n");
     }
 }

@@ -65,7 +65,7 @@ $WORK` runs the ui-fulldeps tests compiletest skips at stage 1.
 **Any other command** (the generators, the fuzzers):
 
 ```sh
-rustc/coverage-run.sh ui-fuzz python3 rustc/ui-fuzz.py --rustc $COV_RUSTC \
+rustc/coverage-run.sh ui-fuzz target/release/mirth-lab ui-fuzz --rustc $COV_RUSTC \
   --tests $MIRTH_RUST/tests/ui --list $WORK/ui-cov/all-runnable.json --work $WORK/ui-fuzz-cov \
   --edits 3 --jobs 6                           # about 45 minutes
 rustc/coverage-run.sh generators python3 rustc/coverage-generators.py --rustc $COV_RUSTC \

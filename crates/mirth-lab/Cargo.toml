@@ -14,16 +14,16 @@ path = "src/main.rs"
 anyhow = "1"
 clap = { version = "4.6", features = ["derive"] }
 rayon = "1.12"
+rand = "0.9"
 regex = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+similar = "2"
 sha2 = "0.10"
 tempfile = "3"
 walkdir = "2"
 wait-timeout = "0.2"
 libc = "0.2"
 flate2 = "1"
-rand = { version = "0.9", default-features = false, features = ["std", "std_rng"] }
-similar = "2"
 tar = "0.4"
 mirth-rewrite = { path = "../mirth-rewrite" }

@@ -2,11 +2,11 @@
 
 Three ways to find more bugs than one fixture and ten hand-written edits can:
 
-1. **Replay real history.** `rustc/replay.py` walks a crate's git history, oldest
+1. **Replay real history.** `mirth-lab replay` walks a crate's git history, oldest
    first, building each commit incrementally on top of the last and again from scratch,
    and compares them (P6). Ten crates, up to 2,000 commits each.
 2. **Fuzz edits on a large fixture.** `fixtures/sink` is a five-crate workspace with as
-   many stable language features as fit. `rustc/fuzz.py` makes random mechanical edits to it
+   many stable language features as fit. `mirth-lab fuzz` makes random mechanical edits to it
    and checks every incremental rebuild against a clean build.
 3. **Survey past bugs for properties.** Agents read 1,000 fixed rustc bugs and extracted
    the invariants they violated; a second pass checked every citation. The result is
@@ -49,7 +49,7 @@ codegen-llvm tests pass.
 
 ## History replay
 
-`rustc/replay.py --rustc <rustc> --repo <checkout> --work <dir> [--commits N] [--from i --to j]`
+`mirth-lab replay --rustc <rustc> --repo <checkout> --work <dir> [--commits N] [--from i --to j]`
 
 For each first-parent commit, oldest first: check it out, `cargo build --lib`
 incrementally on the previous commit's target directory, then build the same source from
@@ -119,7 +119,7 @@ module, `#[no_mangle]` and `#[used]`, `cfg_attr`, `Any`, a glob re-export, an ex
 using `$crate`, a proc macro with a `mixed_site` binding, and a generic `#[inline]` function
 that `sink-mid` inlines from the metadata.
 
-`rustc/fuzz.py --rustc <rustc> --fixture fixtures/sink --work <dir> [--workers N]`
+`mirth-lab fuzz --rustc <rustc> --fixture fixtures/sink --work <dir> [--workers N]`
 
 Each worker keeps one evolving copy of the fixture. It makes a random edit, chosen from 16
 kinds (a comment, a blank line, an indented line, swapped or moved or deleted items, a
@@ -131,7 +131,8 @@ the same source is built from scratch at the same path, and every `.rmeta` and e
 macro's embedded metadata are compared (P6), the two binaries are run and their output
 compared, and ICEs, hangs and one-sided failures are reported. Every 40 kept edits the worker
 starts again from the pristine fixture. A finding keeps every edit since the last reset, and
-`rustc/fuzz-replay.py` replays it exactly.
+`mirth-lab fuzz-replay` replays it exactly. (`--seed` names an edit sequence of the Rust
+fuzzer; runs of the earlier Python fuzzer, which drew from Python's generator, do not repeat.)
 
 Since [`shadow-mode.md`](shadow-mode.md), the fuzzer and the replay also run every build
 with the compiler's own check of what it reused (`RUSTC_VERIFY_REUSE`, on a compiler with

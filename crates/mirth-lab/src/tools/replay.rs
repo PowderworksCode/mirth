@@ -28,7 +28,8 @@ use std::time::Instant;
 
 use serde_json::json;
 
-use mirth_lab::cargo::{self, Collected, copy_tree, messages, relative, tail};
+use mirth_lab::artifacts::{self, Collected};
+use mirth_lab::cargo::{self, copy_tree, messages, relative, tail};
 
 #[derive(clap::Args, Debug)]
 pub struct Args {
@@ -162,7 +163,7 @@ impl Ctx<'_> {
             untracked: cargo::untracked_reads(log),
             rmetas,
             fresh,
-            art: cargo::collect(&r.stdout, target),
+            art: artifacts::collect(&r.stdout, target),
         }
     }
 }
@@ -258,10 +259,10 @@ pub fn run(args: Args) -> anyhow::Result<ExitCode> {
             let keys: BTreeSet<&String> = a.keys().chain(b.keys()).collect();
             differ = keys.into_iter().filter(|r| a.get(*r) != b.get(*r)).cloned().collect();
             // More oracles: object code in the rlibs and the diagnostics.
-            for (kind, detail) in cargo::compare(&inc.art, &clean.art) {
+            for (kind, detail) in artifacts::compare(&inc.art, &clean.art) {
                 if kind == "rlib" || kind == "diag" {
                     std::fs::write(keep_dir(i, commit).join(format!("{kind}.txt")), detail.join("\n"))?;
-                    problems.push(kind);
+                    problems.push(kind.to_owned());
                 }
             }
             if !differ.is_empty() {
