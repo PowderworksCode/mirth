@@ -1,34 +1,35 @@
-# New solver: long iterator chains take 10× longer and 4× the memory since nightly-2026-08-04
+# New solver: rejecting an over-long iterator chain takes 10× longer and gives 75 errors
 
-Facts for finding 32. Found by the scaling check (`mirth-lab scale-check`, shape `iter-chain`:
-growth exponent of compile time 2.6–3.5 at N ≤ 100).
+Facts for finding 32. Found by the scaling check (`mirth-lab scale-check`, shape `iter-chain`),
+which timed out at N=200. Reproduce with
+[`repro/32-iter-chain-solver-regression.sh`](repro/32-iter-chain-solver-regression.sh).
+
+**Correction (2026-10-10).** The first version of this finding reported a compile-time
+regression on valid code. That was wrong: the 200-map program is over the recursion limit and
+is rejected by every toolchain; the earlier timings did not check the exit status. Programs
+under the limit are not slower under the new solver (it is faster there). What changed is how
+the rejection behaves.
 
 ## What happens
 
-[`tests/iter-chain-200.rs`](tests/iter-chain-200.rs) is one statement:
-`(0u64..10).map(|x| x.wrapping_add(0)) … .map(|x| x.wrapping_add(199)).sum()`, 200 `map`
-calls. User time and peak memory of `rustc iter-chain-200.rs` (-Copt-level=0):
+`(0u64..10).map(|x| x.wrapping_add(0)) … .sum()` with N `map` calls
+([`tests/iter-chain-200.rs`](tests/iter-chain-200.rs) is N = 200). From N = 128 the
+`Map<Map<…>>` type exceeds the default recursion limit and every toolchain rejects the program.
 
-| toolchain | default | `-Znext-solver=coherence` (old solver) | `-Znext-solver=globally` |
+| N | toolchain (solver) | result | user time, peak memory |
 |---|---|---|---|
-| 1.80.0 | 5.7 s, 115 MB | | |
-| 1.90.0 | 7.0 s, 125 MB | | |
-| 1.98.0 | 2.3 s, 118 MB | | |
-| nightly-2026-07-18 | 2.2 s, 119 MB | 2.2 s, 118 MB | 4.6 s, 517 MB |
-| nightly-2026-08-03 | | | 4.5 s, 519 MB |
-| nightly-2026-08-04 | | | 37.3 s, 2.42 GB |
-| nightly-2026-10-06 | 53.4 s, 2.04 GB | 6.1 s, 131 MB | 52.8 s, 2.04 GB |
+| 126 | 1.98.0, nightly-2026-07-18 (old) | compiles | 3.3–3.6 s |
+| 126 | nightly-2026-10-06 (new, default) | compiles | 1.9 s |
+| 126 | nightly-2026-08-03 / -08-04, `-Znext-solver=globally` | compiles, one overflow warning | 2.4 s / 2.5 s, 425 MB |
+| 200 | 1.98.0, nightly-2026-07-18 (old) | E0275 "overflow evaluating the requirement `Map<…>: Iterator`", 1 error | 2.2 s, ~120 MB |
+| 200 | nightly-2026-08-03, `-Znext-solver=globally` | rejected, 1 error, 2 overflow warnings | 4.9 s, 507 MB |
+| 200 | nightly-2026-08-04, `-Znext-solver=globally` | rejected, **74 × E0320** ("overflow while adding drop-check rules for `Map<…>`") and 219 overflow warnings | **40.4 s, 2.37 GB** |
+| 200 | nightly-2026-10-06 (new, default) | the same as 08-04 | ~53 s, 2.0 GB |
 
-At the mirth pin (default solver): N=50 0.19 s, N=100 1.2 s, N=200 68.6 s and 2.0 GB.
-`-Ztime-passes` puts 65 of 73 s in `type_check_crate`. From nightly-2026-08-04 the build also
-warns once, "overflow evaluating the requirement `Map<Map<…<Map<_, {closure@…}>…>>: Iterator`"
-("this was previously accepted by the compiler but is being phased out"); earlier nightlies
-do not warn.
-
-Two separate changes show in the table: the new-solver slowdown between 2026-08-03 and
-2026-08-04 (this finding), and the default switching to the new solver between July and
-October ([`solver.md`](../solver.md)). The old solver also went from 2.2 s to 6.1 s over the
-same period; not bisected.
+So since nightly-2026-08-04, under the new solver (nightly's default), rejecting the program
+costs about 8× the CPU time and 4.7× the memory, and reports 75 error lines and 219 warnings
+where older compilers report one error. The overflow warnings are the future-compatibility lint
+"this was previously accepted by the compiler but is being phased out".
 
 ## Bisection
 
@@ -64,6 +65,7 @@ fulfillment iteration, which would fit the growth with N, was not checked.
 
 ## Scope
 
-Any method chain long enough that the solver overflows on the receiver's trait goal while its
-innermost type is still being inferred. 200 is long for hand-written code; generated code and
-builder- or iterator-heavy macros reach it.
+Programs that are rejected anyway: a method chain over the recursion limit (here from 128
+calls). The cost is a slow, noisy error (tens of seconds and gigabytes, 75 errors instead of
+one) rather than wrong acceptance or a slower valid build. Generated code and macros that build
+long chains are where a user would meet it.
