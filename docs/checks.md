@@ -321,6 +321,7 @@ Run with `--all`, seeds 1–3, 300 functions each, 312 targets.
 | packed aggregate | hexagon-* (3) | 3 | undecided | one signature shape |
 | 16-byte-aligned aggregate in the parameter save area | powerpc64-ibm-aix (3) | 1 | undecided | one signature |
 | BPF | bpfel, bpfeb (3) | not compared | no reference: clang's BPF backend rejects stack arguments and large returns | |
+| the Rust side does not compile: ICE `unreachable!("Align is given as power of 2 no larger than 16 bytes")` in `callconv/nvptx64.rs` | nvptx64-nvidia-cuda (2) | whole target | **known, rust-lang/rust#163497** (open; its reproducer is `ptx-kernel` parameters). Here a plain `extern "C" fn g() -> A` with `#[repr(C, align(32))] struct A` ICEs on 1.90.0, 1.98.0 and nightly-2026-10-06; 1.80.0 compiled it (sret, align 32) | |
 
 Also: finding 20's float-and-pointer struct appears on the 32-bit RISC-V and LoongArch targets
 (50 functions), and finding 19's missing extension on stack arguments on loongarch32. Both
